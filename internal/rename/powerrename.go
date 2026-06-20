@@ -22,7 +22,11 @@ func PowerRenamePlan(items []InputItem, opts PowerRenameOptions, existingTarget 
 	targetIndexes := map[string][]int{}
 	for i, item := range filtered {
 		oldName := filepath.Base(item.RelativePath)
-		newName, err := powerRenameName(oldName, opts, i+1)
+		itemOpts := opts
+		if item.AbsPath != "" {
+			itemOpts.TemplateContext = buildPowerRenameTemplateContext(item.AbsPath)
+		}
+		newName, err := powerRenameName(oldName, itemOpts, i+1)
 		if err != nil {
 			return PlanResult{}, err
 		}

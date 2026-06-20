@@ -132,7 +132,7 @@ func resolveRenameInputs(ctx context.Context, resolver roots.Resolver, rootID st
 		if err != nil {
 			return nil, err
 		}
-		inputs = append(inputs, InputItem{RelativePath: rel, IsDir: info.IsDir()})
+		inputs = append(inputs, InputItem{RelativePath: rel, IsDir: info.IsDir(), AbsPath: resolved.Abs})
 	}
 	return inputs, nil
 }

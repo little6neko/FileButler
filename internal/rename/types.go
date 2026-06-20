@@ -40,13 +40,14 @@ type PowerRenameOptions struct {
 	EnumerateItems    bool   `json:"enumerateItems"`
 	RandomizeItems    bool   `json:"randomizeItems"`
 
-	LegacyAppendEnumeration bool `json:"-"`
+	LegacyAppendEnumeration bool                       `json:"-"`
 	TemplateContext         PowerRenameTemplateContext `json:"-"`
 }
 
 type InputItem struct {
 	RelativePath string
 	IsDir        bool
+	AbsPath      string
 }
 
 type PlanItem struct {

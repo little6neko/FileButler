@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { api } from "./api/client";
 import App from "./App";
+import html from "../index.html?raw";
 
 vi.mock("./api/client", () => ({
   api: {
@@ -23,6 +24,10 @@ beforeEach(() => {
 it("renders the FileButler app shell", () => {
   render(<App />);
   expect(screen.getByRole("heading", { name: "FileButler" })).toBeInTheDocument();
+});
+
+it("sets the browser page title to FileButler", () => {
+  expect(html).toContain("<title>FileButler</title>");
 });
 
 it("allows manually switching to Simplified Chinese labels", async () => {

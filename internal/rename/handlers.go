@@ -20,6 +20,12 @@ type HandlerRequest struct {
 	Options Options  `json:"options"`
 }
 
+type SingleRenameRequest struct {
+	RootID  string   `json:"rootId"`
+	Paths   []string `json:"paths"`
+	NewName string   `json:"newName"`
+}
+
 func PreviewHandler(browser browser.Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req HandlerRequest
@@ -52,50 +58,91 @@ func CreateJobHandler(browser browser.Service, store jobs.Store, runner jobs.Run
 			writeData(w, http.StatusConflict, plan)
 			return
 		}
-		user, ok := auth.CurrentUser(r.Context())
-		if !ok {
-			writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		createRenameJob(w, r, store, runner, req.RootID, plan)
+	}
+}
+
+func SingleRenameCreateJobHandler(browser browser.Service, store jobs.Store, runner jobs.Runner) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req SingleRenameRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")
 			return
 		}
-		planJSON, _ := json.Marshal(plan)
-		id := ops.NewJobID()
-		if err := store.Create(r.Context(), jobs.Job{ID: id, Type: "rename", Status: jobs.StatusPending, ActorID: user.ID, SourceRootID: req.RootID, PlanJSON: string(planJSON), RootSnapshotJSON: "{}", ProgressTotal: len(plan.Items)}); err != nil {
-			writeError(w, http.StatusInternalServerError, "operation_failed", err.Error())
+		inputs, err := resolveRenameInputs(r.Context(), browser.Resolver, req.RootID, req.Paths)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}
-		items := make([]jobs.ExecutableItem, 0, len(plan.Items))
-		for i, item := range plan.Items {
-			items = append(items, jobs.ExecutableItem{Index: i, Action: "rename", SourceRoot: req.RootID, SourcePath: item.SourcePath, DestRoot: req.RootID, DestPath: item.TargetPath, UndoJSON: "{}"})
+		plan, err := BuildSinglePlan(inputs, req.NewName, existingPathFunc(browser.Resolver, req.RootID))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid_request", err.Error())
+			return
 		}
-		go func() { _ = runner.Run(context.Background(), id, items) }()
-		writeData(w, http.StatusCreated, map[string]string{"id": id})
+		if plan.HasConflict {
+			writeData(w, http.StatusConflict, plan)
+			return
+		}
+		createRenameJob(w, r, store, runner, req.RootID, plan)
 	}
 }
 
 func BuildPlan(ctx context.Context, resolver roots.Resolver, req HandlerRequest) (PlanResult, error) {
-	inputs := make([]InputItem, 0, len(req.Paths))
-	for _, rel := range req.Paths {
+	inputs, err := resolveRenameInputs(ctx, resolver, req.RootID, req.Paths)
+	if err != nil {
+		return PlanResult{}, err
+	}
+	return Plan(inputs, req.Options, existingPathFunc(resolver, req.RootID))
+}
+
+func resolveRenameInputs(ctx context.Context, resolver roots.Resolver, rootID string, paths []string) ([]InputItem, error) {
+	inputs := make([]InputItem, 0, len(paths))
+	for _, rel := range paths {
 		if err := ctx.Err(); err != nil {
-			return PlanResult{}, err
+			return nil, err
 		}
-		resolved, err := resolver.Resolve(req.RootID, rel)
+		resolved, err := resolver.Resolve(rootID, rel)
 		if err != nil {
-			return PlanResult{}, err
+			return nil, err
 		}
 		info, err := os.Lstat(resolved.Abs)
 		if err != nil {
-			return PlanResult{}, err
+			return nil, err
 		}
 		inputs = append(inputs, InputItem{RelativePath: rel, IsDir: info.IsDir()})
 	}
-	return Plan(inputs, req.Options, func(path string) bool {
-		resolved, err := resolver.Resolve(req.RootID, filepath.ToSlash(path))
+	return inputs, nil
+}
+
+func existingPathFunc(resolver roots.Resolver, rootID string) func(path string) bool {
+	return func(path string) bool {
+		resolved, err := resolver.Resolve(rootID, filepath.ToSlash(path))
 		if err != nil {
 			return true
 		}
 		_, err = os.Lstat(resolved.Abs)
 		return err == nil
-	})
+	}
+}
+
+func createRenameJob(w http.ResponseWriter, r *http.Request, store jobs.Store, runner jobs.Runner, rootID string, plan PlanResult) {
+	user, ok := auth.CurrentUser(r.Context())
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
+		return
+	}
+	planJSON, _ := json.Marshal(plan)
+	id := ops.NewJobID()
+	if err := store.Create(r.Context(), jobs.Job{ID: id, Type: "rename", Status: jobs.StatusPending, ActorID: user.ID, SourceRootID: rootID, PlanJSON: string(planJSON), RootSnapshotJSON: "{}", ProgressTotal: len(plan.Items)}); err != nil {
+		writeError(w, http.StatusInternalServerError, "operation_failed", err.Error())
+		return
+	}
+	items := make([]jobs.ExecutableItem, 0, len(plan.Items))
+	for i, item := range plan.Items {
+		items = append(items, jobs.ExecutableItem{Index: i, Action: "rename", SourceRoot: rootID, SourcePath: item.SourcePath, DestRoot: rootID, DestPath: item.TargetPath, UndoJSON: "{}"})
+	}
+	go func() { _ = runner.Run(context.Background(), id, items) }()
+	writeData(w, http.StatusCreated, map[string]string{"id": id})
 }
 
 type Executor struct {

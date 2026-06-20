@@ -57,6 +57,25 @@ func TestRenameCreateJobRejectsConflictingPlan(t *testing.T) {
 	}
 }
 
+func TestSingleRenameCreateJobRejectsMultiplePaths(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	actor := insertUser(t, db)
+	root := t.TempDir()
+	testutil.WriteFile(t, filepath.Join(root, "a.txt"), "x")
+	testutil.WriteFile(t, filepath.Join(root, "b.txt"), "x")
+	svc := browser.Service{Resolver: roots.NewResolver([]roots.Root{{ID: "data", Name: "Data", Path: root}})}
+	handler := SingleRenameCreateJobHandler(svc, jobs.Store{DB: db}, jobs.Runner{Store: jobs.Store{DB: db}, Audit: audit.Store{DB: db}, Executor: Executor{Resolver: svc.Resolver}})
+	req := renameReq(SingleRenameRequest{RootID: "data", Paths: []string{"a.txt", "b.txt"}, NewName: "next.txt"})
+	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.User{ID: actor, Username: "admin"}))
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 type Request = HandlerRequest
 
 func renameReq(payload any) *http.Request {

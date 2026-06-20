@@ -50,6 +50,7 @@ func NewRouter(deps Deps) http.Handler {
 		protected.Post("/api/ops/jobs", ops.CreateJobHandler(deps.OpsPlanner, deps.JobStore, deps.OpsRunner))
 		protected.Post("/api/rename/preview", rename.PreviewHandler(deps.Browser))
 		protected.Post("/api/rename/jobs", rename.CreateJobHandler(deps.Browser, deps.JobStore, deps.RenameRunner))
+		protected.Post("/api/rename/single/jobs", rename.SingleRenameCreateJobHandler(deps.Browser, deps.JobStore, deps.RenameRunner))
 		protected.Get("/api/jobs", jobs.ListHandler(deps.JobStore))
 		protected.Get("/api/jobs/{id}", jobs.GetHandler(deps.JobStore))
 		protected.Post("/api/jobs/{id}/cancel", jobs.CancelHandler(deps.JobStore))

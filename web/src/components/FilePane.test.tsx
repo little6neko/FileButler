@@ -56,6 +56,12 @@ it("navigates to a typed path with Enter", async () => {
   expect(onPathChange).toHaveBeenCalledWith("photos/2026");
 });
 
+it("displays non-root paths with a leading slash", () => {
+  renderPane({ currentPath: "photos" });
+
+  expect(screen.getByLabelText("Left pane path")).toHaveValue("/photos");
+});
+
 it("uses arrow keys to choose a directory suggestion", async () => {
   const onPathChange = vi.fn();
   renderPane({

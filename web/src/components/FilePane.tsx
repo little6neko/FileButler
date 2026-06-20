@@ -302,7 +302,7 @@ function columnStyle(widths: Record<ColumnKey, number>) {
 }
 
 function displayPath(path: string) {
-  return path && path !== "." ? path : "/";
+  return path && path !== "." ? `/${path.replace(/^\/+/, "")}` : "/";
 }
 
 function normalizeInput(path: string) {

@@ -46,6 +46,7 @@ func NewRouter(deps Deps) http.Handler {
 		protected.Use(auth.RequireAuth(deps.Auth, cookieName))
 		protected.Get("/api/roots", rootsHandler(deps.Roots))
 		protected.Get("/api/browse", browseHandler(deps.Browser))
+		protected.Get("/api/media", mediaHandler(deps.Roots))
 		protected.Post("/api/ops/dry-run", ops.DryRunHandler(deps.OpsPlanner))
 		protected.Post("/api/ops/jobs", ops.CreateJobHandler(deps.OpsPlanner, deps.JobStore, deps.OpsRunner))
 		protected.Post("/api/rename/preview", rename.PreviewHandler(deps.Browser))

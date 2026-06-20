@@ -43,6 +43,8 @@ export const api = {
     request<Entry[]>(
       `/api/browse?rootId=${encodeURIComponent(rootId)}&path=${encodeURIComponent(path)}`,
     ),
+  mediaUrl: (rootId: string, path: string) =>
+    `/api/media?rootId=${encodeURIComponent(rootId)}&path=${encodeURIComponent(path)}`,
   opsDryRun: (payload: OpsRequest) =>
     request<{ items: PlanItem[]; hasConflict: boolean }>("/api/ops/dry-run", {
       method: "POST",

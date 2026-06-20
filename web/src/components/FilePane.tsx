@@ -16,6 +16,7 @@ type FilePaneProps = {
   onToggleSelection(path: string): void;
   onSelectAll(checked: boolean): void;
   onVisibleOrderChange?(paths: string[]): void;
+  onOpenFile?(entry: Entry): void;
   onRefresh(): void;
   onActivate(): void;
   labels?: UIStrings;
@@ -34,6 +35,7 @@ export function FilePane({
   onToggleSelection,
   onSelectAll,
   onVisibleOrderChange,
+  onOpenFile,
   onRefresh,
   onActivate,
   labels = strings.en,
@@ -162,6 +164,7 @@ export function FilePane({
                 className={entry.type === "directory" ? "directory-row" : undefined}
                 onDoubleClick={() => {
                   if (entry.type === "directory") onPathChange(entry.relativePath);
+                  else onOpenFile?.(entry);
                 }}
               >
                 <td className="select-cell">

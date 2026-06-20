@@ -8,6 +8,7 @@ vi.mock("../api/client", () => ({
   api: {
     roots: vi.fn(),
     browse: vi.fn(),
+    mediaUrl: vi.fn((rootId: string, path: string) => `/api/media?rootId=${encodeURIComponent(rootId)}&path=${encodeURIComponent(path)}`),
     opsDryRun: vi.fn(),
     opsCreateJob: vi.fn(),
     renamePreview: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock("../api/client", () => ({
 beforeEach(() => {
   vi.mocked(api.roots).mockReset();
   vi.mocked(api.browse).mockReset();
+  vi.mocked(api.mediaUrl).mockClear();
   vi.mocked(api.opsDryRun).mockReset();
   vi.mocked(api.opsCreateJob).mockReset();
   vi.mocked(api.renamePreview).mockReset();
@@ -115,6 +117,36 @@ it("resizes the left and right panes by dragging the pane divider", async () => 
   fireEvent.mouseUp(document);
 
   expect(workspace).toHaveStyle({ gridTemplateColumns: "65fr 8px 35fr" });
+});
+
+it("opens an image media preview from a double-clicked file", async () => {
+  vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
+  vi.mocked(api.browse).mockResolvedValue([
+    { name: "photo.jpg", relativePath: "photos/photo.jpg", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+  ]);
+  render(<DualPane />);
+
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  await userEvent.dblClick(await within(leftPane).findByText("photo.jpg"));
+
+  const preview = await screen.findByRole("img", { name: "photo.jpg" });
+  expect(preview).toHaveAttribute("src", "/api/media?rootId=root&path=photos%2Fphoto.jpg");
+});
+
+it("opens a video media preview from a double-clicked file", async () => {
+  vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
+  vi.mocked(api.browse).mockResolvedValue([
+    { name: "clip.mp4", relativePath: "videos/clip.mp4", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+  ]);
+  render(<DualPane />);
+
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  await userEvent.dblClick(await within(leftPane).findByText("clip.mp4"));
+
+  const preview = await screen.findByLabelText("clip.mp4");
+  expect(preview.tagName).toBe("VIDEO");
+  expect(preview).toHaveAttribute("controls");
+  expect(preview).toHaveAttribute("src", "/api/media?rootId=root&path=videos%2Fclip.mp4");
 });
 
 it("enables ordinary rename only for one selected item and keeps PowerRename for batch selection", async () => {

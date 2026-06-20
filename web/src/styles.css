@@ -412,6 +412,22 @@ button:disabled {
   font-size: 16px;
 }
 
+.media-preview {
+  width: min(960px, 100%);
+}
+
+.media-preview-content {
+  display: grid;
+  place-items: center;
+  margin-top: 12px;
+}
+
+.media-preview-content img,
+.media-preview-content video {
+  max-width: 100%;
+  max-height: 76vh;
+}
+
 .preview-table {
   width: 100%;
   border-collapse: collapse;

@@ -114,6 +114,55 @@ func TestBrowseEndpointReturnsEntries(t *testing.T) {
 	}
 }
 
+func TestMediaEndpointRequiresLogin(t *testing.T) {
+	root := t.TempDir()
+	testutil.WriteFile(t, filepath.Join(root, "photo.jpg"), "image-bytes")
+	router := testRouterWithRoot(t, root)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/media?rootId=data&path=photo.jpg", nil))
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestMediaEndpointStreamsAuthenticatedMedia(t *testing.T) {
+	root := t.TempDir()
+	testutil.WriteFile(t, filepath.Join(root, "photo.jpg"), "image-bytes")
+	router := testRouterWithRoot(t, root)
+	cookies := loginCookies(t, router)
+	req := httptest.NewRequest(http.MethodGet, "/api/media?rootId=data&path=photo.jpg", nil)
+	for _, cookie := range cookies {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	if got := rec.Body.String(); got != "image-bytes" {
+		t.Fatalf("body=%q", got)
+	}
+	if contentType := rec.Header().Get("Content-Type"); contentType != "image/jpeg" {
+		t.Fatalf("content-type=%q", contentType)
+	}
+}
+
+func TestMediaEndpointRejectsNonMediaFiles(t *testing.T) {
+	root := t.TempDir()
+	testutil.WriteFile(t, filepath.Join(root, "notes.txt"), "plain text")
+	router := testRouterWithRoot(t, root)
+	cookies := loginCookies(t, router)
+	req := httptest.NewRequest(http.MethodGet, "/api/media?rootId=data&path=notes.txt", nil)
+	for _, cookie := range cookies {
+		req.AddCookie(cookie)
+	}
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnsupportedMediaType {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 func testRouter(t *testing.T) http.Handler {
 	t.Helper()
 	root := t.TempDir()

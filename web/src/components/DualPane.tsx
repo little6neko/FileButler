@@ -4,8 +4,11 @@ import { api } from "../api/client";
 import type { Entry, OpsRequest, Root } from "../api/types";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
+import { mediaKindForPath } from "../media";
+import type { MediaKind } from "../media";
 import { FilePane } from "./FilePane";
 import { JobsPanel } from "./JobsPanel";
+import { MediaPreview } from "./MediaPreview";
 import { OperationPreview } from "./OperationPreview";
 import { RenameDialog } from "./RenameDialog";
 import { SingleRenameDialog } from "./SingleRenameDialog";
@@ -20,10 +23,17 @@ type PaneState = {
   visibleOrder: string[];
 };
 
+type MediaPreviewState = {
+  name: string;
+  url: string;
+  kind: MediaKind;
+};
+
 export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
   const [roots, setRoots] = useState<Root[]>([]);
   const [activePane, setActivePane] = useState<PaneKey>("left");
   const [previewRequest, setPreviewRequest] = useState<OpsRequest | null>(null);
+  const [mediaPreview, setMediaPreview] = useState<MediaPreviewState | null>(null);
   const [singleRenameOpen, setSingleRenameOpen] = useState(false);
   const [powerRenameOpen, setPowerRenameOpen] = useState(false);
   const [jobsOpen, setJobsOpen] = useState(false);
@@ -117,6 +127,7 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
           if (sameStringArray(current.visibleOrder, visibleOrder)) return current;
           return { ...current, visibleOrder };
         }),
+      onOpenFile: (entry: Entry) => openMediaPreview(pane.rootId, entry),
       onRefresh: () => {
         if (pane.rootId) void loadPane(which, pane.rootId, pane.path);
       },
@@ -173,6 +184,15 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
           }}
         />
       ) : null}
+      {mediaPreview ? (
+        <MediaPreview
+          name={mediaPreview.name}
+          url={mediaPreview.url}
+          kind={mediaPreview.kind}
+          labels={labels}
+          onClose={() => setMediaPreview(null)}
+        />
+      ) : null}
       {singleRenameOpen ? (
         <SingleRenameDialog
           rootId={activeState().rootId}
@@ -221,6 +241,16 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
   function basename(path: string) {
     const parts = path.split("/").filter(Boolean);
     return parts[parts.length - 1] ?? path;
+  }
+
+  function openMediaPreview(rootId: string, entry: Entry) {
+    const kind = mediaKindForPath(entry.name);
+    if (!kind) return;
+    setMediaPreview({
+      name: entry.name,
+      url: api.mediaUrl(rootId, entry.relativePath),
+      kind,
+    });
   }
 
   function openOperation(type: OpsRequest["type"]) {

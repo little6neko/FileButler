@@ -69,8 +69,8 @@ export function OperationPreview({ request, onJobCreated, onClose, labels = stri
           <tbody>
             {items.map((item) => (
               <tr key={`${item.sourcePath}-${item.destPath ?? item.targetPath ?? ""}`}>
-                <td>{item.sourcePath}</td>
-                <td>{item.destPath ?? item.targetPath ?? ""}</td>
+                <td>{displaySource(item, request)}</td>
+                <td>{displayDestination(item, request)}</td>
                 <td>{item.conflict ? item.errorText || item.errorCode : labels.ready}</td>
               </tr>
             ))}
@@ -84,4 +84,23 @@ export function OperationPreview({ request, onJobCreated, onClose, labels = stri
       </section>
     </div>
   );
+}
+
+function displaySource(item: PlanItem, request: OpsRequest) {
+  if (!item.sourcePath) return "";
+  const root = item.sourceRoot ?? request.sourceRoot;
+  return root ? `${root}:${displayPath(item.sourcePath)}` : item.sourcePath;
+}
+
+function displayDestination(item: PlanItem, request: OpsRequest) {
+  const path = item.destPath ?? item.targetPath;
+  if (!path) return "";
+  const root = item.destRoot ?? request.destRoot;
+  if (!root) return path;
+  return `${root}:${displayPath(path)}`;
+}
+
+function displayPath(path: string) {
+  if (path === "." || path === "") return "/";
+  return path.startsWith("/") ? path : `/${path}`;
 }

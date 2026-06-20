@@ -59,7 +59,9 @@ export type SingleRenameRequest = {
 
 export type PlanItem = {
   operation?: string;
+  sourceRoot?: string;
   sourcePath: string;
+  destRoot?: string;
   destPath?: string;
   targetPath?: string;
   oldName?: string;

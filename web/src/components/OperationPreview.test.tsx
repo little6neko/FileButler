@@ -59,6 +59,28 @@ it("renders operation preview labels in Chinese", async () => {
   expect(screen.getByRole("button", { name: "确认" })).toBeInTheDocument();
 });
 
+it("shows the destination root in operation preview paths", async () => {
+  vi.mocked(api.opsDryRun).mockResolvedValue({
+    hasConflict: false,
+    items: [{ sourcePath: "a.txt", destRoot: "media", destPath: "target/a.txt", conflict: false }],
+  });
+
+  render(<OperationPreview request={request()} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  expect(await screen.findByText("media:/target/a.txt")).toBeInTheDocument();
+});
+
+it("shows the source root in operation preview paths", async () => {
+  vi.mocked(api.opsDryRun).mockResolvedValue({
+    hasConflict: false,
+    items: [{ sourceRoot: "downloads", sourcePath: "a.txt", destPath: "target/a.txt", conflict: false }],
+  });
+
+  render(<OperationPreview request={request()} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  expect(await screen.findByText("downloads:/a.txt")).toBeInTheDocument();
+});
+
 function request() {
   return { type: "copy" as const, sourceRoot: "a", sources: ["a.txt"], destRoot: "b", destPath: "." };
 }

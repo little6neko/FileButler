@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api/client";
+import { DualPane } from "./components/DualPane";
 import { InitScreen } from "./components/InitScreen";
 import { LoginScreen } from "./components/LoginScreen";
 
@@ -45,11 +46,7 @@ export default function App() {
       )}
       {state === "init" && <InitScreen onInitialized={() => setState("ready")} />}
       {state === "login" && <LoginScreen onLoggedIn={() => setState("ready")} />}
-      {state === "ready" && (
-        <section className="empty-state">
-          <h2>Workspace ready</h2>
-        </section>
-      )}
+      {state === "ready" && <DualPane />}
     </main>
   );
 }

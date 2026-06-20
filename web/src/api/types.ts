@@ -22,6 +22,18 @@ export type RenameOptions = {
   includeDirs: boolean;
   includeSubfolders: boolean;
   enumerate: boolean;
+  nameOnly: boolean;
+  extensionOnly: boolean;
+  fullName: boolean;
+  excludeFiles: boolean;
+  excludeFolders: boolean;
+  excludeSubfolders: boolean;
+  uppercase: boolean;
+  lowercase: boolean;
+  titlecase: boolean;
+  capitalized: boolean;
+  enumerateItems: boolean;
+  randomizeItems: boolean;
 };
 
 export type OpsRequest = {

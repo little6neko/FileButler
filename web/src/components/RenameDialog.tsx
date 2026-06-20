@@ -24,6 +24,18 @@ const defaultOptions: RenameOptions = {
   includeDirs: true,
   includeSubfolders: false,
   enumerate: false,
+  nameOnly: true,
+  extensionOnly: false,
+  fullName: false,
+  excludeFiles: false,
+  excludeFolders: false,
+  excludeSubfolders: true,
+  uppercase: false,
+  lowercase: false,
+  titlecase: false,
+  capitalized: false,
+  enumerateItems: false,
+  randomizeItems: false,
 };
 
 export function RenameDialog({ rootId, paths, onJobCreated, onClose, labels = strings.en }: Props) {
@@ -61,7 +73,7 @@ export function RenameDialog({ rootId, paths, onJobCreated, onClose, labels = st
     <div className="modal-backdrop">
       <section className="modal rename-dialog" aria-label={labels.renameDialog}>
         <header className="modal-header">
-          <h2>{labels.batchRename}</h2>
+          <h2>{labels.powerRename}</h2>
           <button type="button" onClick={onClose}>
             {labels.close}
           </button>
@@ -78,7 +90,7 @@ export function RenameDialog({ rootId, paths, onJobCreated, onClose, labels = st
           </label>
           <label>
             <input type="checkbox" checked={options.useRegex} onChange={(event) => update({ useRegex: event.target.checked })} />
-            {labels.regex}
+            {labels.useRegularExpressions}
           </label>
           <label>
             <input type="checkbox" checked={options.caseSensitive} onChange={(event) => update({ caseSensitive: event.target.checked })} />
@@ -86,32 +98,105 @@ export function RenameDialog({ rootId, paths, onJobCreated, onClose, labels = st
           </label>
           <label>
             <input type="checkbox" checked={options.matchAll} onChange={(event) => update({ matchAll: event.target.checked })} />
-            {labels.matchAll}
+            {labels.matchAllOccurrences}
           </label>
           <fieldset>
             <legend>{labels.target}</legend>
-            {(["name", "extension", "both"] as const).map((target) => (
-              <label key={target}>
-                <input type="radio" name="target" checked={options.target === target} onChange={() => update({ target })} />
-                {targetLabel(target, labels)}
-              </label>
-            ))}
+            <label>
+              <input
+                type="checkbox"
+                checked={options.nameOnly}
+                onChange={(event) => setTargetMode("name", event.target.checked)}
+              />
+              {labels.nameOnly}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={options.extensionOnly}
+                onChange={(event) => setTargetMode("extension", event.target.checked)}
+              />
+              {labels.extensionOnly}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={options.fullName}
+                onChange={(event) => setTargetMode("both", event.target.checked)}
+              />
+              {labels.fullName}
+            </label>
           </fieldset>
           <label>
-            <input type="checkbox" checked={options.includeFiles} onChange={(event) => update({ includeFiles: event.target.checked })} />
-            {labels.includeFiles}
+            <input
+              type="checkbox"
+              checked={options.excludeFiles}
+              onChange={(event) => update({ excludeFiles: event.target.checked, includeFiles: !event.target.checked })}
+            />
+            {labels.excludeFiles}
           </label>
           <label>
-            <input type="checkbox" checked={options.includeDirs} onChange={(event) => update({ includeDirs: event.target.checked })} />
-            {labels.includeFolders}
+            <input
+              type="checkbox"
+              checked={options.excludeFolders}
+              onChange={(event) => update({ excludeFolders: event.target.checked, includeDirs: !event.target.checked })}
+            />
+            {labels.excludeFolders}
           </label>
           <label>
-            <input type="checkbox" checked={options.includeSubfolders} onChange={(event) => update({ includeSubfolders: event.target.checked })} />
-            {labels.includeSubfolders}
+            <input
+              type="checkbox"
+              checked={options.excludeSubfolders}
+              onChange={(event) => update({ excludeSubfolders: event.target.checked, includeSubfolders: !event.target.checked })}
+            />
+            {labels.excludeSubfolders}
+          </label>
+          <fieldset>
+            <legend>{labels.textTransform}</legend>
+            <label>
+              <input
+                type="checkbox"
+                checked={options.uppercase}
+                onChange={(event) => setTransform("uppercase", event.target.checked)}
+              />
+              {labels.uppercase}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={options.lowercase}
+                onChange={(event) => setTransform("lowercase", event.target.checked)}
+              />
+              {labels.lowercase}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={options.titlecase}
+                onChange={(event) => setTransform("titlecase", event.target.checked)}
+              />
+              {labels.titlecase}
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={options.capitalized}
+                onChange={(event) => setTransform("capitalized", event.target.checked)}
+              />
+              {labels.capitalized}
+            </label>
+          </fieldset>
+          <label>
+            <input
+              type="checkbox"
+              checked={options.enumerateItems}
+              onChange={(event) => update({ enumerateItems: event.target.checked, enumerate: event.target.checked })}
+            />
+            {labels.enumerateItems}
           </label>
           <label>
-            <input type="checkbox" checked={options.enumerate} onChange={(event) => update({ enumerate: event.target.checked })} />
-            {labels.enumerate}
+            <input type="checkbox" checked={options.randomizeItems} onChange={(event) => update({ randomizeItems: event.target.checked })} />
+            {labels.randomizeItems}
           </label>
         </div>
         <table className="preview-table">
@@ -146,10 +231,26 @@ export function RenameDialog({ rootId, paths, onJobCreated, onClose, labels = st
   function update(partial: Partial<RenameOptions>) {
     setOptions((current) => ({ ...current, ...partial }));
   }
-}
 
-function targetLabel(target: RenameOptions["target"], labels: UIStrings) {
-  if (target === "name") return labels.targetName;
-  if (target === "extension") return labels.targetExtension;
-  return labels.targetBoth;
+  function setTargetMode(target: RenameOptions["target"], checked: boolean) {
+    if (!checked) {
+      update({ target: "name", nameOnly: true, extensionOnly: false, fullName: false });
+      return;
+    }
+    update({
+      target,
+      nameOnly: target === "name",
+      extensionOnly: target === "extension",
+      fullName: target === "both",
+    });
+  }
+
+  function setTransform(transform: "uppercase" | "lowercase" | "titlecase" | "capitalized", checked: boolean) {
+    update({
+      uppercase: checked && transform === "uppercase",
+      lowercase: checked && transform === "lowercase",
+      titlecase: checked && transform === "titlecase",
+      capitalized: checked && transform === "capitalized",
+    });
+  }
 }

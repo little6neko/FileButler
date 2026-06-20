@@ -59,7 +59,7 @@ it("creates a rename job from selected files", async () => {
 it("keeps enumerate option visible with a checkbox", () => {
   vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
   render(<RenameDialog rootId="data" paths={["file.txt"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
-  expect(screen.getByLabelText("Enumerate")).toBeInTheDocument();
+  expect(screen.getByLabelText("Enumerate items")).toBeInTheDocument();
 });
 
 it("renders rename dialog labels in Chinese", async () => {
@@ -78,13 +78,27 @@ it("renders rename dialog labels in Chinese", async () => {
     />,
   );
 
-  expect(screen.getByRole("heading", { name: "批量重命名" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "PowerRename" })).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
   expect(screen.getByLabelText("搜索")).toBeInTheDocument();
   expect(screen.getByLabelText("替换")).toBeInTheDocument();
-  expect(screen.getByLabelText("正则")).toBeInTheDocument();
-  expect(screen.getByLabelText("包含文件")).toBeInTheDocument();
-  expect(screen.getByLabelText("包含文件夹")).toBeInTheDocument();
+  expect(screen.getByLabelText("使用正则表达式")).toBeInTheDocument();
+  expect(screen.getByLabelText("排除文件")).toBeInTheDocument();
+  expect(screen.getByLabelText("排除文件夹")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "运行重命名" })).toBeInTheDocument();
   expect(await screen.findByText("就绪")).toBeInTheDocument();
+});
+
+it("renders as PowerRename with PowerRename options", async () => {
+  vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
+  render(<RenameDialog rootId="data" paths={["file.txt"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  expect(screen.getByRole("heading", { name: "PowerRename" })).toBeInTheDocument();
+  expect(screen.getByLabelText("Use regular expressions")).toBeInTheDocument();
+  expect(screen.getByLabelText("Match all occurrences")).toBeInTheDocument();
+  expect(screen.getByLabelText("Name only")).toBeInTheDocument();
+  expect(screen.getByLabelText("Extension only")).toBeInTheDocument();
+  expect(screen.getByLabelText("Full name")).toBeInTheDocument();
+  expect(screen.getByLabelText("Uppercase")).toBeInTheDocument();
+  expect(screen.getByLabelText("Randomize items")).toBeInTheDocument();
 });

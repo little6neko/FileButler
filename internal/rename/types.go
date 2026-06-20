@@ -19,6 +19,18 @@ type Options struct {
 	IncludeDirs       bool       `json:"includeDirs"`
 	IncludeSubfolders bool       `json:"includeSubfolders"`
 	Enumerate         bool       `json:"enumerate"`
+	NameOnly          bool       `json:"nameOnly"`
+	ExtensionOnly     bool       `json:"extensionOnly"`
+	FullName          bool       `json:"fullName"`
+	ExcludeFiles      bool       `json:"excludeFiles"`
+	ExcludeFolders    bool       `json:"excludeFolders"`
+	ExcludeSubfolders bool       `json:"excludeSubfolders"`
+	Uppercase         bool       `json:"uppercase"`
+	Lowercase         bool       `json:"lowercase"`
+	Titlecase         bool       `json:"titlecase"`
+	Capitalized       bool       `json:"capitalized"`
+	EnumerateItems    bool       `json:"enumerateItems"`
+	RandomizeItems    bool       `json:"randomizeItems"`
 }
 
 type PowerRenameOptions struct {

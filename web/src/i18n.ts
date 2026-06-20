@@ -40,8 +40,10 @@ export type UIStrings = {
   search: string;
   replace: string;
   regex: string;
+  useRegularExpressions: string;
   caseSensitive: string;
   matchAll: string;
+  matchAllOccurrences: string;
   target: string;
   targetName: string;
   targetExtension: string;
@@ -49,7 +51,20 @@ export type UIStrings = {
   includeFiles: string;
   includeFolders: string;
   includeSubfolders: string;
+  excludeFiles: string;
+  excludeFolders: string;
+  excludeSubfolders: string;
   enumerate: string;
+  enumerateItems: string;
+  nameOnly: string;
+  extensionOnly: string;
+  fullName: string;
+  textTransform: string;
+  uppercase: string;
+  lowercase: string;
+  titlecase: string;
+  capitalized: string;
+  randomizeItems: string;
   old: string;
   new: string;
   runRename: string;
@@ -106,8 +121,10 @@ export const strings: Record<Language, UIStrings> = {
     search: "Search",
     replace: "Replace",
     regex: "Regex",
+    useRegularExpressions: "Use regular expressions",
     caseSensitive: "Case-sensitive",
     matchAll: "Match all",
+    matchAllOccurrences: "Match all occurrences",
     target: "Target",
     targetName: "name",
     targetExtension: "extension",
@@ -115,7 +132,20 @@ export const strings: Record<Language, UIStrings> = {
     includeFiles: "Include files",
     includeFolders: "Include folders",
     includeSubfolders: "Include subfolders",
+    excludeFiles: "Exclude files",
+    excludeFolders: "Exclude folders",
+    excludeSubfolders: "Exclude subfolders",
     enumerate: "Enumerate",
+    enumerateItems: "Enumerate items",
+    nameOnly: "Name only",
+    extensionOnly: "Extension only",
+    fullName: "Full name",
+    textTransform: "Text case",
+    uppercase: "Uppercase",
+    lowercase: "Lowercase",
+    titlecase: "Titlecase",
+    capitalized: "Capitalized",
+    randomizeItems: "Randomize items",
     old: "Old",
     new: "New",
     runRename: "Run rename",
@@ -170,8 +200,10 @@ export const strings: Record<Language, UIStrings> = {
     search: "搜索",
     replace: "替换",
     regex: "正则",
+    useRegularExpressions: "使用正则表达式",
     caseSensitive: "区分大小写",
     matchAll: "全部匹配",
+    matchAllOccurrences: "匹配所有出现项",
     target: "目标",
     targetName: "名称",
     targetExtension: "扩展名",
@@ -179,7 +211,20 @@ export const strings: Record<Language, UIStrings> = {
     includeFiles: "包含文件",
     includeFolders: "包含文件夹",
     includeSubfolders: "包含子文件夹",
+    excludeFiles: "排除文件",
+    excludeFolders: "排除文件夹",
+    excludeSubfolders: "排除子文件夹",
     enumerate: "编号",
+    enumerateItems: "编号项目",
+    nameOnly: "仅文件名",
+    extensionOnly: "仅扩展名",
+    fullName: "全名称",
+    textTransform: "大小写",
+    uppercase: "大写",
+    lowercase: "小写",
+    titlecase: "标题大小写",
+    capitalized: "首字母大写",
+    randomizeItems: "随机化项目",
     old: "原名称",
     new: "新名称",
     runRename: "运行重命名",

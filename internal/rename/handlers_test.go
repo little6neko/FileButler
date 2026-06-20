@@ -57,6 +57,35 @@ func TestRenameCreateJobRejectsConflictingPlan(t *testing.T) {
 	}
 }
 
+func TestRenamePreviewAcceptsPowerRenameOptionsFromJSON(t *testing.T) {
+	root := t.TempDir()
+	testutil.WriteFile(t, filepath.Join(root, "photo.txt"), "x")
+	handler := PreviewHandler(browser.Service{Resolver: roots.NewResolver([]roots.Root{{ID: "data", Name: "Data", Path: root}})})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, renameReq(map[string]any{
+		"rootId": "data",
+		"paths":  []string{"photo.txt"},
+		"options": map[string]any{
+			"search":    "photo",
+			"replace":   "pic",
+			"nameOnly":  true,
+			"uppercase": true,
+		},
+	}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Data PlanResult `json:"data"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if len(body.Data.Items) != 1 || body.Data.Items[0].NewName != "PIC.txt" {
+		t.Fatalf("plan=%+v", body.Data)
+	}
+}
+
 func TestSingleRenameCreateJobRejectsMultiplePaths(t *testing.T) {
 	db := testutil.OpenTestDB(t)
 	actor := insertUser(t, db)

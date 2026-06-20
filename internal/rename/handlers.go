@@ -98,24 +98,61 @@ func BuildPlan(ctx context.Context, resolver roots.Resolver, req HandlerRequest)
 
 func powerRenameOptionsFromLegacy(opts Options) PowerRenameOptions {
 	replace := opts.Replace
+	powerRenamePayload := hasPowerRenameOptions(opts)
+	nameOnly := opts.Target == "" || opts.Target == TargetName
+	extensionOnly := opts.Target == TargetExtension
+	fullName := opts.Target == TargetBoth
+	excludeFiles := !opts.IncludeFiles
+	excludeFolders := !opts.IncludeDirs
+	excludeSubfolders := !opts.IncludeSubfolders
 	enumerateItems := opts.Enumerate && strings.Contains(replace, "${")
 	legacyAppendEnumeration := opts.Enumerate && !enumerateItems
+	if powerRenamePayload {
+		nameOnly = opts.NameOnly || (!opts.ExtensionOnly && !opts.FullName)
+		extensionOnly = opts.ExtensionOnly
+		fullName = opts.FullName
+		excludeFiles = opts.ExcludeFiles
+		excludeFolders = opts.ExcludeFolders
+		excludeSubfolders = opts.ExcludeSubfolders
+		enumerateItems = opts.EnumerateItems || enumerateItems
+		legacyAppendEnumeration = false
+	}
 	return PowerRenameOptions{
 		Search:            opts.Search,
 		Replace:           replace,
 		UseRegex:          opts.UseRegex,
 		CaseSensitive:     opts.CaseSensitive,
 		MatchAll:          opts.MatchAll,
-		NameOnly:          opts.Target == "" || opts.Target == TargetName,
-		ExtensionOnly:     opts.Target == TargetExtension,
-		FullName:          opts.Target == TargetBoth,
-		ExcludeFiles:      !opts.IncludeFiles,
-		ExcludeFolders:    !opts.IncludeDirs,
-		ExcludeSubfolders: !opts.IncludeSubfolders,
+		NameOnly:          nameOnly,
+		ExtensionOnly:     extensionOnly,
+		FullName:          fullName,
+		ExcludeFiles:      excludeFiles,
+		ExcludeFolders:    excludeFolders,
+		ExcludeSubfolders: excludeSubfolders,
+		Uppercase:         opts.Uppercase,
+		Lowercase:         opts.Lowercase,
+		Titlecase:         opts.Titlecase,
+		Capitalized:       opts.Capitalized,
 		EnumerateItems:    enumerateItems,
+		RandomizeItems:    opts.RandomizeItems,
 
 		LegacyAppendEnumeration: legacyAppendEnumeration,
 	}
+}
+
+func hasPowerRenameOptions(opts Options) bool {
+	return opts.NameOnly ||
+		opts.ExtensionOnly ||
+		opts.FullName ||
+		opts.ExcludeFiles ||
+		opts.ExcludeFolders ||
+		opts.ExcludeSubfolders ||
+		opts.Uppercase ||
+		opts.Lowercase ||
+		opts.Titlecase ||
+		opts.Capitalized ||
+		opts.EnumerateItems ||
+		opts.RandomizeItems
 }
 
 func resolveRenameInputs(ctx context.Context, resolver roots.Resolver, rootID string, paths []string) ([]InputItem, error) {

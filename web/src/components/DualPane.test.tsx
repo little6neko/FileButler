@@ -90,7 +90,7 @@ it("enables ordinary rename only for one selected item and keeps PowerRename for
   expect(screen.getByRole("button", { name: "Rename" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "PowerRename" })).toBeDisabled();
 
-  await userEvent.click(within(leftPane).getByLabelText("Select a.txt"));
+  await userEvent.click(await within(leftPane).findByLabelText("Select a.txt"));
   expect(screen.getByRole("button", { name: "Rename" })).not.toBeDisabled();
   expect(screen.getByRole("button", { name: "PowerRename" })).not.toBeDisabled();
 

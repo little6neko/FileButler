@@ -119,6 +119,15 @@ it("navigates into a directory", async () => {
   expect(onPathChange).toHaveBeenCalledWith("folder");
 });
 
+it("marks directory rows as clickable", () => {
+  renderPane({
+    entries: [entry("folder", "directory"), entry("file.txt")],
+  });
+
+  expect(screen.getByText("folder").closest("tr")).toHaveClass("directory-row");
+  expect(screen.getByText("file.txt").closest("tr")).not.toHaveClass("directory-row");
+});
+
 it("renders symlink target metadata", () => {
   render(
     <FilePane

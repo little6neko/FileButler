@@ -350,6 +350,11 @@ button:disabled {
   background: #f4f8fb;
 }
 
+.file-table tbody tr.directory-row,
+.file-table tbody tr.directory-row * {
+  cursor: pointer;
+}
+
 .symlink-target {
   margin-left: 6px;
   color: #65717c;

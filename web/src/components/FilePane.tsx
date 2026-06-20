@@ -165,6 +165,7 @@ export function FilePane({
             {visibleEntries.map((entry) => (
               <tr
                 key={entry.relativePath}
+                className={entry.type === "directory" ? "directory-row" : undefined}
                 onDoubleClick={() => {
                   if (entry.type === "directory") onPathChange(entry.relativePath);
                 }}

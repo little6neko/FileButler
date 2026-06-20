@@ -20,6 +20,7 @@ it("supports selecting and clearing file selections", async () => {
       onPathChange={vi.fn()}
       onToggleSelection={onToggleSelection}
       onClearSelection={onClearSelection}
+      onSelectAll={vi.fn()}
       onRefresh={vi.fn()}
       onActivate={vi.fn()}
     />,
@@ -30,6 +31,43 @@ it("supports selecting and clearing file selections", async () => {
 
   expect(onToggleSelection).toHaveBeenCalledWith("file.txt");
   expect(onClearSelection).toHaveBeenCalled();
+});
+
+it("selects all visible entries from the header checkbox", async () => {
+  const onSelectAll = vi.fn();
+  renderPane({
+    entries: [entry("file.txt"), entry("folder", "directory")],
+    selectedPaths: new Set(),
+    onSelectAll,
+  });
+
+  await userEvent.click(screen.getByLabelText("Select all visible"));
+  expect(onSelectAll).toHaveBeenCalledWith(true);
+});
+
+it("navigates to a typed path with Enter", async () => {
+  const onPathChange = vi.fn();
+  renderPane({ currentPath: ".", onPathChange });
+
+  const input = screen.getByLabelText("Left pane path");
+  await userEvent.clear(input);
+  await userEvent.type(input, "photos/2026{Enter}");
+
+  expect(onPathChange).toHaveBeenCalledWith("photos/2026");
+});
+
+it("uses arrow keys to choose a directory suggestion", async () => {
+  const onPathChange = vi.fn();
+  renderPane({
+    entries: [entry("photos", "directory"), entry("photo-file.txt"), entry("videos", "directory")],
+    onPathChange,
+  });
+
+  const input = screen.getByLabelText("Left pane path");
+  await userEvent.clear(input);
+  await userEvent.type(input, "pho{ArrowDown}{Enter}");
+
+  expect(onPathChange).toHaveBeenCalledWith("photos");
 });
 
 it("navigates into a directory", async () => {
@@ -46,6 +84,7 @@ it("navigates into a directory", async () => {
       onPathChange={onPathChange}
       onToggleSelection={vi.fn()}
       onClearSelection={vi.fn()}
+      onSelectAll={vi.fn()}
       onRefresh={vi.fn()}
       onActivate={vi.fn()}
     />,
@@ -68,6 +107,7 @@ it("renders symlink target metadata", () => {
       onPathChange={vi.fn()}
       onToggleSelection={vi.fn()}
       onClearSelection={vi.fn()}
+      onSelectAll={vi.fn()}
       onRefresh={vi.fn()}
       onActivate={vi.fn()}
     />,
@@ -85,4 +125,24 @@ function entry(name: string, type: "file" | "directory" | "symlink" | "other" = 
     modifiedUnix: 0,
     isSymlink: false,
   };
+}
+
+function renderPane(overrides: Partial<Parameters<typeof FilePane>[0]> = {}) {
+  const props = {
+    title: "Left pane",
+    roots,
+    selectedRootId: "data",
+    currentPath: ".",
+    entries: [entry("file.txt")],
+    selectedPaths: new Set<string>(),
+    onRootChange: vi.fn(),
+    onPathChange: vi.fn(),
+    onToggleSelection: vi.fn(),
+    onClearSelection: vi.fn(),
+    onSelectAll: vi.fn(),
+    onRefresh: vi.fn(),
+    onActivate: vi.fn(),
+    ...overrides,
+  };
+  return render(<FilePane {...props} />);
 }

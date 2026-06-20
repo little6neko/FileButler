@@ -58,6 +58,23 @@ button:disabled {
   background: #ffffff;
 }
 
+.language-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #4d5863;
+  font-size: 13px;
+}
+
+.language-select select {
+  min-height: 30px;
+  border: 1px solid #c7d0d9;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #1d232a;
+  padding: 0 8px;
+}
+
 .topbar h1 {
   margin: 0;
   font-size: 17px;
@@ -153,15 +170,15 @@ button:disabled {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   background: #ffffff;
   border-top: 1px solid #d9e0e7;
 }
 
 .pane-header {
-  height: 42px;
+  min-height: 42px;
   display: grid;
-  grid-template-columns: auto minmax(140px, 1fr) auto;
+  grid-template-columns: auto minmax(120px, 160px) minmax(120px, 1fr) auto;
   gap: 8px;
   align-items: center;
   padding: 0 10px;
@@ -181,23 +198,52 @@ button:disabled {
   padding: 0 8px;
 }
 
-.breadcrumbs {
-  height: 36px;
-  display: flex;
-  gap: 4px;
-  align-items: center;
-  padding: 0 10px;
-  border-bottom: 1px solid #e3e8ed;
-  overflow: auto;
+.path-combobox {
+  position: relative;
+  min-width: 0;
 }
 
-.breadcrumbs button {
-  min-height: 26px;
+.path-combobox input {
+  width: 100%;
+  min-height: 30px;
+  border: 1px solid #c7d0d9;
+  border-radius: 4px;
   padding: 0 8px;
+}
+
+.path-suggestions {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  display: grid;
+  border: 1px solid #c7d0d9;
+  background: #ffffff;
+  box-shadow: 0 6px 18px rgb(29 35 42 / 0.16);
+}
+
+.path-suggestions button {
+  min-height: 28px;
+  border: 0;
+  border-radius: 0;
+  text-align: left;
+}
+
+.path-suggestions button[aria-selected="true"],
+.path-suggestions button:hover {
+  background: #eaf2fb;
+}
+
+.file-list {
+  min-height: 0;
+  overflow: auto;
+  background: linear-gradient(#ffffff, #ffffff) padding-box;
 }
 
 .file-table {
   width: 100%;
+  height: auto;
   border-collapse: collapse;
   table-layout: fixed;
   font-size: 13px;
@@ -216,7 +262,13 @@ button:disabled {
 
 .file-table th:first-child,
 .file-table td:first-child {
-  width: 72px;
+  width: 88px;
+}
+
+.file-table th:first-child {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .file-table th:nth-child(3),

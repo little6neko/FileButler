@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Entry, OpsRequest, Root } from "../api/types";
+import { strings } from "../i18n";
+import type { UIStrings } from "../i18n";
 import { FilePane } from "./FilePane";
 import { JobsPanel } from "./JobsPanel";
 import { OperationPreview } from "./OperationPreview";
@@ -15,7 +17,7 @@ type PaneState = {
   selected: Set<string>;
 };
 
-export function DualPane() {
+export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
   const [roots, setRoots] = useState<Root[]>([]);
   const [activePane, setActivePane] = useState<PaneKey>("left");
   const [previewRequest, setPreviewRequest] = useState<OpsRequest | null>(null);
@@ -75,6 +77,11 @@ export function DualPane() {
           return { ...current, selected };
         }),
       onClearSelection: () => updatePane(which, (current) => ({ ...current, selected: new Set() })),
+      onSelectAll: (checked: boolean) =>
+        updatePane(which, (current) => ({
+          ...current,
+          selected: checked ? new Set(current.entries.map((entry) => entry.relativePath)) : new Set(),
+        })),
       onRefresh: () => {
         if (pane.rootId) void loadPane(which, pane.rootId, pane.path);
       },
@@ -87,23 +94,23 @@ export function DualPane() {
       <div className="workspace-toolbar">
         {(["move", "copy", "symlink", "hardlink", "delete"] as const).map((type) => (
           <button key={type} type="button" onClick={() => openOperation(type)} disabled={!activeSelection().length}>
-            {type}
+            {labels[type]}
           </button>
         ))}
         <button type="button" onClick={openMkdir}>
-          mkdir
+          {labels.mkdir}
         </button>
         <button type="button" onClick={() => setRenameOpen(true)} disabled={!activeSelection().length}>
-          Rename
+          {labels.rename}
         </button>
         <button type="button" onClick={() => setJobsOpen((value) => !value)}>
-          Jobs
+          {labels.jobs}
         </button>
       </div>
       <section className="workspace" data-active-pane={activePane}>
-        <FilePane title="Left pane" {...paneProps("left", left)} />
+        <FilePane title={labels.leftPane} labels={labels} {...paneProps("left", left)} />
         <div className="pane-divider" aria-hidden="true" />
-        <FilePane title="Right pane" {...paneProps("right", right)} />
+        <FilePane title={labels.rightPane} labels={labels} {...paneProps("right", right)} />
       </section>
       {previewRequest ? (
         <OperationPreview

@@ -82,3 +82,46 @@ button:disabled {
   font-size: 16px;
   font-weight: 600;
 }
+
+.auth-screen {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.auth-form {
+  width: min(360px, 100%);
+  display: grid;
+  gap: 12px;
+}
+
+.auth-form h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 5px;
+  font-size: 13px;
+  color: #4d5863;
+}
+
+.auth-form input {
+  min-height: 34px;
+  border: 1px solid #c7d0d9;
+  border-radius: 4px;
+  padding: 0 10px;
+  background: #ffffff;
+  color: #1d232a;
+}
+
+.error-banner {
+  border: 1px solid #e2a0a0;
+  background: #fff2f2;
+  color: #8a2424;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+}

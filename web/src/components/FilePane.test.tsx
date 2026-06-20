@@ -148,9 +148,19 @@ it("sorts visible entries when clicking a column header", async () => {
     entries: [entry("b.txt"), entry("a.txt"), entry("folder", "directory")],
   });
 
-  await userEvent.click(screen.getByRole("button", { name: "Name" }));
+  await userEvent.click(screen.getByRole("button", { name: "Size" }));
 
   const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
+  expect(rows.map((row) => within(row).getAllByRole("cell")[1].textContent)).toEqual(["a.txt", "b.txt", "folder"]);
+});
+
+it("sorts by name ascending by default", () => {
+  renderPane({
+    entries: [entry("b.txt"), entry("a.txt"), entry("folder", "directory")],
+  });
+
+  const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
+  expect(screen.getByRole("columnheader", { name: /Name/ })).toHaveAttribute("aria-sort", "ascending");
   expect(rows.map((row) => within(row).getAllByRole("cell")[1].textContent)).toEqual(["a.txt", "b.txt", "folder"]);
 });
 
@@ -192,13 +202,17 @@ it("renders file sizes with units", () => {
   expect(screen.getByText("1.5 KB")).toBeInTheDocument();
 });
 
-it("sets table width from the sum of fixed column widths", () => {
+it("lets the name column fill remaining table width while other columns stay fixed", () => {
   renderPane();
 
-  expect(screen.getByRole("table")).toHaveStyle({
-    "--file-table-width": "596px",
-    minWidth: "596px",
-  });
+  const table = screen.getByRole("table");
+  const columns = table.querySelectorAll("col");
+  expect(table).toHaveStyle({ width: "100%", minWidth: "596px" });
+  expect(columns[0]).toHaveStyle({ width: "var(--file-col-select)" });
+  expect(columns[1]).not.toHaveAttribute("style");
+  expect(columns[2]).toHaveStyle({ width: "var(--file-col-type)" });
+  expect(columns[3]).toHaveStyle({ width: "var(--file-col-size)" });
+  expect(columns[4]).toHaveStyle({ width: "var(--file-col-modified)" });
 });
 
 function entry(name: string, type: "file" | "directory" | "symlink" | "other" = "file", size = 1) {

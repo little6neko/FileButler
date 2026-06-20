@@ -43,7 +43,7 @@ export function FilePane({
 }: FilePaneProps) {
   const [pathDraft, setPathDraft] = useState(displayPath(currentPath));
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
-  const [sortState, setSortState] = useState<SortState>(null);
+  const [sortState, setSortState] = useState<SortState>({ column: "name", direction: "asc" });
   const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(defaultColumnWidths);
   const visibleEntries = useMemo(() => sortEntries(entries, sortState), [entries, sortState]);
   const allVisibleSelected = visibleEntries.length > 0 && visibleEntries.every((entry) => selectedPaths.has(entry.relativePath));
@@ -134,7 +134,7 @@ export function FilePane({
         <table className="file-table" style={columnStyle(columnWidths)}>
           <colgroup>
             <col style={{ width: "var(--file-col-select)" }} />
-            <col style={{ width: "var(--file-col-name)" }} />
+            <col />
             <col style={{ width: "var(--file-col-type)" }} />
             <col style={{ width: "var(--file-col-size)" }} />
             <col style={{ width: "var(--file-col-modified)" }} />
@@ -293,12 +293,12 @@ function compareEntries(a: Entry, b: Entry, column: SortKey) {
 function columnStyle(widths: Record<ColumnKey, number>) {
   const totalWidth = Object.values(widths).reduce((sum, width) => sum + width, 0);
   return {
+    width: "100%",
     "--file-col-select": `${widths.select}px`,
     "--file-col-name": `${widths.name}px`,
     "--file-col-type": `${widths.type}px`,
     "--file-col-size": `${widths.size}px`,
     "--file-col-modified": `${widths.modified}px`,
-    "--file-table-width": `${totalWidth}px`,
     minWidth: `${totalWidth}px`,
   } as CSSProperties;
 }

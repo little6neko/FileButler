@@ -181,7 +181,6 @@ it("opens PowerRename with selected paths in the current visible sort order", as
 
   const leftPane = await screen.findByRole("region", { name: "Left pane" });
   await within(leftPane).findByLabelText("Select b.txt");
-  await userEvent.click(within(leftPane).getByRole("button", { name: "Name" }));
   await userEvent.click(within(leftPane).getByLabelText("Select b.txt"));
   await userEvent.click(within(leftPane).getByLabelText("Select a.txt"));
   await userEvent.click(screen.getByRole("button", { name: "PowerRename" }));

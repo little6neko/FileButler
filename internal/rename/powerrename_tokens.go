@@ -59,8 +59,11 @@ func renderPowerRenameTokens(input string, itemIndex int, random powerRenameRand
 func renderPowerRenameTokenBody(body string, itemIndex int, random powerRenameRandom) (string, bool, error) {
 	if body == "" || strings.Contains(body, "start=") || strings.Contains(body, "increment=") || strings.Contains(body, "padding=") {
 		start, inc, padding := 1, 1, 0
-		for _, part := range strings.Split(body, ";") {
+		for _, part := range strings.FieldsFunc(body, func(r rune) bool { return r == ';' || r == ',' }) {
+			part = strings.TrimSpace(part)
 			key, value, ok := strings.Cut(part, "=")
+			key = strings.TrimSpace(key)
+			value = strings.TrimSpace(value)
 			if !ok || key == "" {
 				continue
 			}

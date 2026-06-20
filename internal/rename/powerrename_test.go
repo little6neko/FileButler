@@ -21,6 +21,23 @@ func TestPowerRenamePlanUsesRegexTokensAndTransforms(t *testing.T) {
 	}
 }
 
+func TestPowerRenamePlanRendersEnumerationTokenInRegexReplacement(t *testing.T) {
+	opts := PowerRenameOptions{
+		Search:   `^.*`,
+		Replace:  `V${start=1, padding=2}`,
+		UseRegex: true,
+		MatchAll: false,
+		NameOnly: true,
+	}
+	plan, err := PowerRenamePlan([]InputItem{{RelativePath: "file12.txt"}}, opts, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Items) != 1 || plan.Items[0].NewName != "V01.txt" {
+		t.Fatalf("plan=%+v", plan)
+	}
+}
+
 func TestPowerRenamePlanExtensionOnly(t *testing.T) {
 	opts := PowerRenameOptions{Search: "jpeg", Replace: "jpg", MatchAll: false, ExtensionOnly: true}
 	plan, err := PowerRenamePlan([]InputItem{{RelativePath: "photo.jpeg"}}, opts, nil)

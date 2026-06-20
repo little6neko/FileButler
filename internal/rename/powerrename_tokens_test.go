@@ -25,6 +25,16 @@ func TestPowerRenameEnumerationOptions(t *testing.T) {
 	}
 }
 
+func TestPowerRenameEnumerationOptionsAcceptCommaAndWhitespace(t *testing.T) {
+	rendered, changed, err := renderPowerRenameTokens("photo-${start=1, padding=2}.jpg", 1, deterministicRandom{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !changed || rendered != "photo-01.jpg" {
+		t.Fatalf("rendered=%q changed=%v", rendered, changed)
+	}
+}
+
 func TestPowerRenameRandomTokens(t *testing.T) {
 	rendered, changed, err := renderPowerRenameTokens("${rstringalpha=3}-${rstringdigit=4}-${rstringalnum=5}-${ruuidv4}", 1, deterministicRandom{})
 	if err != nil {

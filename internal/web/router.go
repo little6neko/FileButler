@@ -55,6 +55,7 @@ func NewRouter(deps Deps) http.Handler {
 		protected.Post("/api/jobs/{id}/cancel", jobs.CancelHandler(deps.JobStore))
 		protected.Get("/api/audit", auditHandler(deps.AuditStore))
 	})
+	r.Handle("/*", StaticHandler(deps.Config.StaticDir))
 	return r
 }
 

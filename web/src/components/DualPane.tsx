@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
-import type { Entry, Root } from "../api/types";
+import type { Entry, OpsRequest, Root } from "../api/types";
 import { FilePane } from "./FilePane";
+import { JobsPanel } from "./JobsPanel";
+import { OperationPreview } from "./OperationPreview";
 
 type PaneKey = "left" | "right";
 
@@ -15,6 +17,8 @@ type PaneState = {
 export function DualPane() {
   const [roots, setRoots] = useState<Root[]>([]);
   const [activePane, setActivePane] = useState<PaneKey>("left");
+  const [previewRequest, setPreviewRequest] = useState<OpsRequest | null>(null);
+  const [jobsOpen, setJobsOpen] = useState(false);
   const [left, setLeft] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set() });
   const [right, setRight] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set() });
 
@@ -77,10 +81,74 @@ export function DualPane() {
   }
 
   return (
-    <section className="workspace" data-active-pane={activePane}>
-      <FilePane title="Left pane" {...paneProps("left", left)} />
-      <div className="pane-divider" aria-hidden="true" />
-      <FilePane title="Right pane" {...paneProps("right", right)} />
-    </section>
+    <>
+      <div className="workspace-toolbar">
+        {(["move", "copy", "symlink", "hardlink", "delete"] as const).map((type) => (
+          <button key={type} type="button" onClick={() => openOperation(type)} disabled={!activeSelection().length}>
+            {type}
+          </button>
+        ))}
+        <button type="button" onClick={openMkdir}>
+          mkdir
+        </button>
+        <button type="button" onClick={() => setJobsOpen((value) => !value)}>
+          Jobs
+        </button>
+      </div>
+      <section className="workspace" data-active-pane={activePane}>
+        <FilePane title="Left pane" {...paneProps("left", left)} />
+        <div className="pane-divider" aria-hidden="true" />
+        <FilePane title="Right pane" {...paneProps("right", right)} />
+      </section>
+      {previewRequest ? (
+        <OperationPreview
+          request={previewRequest}
+          onClose={() => setPreviewRequest(null)}
+          onJobCreated={() => {
+            setPreviewRequest(null);
+            setJobsOpen(true);
+          }}
+        />
+      ) : null}
+      <JobsPanel open={jobsOpen} />
+    </>
   );
+
+  function activeState() {
+    return activePane === "left" ? left : right;
+  }
+
+  function oppositeState() {
+    return activePane === "left" ? right : left;
+  }
+
+  function activeSelection() {
+    return Array.from(activeState().selected);
+  }
+
+  function openOperation(type: OpsRequest["type"]) {
+    const source = activeState();
+    const dest = oppositeState();
+    setPreviewRequest({
+      type,
+      sourceRoot: source.rootId,
+      sources: activeSelection(),
+      destRoot: type === "delete" ? undefined : dest.rootId,
+      destPath: type === "delete" ? undefined : dest.path,
+    });
+  }
+
+  function openMkdir() {
+    const source = activeState();
+    const name = window.prompt("Directory name");
+    if (!name) return;
+    setPreviewRequest({
+      type: "mkdir",
+      sourceRoot: source.rootId,
+      sources: [],
+      destRoot: source.rootId,
+      destPath: source.path,
+      newName: name,
+    });
+  }
 }

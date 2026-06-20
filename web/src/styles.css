@@ -134,6 +134,17 @@ button:disabled {
   background: #eef2f5;
 }
 
+.workspace-toolbar {
+  height: 40px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 0 10px;
+  border-top: 1px solid #d9e0e7;
+  border-bottom: 1px solid #d9e0e7;
+  background: #ffffff;
+}
+
 .pane-divider {
   background: linear-gradient(90deg, #d5dde5, #eef2f5, #d5dde5);
 }
@@ -230,6 +241,79 @@ button:disabled {
 .symlink-target {
   margin-left: 6px;
   color: #65717c;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(29 35 42 / 0.32);
+  padding: 20px;
+}
+
+.modal {
+  width: min(720px, 100%);
+  max-height: min(680px, 90vh);
+  overflow: auto;
+  background: #ffffff;
+  border: 1px solid #c7d0d9;
+  border-radius: 6px;
+  padding: 14px;
+}
+
+.modal-header,
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.modal h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.preview-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.preview-table th,
+.preview-table td {
+  height: 30px;
+  padding: 0 8px;
+  border-bottom: 1px solid #edf1f4;
+  text-align: left;
+}
+
+.jobs-panel {
+  position: fixed;
+  top: 56px;
+  right: 0;
+  bottom: 0;
+  width: min(360px, 100%);
+  background: #ffffff;
+  border-left: 1px solid #c7d0d9;
+  padding: 12px;
+  overflow: auto;
+}
+
+.jobs-panel h2,
+.jobs-panel h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.jobs-panel ul {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 12px;
+  display: grid;
+  gap: 6px;
 }
 
 @media (max-width: 760px) {

@@ -20,7 +20,7 @@ export type UIStrings = {
   powerRename: string;
   jobs: string;
   refresh: string;
-  clear: string;
+  resizePanes: string;
   selectAllVisible: string;
   name: string;
   type: string;
@@ -101,7 +101,7 @@ export const strings: Record<Language, UIStrings> = {
     powerRename: "PowerRename",
     jobs: "Jobs",
     refresh: "Refresh",
-    clear: "Clear",
+    resizePanes: "Resize panes",
     selectAllVisible: "Select all visible",
     name: "Name",
     type: "Type",
@@ -180,7 +180,7 @@ export const strings: Record<Language, UIStrings> = {
     powerRename: "PowerRename",
     jobs: "任务",
     refresh: "刷新",
-    clear: "清除",
+    resizePanes: "调整左右栏宽度",
     selectAllVisible: "全选可见文件",
     name: "名称",
     type: "类型",

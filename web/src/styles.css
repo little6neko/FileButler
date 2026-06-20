@@ -164,6 +164,13 @@ button:disabled {
 
 .pane-divider {
   background: linear-gradient(90deg, #d5dde5, #eef2f5, #d5dde5);
+  cursor: col-resize;
+  user-select: none;
+}
+
+.pane-divider:hover,
+.pane-divider:active {
+  background: #9dbfe5;
 }
 
 .file-pane {

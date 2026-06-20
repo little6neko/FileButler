@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { api } from "../api/client";
 import type { Entry, OpsRequest, Root } from "../api/types";
 import { strings } from "../i18n";
@@ -26,6 +27,7 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
   const [singleRenameOpen, setSingleRenameOpen] = useState(false);
   const [powerRenameOpen, setPowerRenameOpen] = useState(false);
   const [jobsOpen, setJobsOpen] = useState(false);
+  const [leftPanePercent, setLeftPanePercent] = useState(50);
   const [left, setLeft] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), visibleOrder: [] });
   const [right, setRight] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), visibleOrder: [] });
 
@@ -144,9 +146,20 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
           {labels.jobs}
         </button>
       </div>
-      <section className="workspace" data-testid="workspace" data-active-pane={activePane}>
+      <section
+        className="workspace"
+        data-testid="workspace"
+        data-active-pane={activePane}
+        style={workspaceStyle(leftPanePercent)}
+      >
         <FilePane title={labels.leftPane} labels={labels} {...paneProps("left", left)} />
-        <div className="pane-divider" aria-hidden="true" />
+        <div
+          className="pane-divider"
+          role="separator"
+          aria-label={labels.resizePanes}
+          aria-orientation="vertical"
+          onMouseDown={startPaneResize}
+        />
         <FilePane title={labels.rightPane} labels={labels} {...paneProps("right", right)} />
       </section>
       {previewRequest ? (
@@ -235,6 +248,23 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
       newName: name,
     });
   }
+
+  function startPaneResize(event: ReactMouseEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const workspace = event.currentTarget.parentElement;
+    if (!workspace) return;
+    const rect = workspace.getBoundingClientRect();
+    function onMouseMove(moveEvent: MouseEvent) {
+      const next = ((moveEvent.clientX - rect.left) / rect.width) * 100;
+      setLeftPanePercent(clamp(next, 20, 80));
+    }
+    function onMouseUp() {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    }
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }
 }
 
 function sameStringArray(left: string[], right: string[]) {
@@ -245,4 +275,14 @@ const terminalJobStatuses = new Set(["completed", "completed_with_errors", "fail
 
 function delay(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function workspaceStyle(leftPanePercent: number) {
+  return {
+    gridTemplateColumns: `${leftPanePercent}fr 8px ${100 - leftPanePercent}fr`,
+  } as CSSProperties;
 }

@@ -1,4 +1,4 @@
-import { within, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, within, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
@@ -89,6 +89,32 @@ it("marks the clicked pane as active", async () => {
   expect(workspace).toHaveAttribute("data-active-pane", "left");
   await userEvent.click(screen.getByRole("region", { name: "Right pane" }));
   expect(workspace).toHaveAttribute("data-active-pane", "right");
+});
+
+it("resizes the left and right panes by dragging the pane divider", async () => {
+  vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
+  vi.mocked(api.browse).mockResolvedValue([]);
+  render(<DualPane />);
+
+  const workspace = await screen.findByTestId("workspace");
+  workspace.getBoundingClientRect = vi.fn(() => ({
+    x: 0,
+    y: 0,
+    left: 0,
+    top: 0,
+    right: 1000,
+    bottom: 600,
+    width: 1000,
+    height: 600,
+    toJSON: () => ({}),
+  }));
+  const divider = screen.getByRole("separator", { name: "Resize panes" });
+
+  fireEvent.mouseDown(divider, { clientX: 500 });
+  fireEvent.mouseMove(document, { clientX: 650 });
+  fireEvent.mouseUp(document);
+
+  expect(workspace).toHaveStyle({ gridTemplateColumns: "65fr 8px 35fr" });
 });
 
 it("enables ordinary rename only for one selected item and keeps PowerRename for batch selection", async () => {

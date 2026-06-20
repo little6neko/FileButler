@@ -4,6 +4,7 @@ import type { Entry, OpsRequest, Root } from "../api/types";
 import { FilePane } from "./FilePane";
 import { JobsPanel } from "./JobsPanel";
 import { OperationPreview } from "./OperationPreview";
+import { RenameDialog } from "./RenameDialog";
 
 type PaneKey = "left" | "right";
 
@@ -18,6 +19,7 @@ export function DualPane() {
   const [roots, setRoots] = useState<Root[]>([]);
   const [activePane, setActivePane] = useState<PaneKey>("left");
   const [previewRequest, setPreviewRequest] = useState<OpsRequest | null>(null);
+  const [renameOpen, setRenameOpen] = useState(false);
   const [jobsOpen, setJobsOpen] = useState(false);
   const [left, setLeft] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set() });
   const [right, setRight] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set() });
@@ -91,6 +93,9 @@ export function DualPane() {
         <button type="button" onClick={openMkdir}>
           mkdir
         </button>
+        <button type="button" onClick={() => setRenameOpen(true)} disabled={!activeSelection().length}>
+          Rename
+        </button>
         <button type="button" onClick={() => setJobsOpen((value) => !value)}>
           Jobs
         </button>
@@ -106,6 +111,17 @@ export function DualPane() {
           onClose={() => setPreviewRequest(null)}
           onJobCreated={() => {
             setPreviewRequest(null);
+            setJobsOpen(true);
+          }}
+        />
+      ) : null}
+      {renameOpen ? (
+        <RenameDialog
+          rootId={activeState().rootId}
+          paths={activeSelection()}
+          onClose={() => setRenameOpen(false)}
+          onJobCreated={() => {
+            setRenameOpen(false);
             setJobsOpen(true);
           }}
         />

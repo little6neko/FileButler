@@ -9,6 +9,8 @@ vi.mock("../api/client", () => ({
     roots: vi.fn(),
     browse: vi.fn(),
     opsDryRun: vi.fn(),
+    renamePreview: vi.fn(),
+    renameCreateJob: vi.fn(),
   },
 }));
 
@@ -16,6 +18,8 @@ beforeEach(() => {
   vi.mocked(api.roots).mockReset();
   vi.mocked(api.browse).mockReset();
   vi.mocked(api.opsDryRun).mockReset();
+  vi.mocked(api.renamePreview).mockReset();
+  vi.mocked(api.renameCreateJob).mockReset();
 });
 
 it("loads roots and renders two panes", async () => {
@@ -97,4 +101,27 @@ it("enables ordinary rename only for one selected item and keeps PowerRename for
   await userEvent.click(within(leftPane).getByLabelText("Select b.txt"));
   expect(screen.getByRole("button", { name: "Rename" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "PowerRename" })).not.toBeDisabled();
+});
+
+it("opens PowerRename with selected paths in the current visible sort order", async () => {
+  vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
+  vi.mocked(api.browse).mockResolvedValue([
+    { name: "b.txt", relativePath: "b.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+    { name: "a.txt", relativePath: "a.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+  ]);
+  vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
+  render(<DualPane />);
+
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  await within(leftPane).findByLabelText("Select b.txt");
+  await userEvent.click(within(leftPane).getByRole("button", { name: "Name" }));
+  await userEvent.click(within(leftPane).getByLabelText("Select b.txt"));
+  await userEvent.click(within(leftPane).getByLabelText("Select a.txt"));
+  await userEvent.click(screen.getByRole("button", { name: "PowerRename" }));
+
+  await waitFor(() =>
+    expect(api.renamePreview).toHaveBeenCalledWith(
+      expect.objectContaining({ rootId: "root", paths: ["a.txt", "b.txt"] }),
+    ),
+  );
 });

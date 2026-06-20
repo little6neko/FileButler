@@ -210,7 +210,7 @@ export function RenameDialog({ rootId, paths, onJobCreated, onClose, labels = st
           </thead>
           <tbody>
             {items.map((item) => (
-              <tr key={item.sourcePath}>
+              <tr key={item.sourcePath} className={item.changed ? "powerrename-match" : undefined}>
                 <td>{item.sourcePath}</td>
                 <td>{item.oldName}</td>
                 <td>{item.newName}</td>

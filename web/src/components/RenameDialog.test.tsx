@@ -35,6 +35,20 @@ it("shows original and renamed values", async () => {
   expect(await screen.findByText("photo.txt")).toBeInTheDocument();
 });
 
+it("highlights preview rows that match the PowerRename rule", async () => {
+  vi.mocked(api.renamePreview).mockResolvedValue({
+    hasConflict: false,
+    items: [
+      { sourcePath: "file.txt", oldName: "file.txt", newName: "photo.txt", changed: true, conflict: false },
+      { sourcePath: "notes.txt", oldName: "notes.txt", newName: "notes.txt", changed: false, conflict: false },
+    ],
+  });
+  render(<RenameDialog rootId="data" paths={["file.txt", "notes.txt"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  expect((await screen.findByText("photo.txt")).closest("tr")).toHaveClass("powerrename-match");
+  expect(screen.getAllByText("notes.txt")[0].closest("tr")).not.toHaveClass("powerrename-match");
+});
+
 it("disables run button when preview has conflicts", async () => {
   vi.mocked(api.renamePreview).mockResolvedValue({
     hasConflict: true,

@@ -16,6 +16,7 @@ type PaneState = {
   path: string;
   entries: Entry[];
   selected: Set<string>;
+  visibleOrder: string[];
 };
 
 export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
@@ -25,8 +26,8 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
   const [singleRenameOpen, setSingleRenameOpen] = useState(false);
   const [powerRenameOpen, setPowerRenameOpen] = useState(false);
   const [jobsOpen, setJobsOpen] = useState(false);
-  const [left, setLeft] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set() });
-  const [right, setRight] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set() });
+  const [left, setLeft] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), visibleOrder: [] });
+  const [right, setRight] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), visibleOrder: [] });
 
   useEffect(() => {
     let active = true;
@@ -52,7 +53,7 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
 
   async function loadPane(which: PaneKey, rootId: string, path: string) {
     const entries = await api.browse(rootId, path);
-    updatePane(which, (pane) => ({ ...pane, entries }));
+    updatePane(which, (pane) => ({ ...pane, entries, visibleOrder: entries.map((entry) => entry.relativePath) }));
   }
 
   function updatePane(which: PaneKey, update: (pane: PaneState) => PaneState) {
@@ -68,9 +69,9 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
       entries: pane.entries,
       selectedPaths: pane.selected,
       onRootChange: (rootId: string) =>
-        updatePane(which, (current) => ({ ...current, rootId, path: ".", selected: new Set() })),
+        updatePane(which, (current) => ({ ...current, rootId, path: ".", selected: new Set(), visibleOrder: [] })),
       onPathChange: (path: string) =>
-        updatePane(which, (current) => ({ ...current, path, selected: new Set() })),
+        updatePane(which, (current) => ({ ...current, path, selected: new Set(), visibleOrder: [] })),
       onToggleSelection: (path: string) =>
         updatePane(which, (current) => {
           const selected = new Set(current.selected);
@@ -84,6 +85,11 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
           ...current,
           selected: checked ? new Set(current.entries.map((entry) => entry.relativePath)) : new Set(),
         })),
+      onVisibleOrderChange: (visibleOrder: string[]) =>
+        updatePane(which, (current) => {
+          if (sameStringArray(current.visibleOrder, visibleOrder)) return current;
+          return { ...current, visibleOrder };
+        }),
       onRefresh: () => {
         if (pane.rootId) void loadPane(which, pane.rootId, pane.path);
       },
@@ -167,7 +173,11 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
   }
 
   function activeSelection() {
-    return Array.from(activeState().selected);
+    const state = activeState();
+    const ordered = state.visibleOrder.filter((path) => state.selected.has(path));
+    const visible = new Set(state.visibleOrder);
+    const remaining = Array.from(state.selected).filter((path) => !visible.has(path));
+    return [...ordered, ...remaining];
   }
 
   function basename(path: string) {
@@ -200,4 +210,8 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
       newName: name,
     });
   }
+}
+
+function sameStringArray(left: string[], right: string[]) {
+  return left.length === right.length && left.every((value, index) => value === right[index]);
 }

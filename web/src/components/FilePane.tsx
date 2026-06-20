@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { KeyboardEvent } from "react";
+import type { CSSProperties, KeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import type { Entry, Root } from "../api/types";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
@@ -16,6 +16,7 @@ type FilePaneProps = {
   onToggleSelection(path: string): void;
   onClearSelection(): void;
   onSelectAll(checked: boolean): void;
+  onVisibleOrderChange?(paths: string[]): void;
   onRefresh(): void;
   onActivate(): void;
   labels?: UIStrings;
@@ -34,6 +35,7 @@ export function FilePane({
   onToggleSelection,
   onClearSelection,
   onSelectAll,
+  onVisibleOrderChange,
   onRefresh,
   onActivate,
   labels = strings.en,
@@ -41,7 +43,10 @@ export function FilePane({
 }: FilePaneProps) {
   const [pathDraft, setPathDraft] = useState(displayPath(currentPath));
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
-  const allVisibleSelected = entries.length > 0 && entries.every((entry) => selectedPaths.has(entry.relativePath));
+  const [sortState, setSortState] = useState<SortState>(null);
+  const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(defaultColumnWidths);
+  const visibleEntries = useMemo(() => sortEntries(entries, sortState), [entries, sortState]);
+  const allVisibleSelected = visibleEntries.length > 0 && visibleEntries.every((entry) => selectedPaths.has(entry.relativePath));
   const suggestions = useMemo(
     () =>
       entries
@@ -58,6 +63,10 @@ export function FilePane({
     setPathDraft(displayPath(currentPath));
     setHighlightedSuggestion(-1);
   }, [currentPath]);
+
+  useEffect(() => {
+    onVisibleOrderChange?.(visibleEntries.map((entry) => entry.relativePath));
+  }, [onVisibleOrderChange, visibleEntries]);
 
   return (
     <section className={`file-pane${isActive ? " is-active" : ""}`} aria-label={title} onClick={onActivate}>
@@ -122,28 +131,38 @@ export function FilePane({
         ))}
       </nav>
       <div className="file-list">
-        <table className="file-table">
+        <table className="file-table" style={columnStyle(columnWidths)}>
+          <colgroup>
+            <col style={{ width: "var(--file-col-select)" }} />
+            <col style={{ width: "var(--file-col-name)" }} />
+            <col style={{ width: "var(--file-col-type)" }} />
+            <col style={{ width: "var(--file-col-size)" }} />
+            <col style={{ width: "var(--file-col-modified)" }} />
+          </colgroup>
           <thead>
             <tr>
               <th>
-                <input
-                  aria-label={labels.selectAllVisible}
-                  type="checkbox"
-                  checked={allVisibleSelected}
-                  onChange={(event) => onSelectAll(event.target.checked)}
-                />
-                <button type="button" onClick={onClearSelection}>
-                  {labels.clear}
-                </button>
+                <div className="file-header-cell">
+                  <input
+                    aria-label={labels.selectAllVisible}
+                    type="checkbox"
+                    checked={allVisibleSelected}
+                    onChange={(event) => onSelectAll(event.target.checked)}
+                  />
+                  <button type="button" onClick={onClearSelection}>
+                    {labels.clear}
+                  </button>
+                </div>
+                <ResizeHandle label="Resize Selection column" onMouseDown={(event) => startResize(event, "select")} />
               </th>
-              <th>{labels.name}</th>
-              <th>{labels.type}</th>
-              <th>{labels.size}</th>
-              <th>{labels.modified}</th>
+              <SortableHeader column="name" label={labels.name} />
+              <SortableHeader column="type" label={labels.type} />
+              <SortableHeader column="size" label={labels.size} />
+              <SortableHeader column="modified" label={labels.modified} />
             </tr>
           </thead>
           <tbody>
-            {entries.map((entry) => (
+            {visibleEntries.map((entry) => (
               <tr
                 key={entry.relativePath}
                 onDoubleClick={() => {
@@ -175,6 +194,50 @@ export function FilePane({
     </section>
   );
 
+  function SortableHeader({ column, label }: { column: SortKey; label: string }) {
+    const active = sortState?.column === column;
+    const direction = active ? sortState.direction : undefined;
+    return (
+      <th aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}>
+        <button type="button" className="file-sort-button" onClick={() => toggleSort(column)}>
+          <span>{label}</span>
+          {active ? <span aria-hidden="true">{direction === "asc" ? "▲" : "▼"}</span> : null}
+        </button>
+        <ResizeHandle label={`Resize ${label} column`} onMouseDown={(event) => startResize(event, column)} />
+      </th>
+    );
+  }
+
+  function ResizeHandle({ label, onMouseDown }: { label: string; onMouseDown(event: ReactMouseEvent<HTMLSpanElement>): void }) {
+    return <span role="separator" aria-label={label} className="column-resize-handle" onMouseDown={onMouseDown} />;
+  }
+
+  function toggleSort(column: SortKey) {
+    setSortState((current) => {
+      if (current?.column === column) {
+        return { column, direction: current.direction === "asc" ? "desc" : "asc" };
+      }
+      return { column, direction: "asc" };
+    });
+  }
+
+  function startResize(event: ReactMouseEvent<HTMLSpanElement>, column: ColumnKey) {
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startWidth = columnWidths[column];
+    function onMouseMove(moveEvent: MouseEvent) {
+      const next = Math.max(56, startWidth + moveEvent.clientX - startX);
+      setColumnWidths((current) => ({ ...current, [column]: next }));
+    }
+    function onMouseUp() {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    }
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }
+
   function handlePathKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -192,6 +255,50 @@ export function FilePane({
       onPathChange(selectedSuggestion?.relativePath ?? normalizeInput(pathDraft));
     }
   }
+}
+
+type SortKey = "name" | "type" | "size" | "modified";
+type ColumnKey = "select" | SortKey;
+type SortState = { column: SortKey; direction: "asc" | "desc" } | null;
+
+const defaultColumnWidths: Record<ColumnKey, number> = {
+  select: 88,
+  name: 220,
+  type: 96,
+  size: 84,
+  modified: 160,
+};
+
+const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
+function sortEntries(entries: Entry[], sortState: SortState) {
+  if (!sortState) return entries;
+  const direction = sortState.direction === "asc" ? 1 : -1;
+  return [...entries].sort((a, b) => compareEntries(a, b, sortState.column) * direction);
+}
+
+function compareEntries(a: Entry, b: Entry, column: SortKey) {
+  switch (column) {
+    case "name":
+      return collator.compare(a.name, b.name);
+    case "type":
+      return collator.compare(a.type, b.type) || collator.compare(a.name, b.name);
+    case "size":
+      return a.size - b.size || collator.compare(a.name, b.name);
+    case "modified":
+      return a.modifiedUnix - b.modifiedUnix || collator.compare(a.name, b.name);
+  }
+}
+
+function columnStyle(widths: Record<ColumnKey, number>) {
+  return {
+    "--file-col-select": `${widths.select}px`,
+    "--file-col-name": `${widths.name}px`,
+    "--file-col-type": `${widths.type}px`,
+    "--file-col-size": `${widths.size}px`,
+    "--file-col-modified": `${widths.modified}px`,
+    minWidth: `${Object.values(widths).reduce((sum, width) => sum + width, 0)}px`,
+  } as CSSProperties;
 }
 
 function displayPath(path: string) {

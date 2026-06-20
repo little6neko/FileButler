@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { FilePane } from "./FilePane";
@@ -132,6 +132,31 @@ it("renders symlink target metadata", () => {
     />,
   );
   expect(screen.getByText(/target/)).toBeInTheDocument();
+});
+
+it("sorts visible entries when clicking a column header", async () => {
+  renderPane({
+    entries: [entry("b.txt"), entry("a.txt"), entry("folder", "directory")],
+  });
+
+  await userEvent.click(screen.getByRole("button", { name: "Name" }));
+
+  const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
+  expect(rows.map((row) => within(row).getAllByRole("cell")[1].textContent)).toEqual(["a.txt", "b.txt", "folder"]);
+});
+
+it("resizes columns by dragging a header divider", () => {
+  renderPane();
+
+  const table = screen.getByRole("table");
+  const handle = screen.getByRole("separator", { name: "Resize Name column" });
+  expect(table).toHaveStyle({ "--file-col-name": "220px" });
+
+  fireEvent.mouseDown(handle, { clientX: 220 });
+  fireEvent.mouseMove(document, { clientX: 280 });
+  fireEvent.mouseUp(document);
+
+  expect(table).toHaveStyle({ "--file-col-name": "280px" });
 });
 
 function entry(name: string, type: "file" | "directory" | "symlink" | "other" = "file") {

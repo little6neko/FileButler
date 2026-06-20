@@ -294,39 +294,56 @@ button:disabled {
 
 .file-table th,
 .file-table td {
+  position: relative;
   height: 32px;
   padding: 0 8px;
   border-bottom: 1px solid #edf1f4;
+  border-right: 1px solid #edf1f4;
   text-align: left;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.file-table th:first-child,
-.file-table td:first-child {
-  width: 88px;
+.file-table th:last-child,
+.file-table td:last-child {
+  border-right: 0;
 }
 
-.file-table th:first-child {
+.file-header-cell {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-.file-table th:nth-child(3),
-.file-table td:nth-child(3) {
-  width: 96px;
+.file-sort-button {
+  width: 100%;
+  min-height: 30px;
+  justify-content: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  background: transparent;
+  border-radius: 0;
+  padding: 0;
+  font-weight: 600;
 }
 
-.file-table th:nth-child(4),
-.file-table td:nth-child(4) {
-  width: 84px;
+.column-resize-handle {
+  position: absolute;
+  display: block;
+  top: 0;
+  right: -3px;
+  z-index: 2;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
 }
 
-.file-table th:nth-child(5),
-.file-table td:nth-child(5) {
-  width: 160px;
+.column-resize-handle:hover,
+.column-resize-handle:active {
+  background: #9dbfe5;
 }
 
 .file-table tbody tr:hover {
@@ -383,6 +400,10 @@ button:disabled {
   padding: 0 8px;
   border-bottom: 1px solid #edf1f4;
   text-align: left;
+}
+
+.preview-table tr.powerrename-match {
+  background: #fff7d6;
 }
 
 .jobs-panel {

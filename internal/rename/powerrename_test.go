@@ -49,6 +49,28 @@ func TestPowerRenamePlanExtensionOnly(t *testing.T) {
 	}
 }
 
+func TestPowerRenamePlanNameOnlyMatchesDottedStem(t *testing.T) {
+	opts := PowerRenameOptions{Search: "V1.test", Replace: "V2", MatchAll: false, NameOnly: true}
+	plan, err := PowerRenamePlan([]InputItem{{RelativePath: "V1.test.mp4"}}, opts, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.Items[0].Changed || plan.Items[0].NewName != "V2.mp4" {
+		t.Fatalf("plan=%+v", plan)
+	}
+}
+
+func TestPowerRenamePlanNameOnlyDoesNotMatchExtension(t *testing.T) {
+	opts := PowerRenameOptions{Search: "V1.test.mp4", Replace: "V2", MatchAll: false, NameOnly: true}
+	plan, err := PowerRenamePlan([]InputItem{{RelativePath: "V1.test.mp4"}}, opts, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Items[0].Changed || plan.Items[0].NewName != "V1.test.mp4" {
+		t.Fatalf("plan=%+v", plan)
+	}
+}
+
 func TestPowerRenamePlanExcludesFolders(t *testing.T) {
 	opts := PowerRenameOptions{Search: "a", Replace: "b", ExcludeFolders: true}
 	plan, err := PowerRenamePlan([]InputItem{{RelativePath: "a.txt"}, {RelativePath: "a-folder", IsDir: true}}, opts, nil)

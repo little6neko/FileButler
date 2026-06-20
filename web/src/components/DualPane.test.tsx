@@ -9,8 +9,12 @@ vi.mock("../api/client", () => ({
     roots: vi.fn(),
     browse: vi.fn(),
     opsDryRun: vi.fn(),
+    opsCreateJob: vi.fn(),
     renamePreview: vi.fn(),
     renameCreateJob: vi.fn(),
+    singleRenameCreateJob: vi.fn(),
+    jobs: vi.fn(),
+    job: vi.fn(),
   },
 }));
 
@@ -18,8 +22,13 @@ beforeEach(() => {
   vi.mocked(api.roots).mockReset();
   vi.mocked(api.browse).mockReset();
   vi.mocked(api.opsDryRun).mockReset();
+  vi.mocked(api.opsCreateJob).mockReset();
   vi.mocked(api.renamePreview).mockReset();
   vi.mocked(api.renameCreateJob).mockReset();
+  vi.mocked(api.singleRenameCreateJob).mockReset();
+  vi.mocked(api.jobs).mockReset();
+  vi.mocked(api.jobs).mockResolvedValue([]);
+  vi.mocked(api.job).mockReset();
 });
 
 it("loads roots and renders two panes", async () => {
@@ -124,4 +133,38 @@ it("opens PowerRename with selected paths in the current visible sort order", as
       expect.objectContaining({ rootId: "root", paths: ["a.txt", "b.txt"] }),
     ),
   );
+});
+
+it("refreshes both panes after an operation job reaches a terminal status", async () => {
+  vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
+  vi.mocked(api.browse).mockResolvedValue([
+    { name: "source.txt", relativePath: "source.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+  ]);
+  vi.mocked(api.opsDryRun).mockResolvedValue({
+    hasConflict: false,
+    items: [{ sourcePath: "source.txt", destPath: "source.txt", conflict: false, changed: true }],
+  });
+  vi.mocked(api.opsCreateJob).mockResolvedValue({ id: "job-1" });
+  vi.mocked(api.job).mockResolvedValue({
+    id: "job-1",
+    type: "copy",
+    status: "completed",
+    progressTotal: 1,
+    progressDone: 1,
+    errorMessage: "",
+    items: [],
+  });
+  render(<DualPane />);
+
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  await waitFor(() => expect(api.browse).toHaveBeenCalledTimes(2));
+  vi.mocked(api.browse).mockClear();
+
+  await userEvent.click(await within(leftPane).findByLabelText("Select source.txt"));
+  await userEvent.click(screen.getByRole("button", { name: "copy" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+
+  await waitFor(() => expect(api.opsCreateJob).toHaveBeenCalled());
+  await waitFor(() => expect(api.job).toHaveBeenCalledWith("job-1"));
+  await waitFor(() => expect(api.browse).toHaveBeenCalledTimes(2));
 });

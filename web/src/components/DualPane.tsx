@@ -56,6 +56,32 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
     updatePane(which, (pane) => ({ ...pane, entries, visibleOrder: entries.map((entry) => entry.relativePath) }));
   }
 
+  function refreshBothPanes() {
+    if (left.rootId) void loadPane("left", left.rootId, left.path);
+    if (right.rootId) void loadPane("right", right.rootId, right.path);
+  }
+
+  function handleJobCreated(id: string) {
+    setJobsOpen(true);
+    void refreshWhenJobFinishes(id);
+  }
+
+  async function refreshWhenJobFinishes(id: string) {
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      let job;
+      try {
+        job = await api.job(id);
+      } catch {
+        return;
+      }
+      if (terminalJobStatuses.has(job.status)) {
+        refreshBothPanes();
+        return;
+      }
+      await delay(1000);
+    }
+  }
+
   function updatePane(which: PaneKey, update: (pane: PaneState) => PaneState) {
     if (which === "left") setLeft(update);
     else setRight(update);
@@ -128,9 +154,9 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
           request={previewRequest}
           labels={labels}
           onClose={() => setPreviewRequest(null)}
-          onJobCreated={() => {
+          onJobCreated={(id) => {
             setPreviewRequest(null);
-            setJobsOpen(true);
+            handleJobCreated(id);
           }}
         />
       ) : null}
@@ -141,9 +167,9 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
           initialName={basename(activeSelection()[0])}
           labels={labels}
           onClose={() => setSingleRenameOpen(false)}
-          onJobCreated={() => {
+          onJobCreated={(id) => {
             setSingleRenameOpen(false);
-            setJobsOpen(true);
+            handleJobCreated(id);
           }}
         />
       ) : null}
@@ -153,9 +179,9 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
           paths={activeSelection()}
           labels={labels}
           onClose={() => setPowerRenameOpen(false)}
-          onJobCreated={() => {
+          onJobCreated={(id) => {
             setPowerRenameOpen(false);
-            setJobsOpen(true);
+            handleJobCreated(id);
           }}
         />
       ) : null}
@@ -213,4 +239,10 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
 
 function sameStringArray(left: string[], right: string[]) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+const terminalJobStatuses = new Set(["completed", "completed_with_errors", "failed", "canceled"]);
+
+function delay(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }

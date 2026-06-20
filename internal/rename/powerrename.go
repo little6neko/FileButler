@@ -107,6 +107,9 @@ func powerRenameName(base string, opts PowerRenameOptions, itemIndex int) (strin
 
 func powerRenamePart(input string, opts PowerRenameOptions, itemIndex int) (string, error) {
 	replace := opts.Replace
+	if opts.TemplateContext.Metadata != nil || !opts.TemplateContext.CreationTime.IsZero() || !opts.TemplateContext.ModifiedTime.IsZero() || !opts.TemplateContext.AccessTime.IsZero() {
+		replace = renderPowerRenameMetadataTemplates(replace, opts.TemplateContext)
+	}
 	if opts.EnumerateItems || opts.RandomizeItems {
 		rendered, _, err := renderPowerRenameTokens(replace, itemIndex, cryptoPowerRenameRandom{})
 		if err != nil {

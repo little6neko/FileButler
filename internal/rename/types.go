@@ -41,6 +41,7 @@ type PowerRenameOptions struct {
 	RandomizeItems    bool   `json:"randomizeItems"`
 
 	LegacyAppendEnumeration bool `json:"-"`
+	TemplateContext         PowerRenameTemplateContext `json:"-"`
 }
 
 type InputItem struct {

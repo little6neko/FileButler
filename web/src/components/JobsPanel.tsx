@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Job, PlanItem } from "../api/types";
+import { strings } from "../i18n";
+import type { UIStrings } from "../i18n";
 
 type JobDetail = Job & { items: PlanItem[] };
 
-export function JobsPanel({ open }: { open: boolean }) {
+export function JobsPanel({ open, labels = strings.en }: { open: boolean; labels?: UIStrings }) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selectedID, setSelectedID] = useState<string | null>(null);
   const [detail, setDetail] = useState<JobDetail | null>(null);
@@ -45,13 +47,13 @@ export function JobsPanel({ open }: { open: boolean }) {
 
   if (!open) return null;
   return (
-    <aside className="jobs-panel" aria-label="Jobs">
-      <h2>Jobs</h2>
+    <aside className="jobs-panel" aria-label={labels.jobs}>
+      <h2>{labels.jobs}</h2>
       <ul>
         {jobs.map((job) => (
           <li key={job.id}>
             <button type="button" onClick={() => setSelectedID(job.id)}>
-              {job.type} {job.status} {job.progressDone}/{job.progressTotal}
+              {labels.operationType(job.type)} {labels.jobStatus(job.status)} {job.progressDone}/{job.progressTotal}
             </button>
           </li>
         ))}
@@ -59,10 +61,10 @@ export function JobsPanel({ open }: { open: boolean }) {
       {detail ? (
         <section>
           <h3>{detail.id}</h3>
-          <p>{detail.status}</p>
+          <p>{labels.jobStatus(detail.status)}</p>
           {(detail.status === "running" || detail.status === "cancel_requested") && (
             <button type="button" onClick={() => api.cancelJob(detail.id)}>
-              Cancel
+              {labels.cancel}
             </button>
           )}
         </section>

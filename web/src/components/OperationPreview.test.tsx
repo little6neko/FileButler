@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
+import { strings } from "../i18n";
 import { OperationPreview } from "./OperationPreview";
 
 vi.mock("../api/client", () => ({
@@ -39,6 +40,23 @@ it("creates a job from a conflict-free operation plan", async () => {
   await waitFor(() => expect(screen.getByRole("button", { name: "Confirm" })).not.toBeDisabled());
   await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
   expect(onJobCreated).toHaveBeenCalledWith("job_1");
+});
+
+it("renders operation preview labels in Chinese", async () => {
+  vi.mocked(api.opsDryRun).mockResolvedValue({
+    hasConflict: false,
+    items: [{ sourcePath: "a.txt", destPath: "target/a.txt", conflict: false }],
+  });
+
+  render(<OperationPreview request={request()} labels={strings["zh-CN"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  expect(await screen.findByRole("heading", { name: "复制预览" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "来源" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "目标" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "状态" })).toBeInTheDocument();
+  expect(screen.getByText("就绪")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "确认" })).toBeInTheDocument();
 });
 
 function request() {

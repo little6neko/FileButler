@@ -2,6 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
+import { strings } from "../i18n";
 import { JobsPanel } from "./JobsPanel";
 
 vi.mock("../api/client", () => ({
@@ -37,5 +38,19 @@ it("sends cancel request for a running job", async () => {
   render(<JobsPanel open />);
 
   await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+  expect(api.cancelJob).toHaveBeenCalledWith("job_1");
+});
+
+it("renders jobs labels and statuses in Chinese", async () => {
+  vi.mocked(api.jobs).mockResolvedValue([{ id: "job_1", type: "copy", status: "running", progressTotal: 2, progressDone: 1, errorMessage: "" }]);
+  vi.mocked(api.job).mockResolvedValue({ id: "job_1", type: "copy", status: "running", progressTotal: 2, progressDone: 1, errorMessage: "", items: [] });
+  vi.mocked(api.cancelJob).mockResolvedValue({ id: "job_1" });
+
+  render(<JobsPanel open labels={strings["zh-CN"]} />);
+
+  expect(await screen.findByRole("complementary", { name: "任务" })).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "复制 运行中 1/2" })).toBeInTheDocument();
+  expect(await screen.findByText("运行中")).toBeInTheDocument();
+  await userEvent.click(await screen.findByRole("button", { name: "取消" }));
   expect(api.cancelJob).toHaveBeenCalledWith("job_1");
 });

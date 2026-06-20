@@ -19,6 +19,7 @@ type FilePaneProps = {
   onRefresh(): void;
   onActivate(): void;
   labels?: UIStrings;
+  isActive?: boolean;
 };
 
 export function FilePane({
@@ -36,6 +37,7 @@ export function FilePane({
   onRefresh,
   onActivate,
   labels = strings.en,
+  isActive = false,
 }: FilePaneProps) {
   const [pathDraft, setPathDraft] = useState(displayPath(currentPath));
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
@@ -49,26 +51,35 @@ export function FilePane({
     [entries, pathDraft],
   );
 
+  const pathSegments = buildPathSegments(currentPath);
+  const singleRoot = roots.length <= 1;
+
   useEffect(() => {
     setPathDraft(displayPath(currentPath));
     setHighlightedSuggestion(-1);
   }, [currentPath]);
 
   return (
-    <section className="file-pane" aria-label={title} onClick={onActivate}>
+    <section className={`file-pane${isActive ? " is-active" : ""}`} aria-label={title} onClick={onActivate}>
       <div className="pane-header">
         <strong>{title}</strong>
-        <select
-          aria-label={labels.rootLabel(title)}
-          value={selectedRootId}
-          onChange={(event) => onRootChange(event.target.value)}
-        >
-          {roots.map((root) => (
-            <option key={root.id} value={root.id}>
-              {root.name}
-            </option>
-          ))}
-        </select>
+        {singleRoot ? (
+          <span className="root-marker" aria-label={labels.rootLabel(title)}>
+            /
+          </span>
+        ) : (
+          <select
+            aria-label={labels.rootLabel(title)}
+            value={selectedRootId}
+            onChange={(event) => onRootChange(event.target.value)}
+          >
+            {roots.map((root) => (
+              <option key={root.id} value={root.id}>
+                {root.name}
+              </option>
+            ))}
+          </select>
+        )}
         <div className="path-combobox">
           <input
             aria-label={labels.pathLabel(title)}
@@ -103,6 +114,13 @@ export function FilePane({
           {labels.refresh}
         </button>
       </div>
+      <nav className="path-segments" aria-label={`${title} segments`}>
+        {pathSegments.map((segment, index) => (
+          <button key={`${segment.path}-${index}`} type="button" onClick={() => onPathChange(segment.path)}>
+            {segment.label}
+          </button>
+        ))}
+      </nav>
       <div className="file-list">
         <table className="file-table">
           <thead>
@@ -184,4 +202,17 @@ function normalizeInput(path: string) {
   const trimmed = path.trim();
   if (!trimmed || trimmed === "/") return ".";
   return trimmed.replace(/^\/+/, "").replace(/\/+$/, "") || ".";
+}
+
+function buildPathSegments(path: string) {
+  const normalized = normalizeInput(path);
+  const segments = [{ label: "/", path: "." }];
+  if (normalized === ".") return segments;
+  const parts = normalized.split("/").filter(Boolean);
+  let current = "";
+  for (const part of parts) {
+    current = current ? `${current}/${part}` : part;
+    segments.push({ label: part, path: current });
+  }
+  return segments;
 }

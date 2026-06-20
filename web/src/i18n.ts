@@ -25,10 +25,43 @@ export type UIStrings = {
   type: string;
   size: string;
   modified: string;
+  close: string;
+  loading: string;
+  source: string;
+  destination: string;
+  status: string;
+  ready: string;
+  confirm: string;
+  previewFailed: string;
+  jobCreationFailed: string;
+  batchRename: string;
+  renameDialog: string;
+  search: string;
+  replace: string;
+  regex: string;
+  caseSensitive: string;
+  matchAll: string;
+  target: string;
+  targetName: string;
+  targetExtension: string;
+  targetBoth: string;
+  includeFiles: string;
+  includeFolders: string;
+  includeSubfolders: string;
+  enumerate: string;
+  old: string;
+  new: string;
+  runRename: string;
+  renameFailed: string;
+  cancel: string;
+  directoryNamePrompt: string;
   pathLabel(title: string): string;
   rootLabel(title: string): string;
   refreshLabel(title: string): string;
   selectEntry(name: string): string;
+  operationPreview(type: string): string;
+  operationType(type: string): string;
+  jobStatus(status: string): string;
 };
 
 export const strings: Record<Language, UIStrings> = {
@@ -56,10 +89,43 @@ export const strings: Record<Language, UIStrings> = {
     type: "Type",
     size: "Size",
     modified: "Modified",
+    close: "Close",
+    loading: "Loading",
+    source: "Source",
+    destination: "Destination",
+    status: "Status",
+    ready: "Ready",
+    confirm: "Confirm",
+    previewFailed: "Preview failed",
+    jobCreationFailed: "Job creation failed",
+    batchRename: "Batch rename",
+    renameDialog: "Rename dialog",
+    search: "Search",
+    replace: "Replace",
+    regex: "Regex",
+    caseSensitive: "Case-sensitive",
+    matchAll: "Match all",
+    target: "Target",
+    targetName: "name",
+    targetExtension: "extension",
+    targetBoth: "both",
+    includeFiles: "Include files",
+    includeFolders: "Include folders",
+    includeSubfolders: "Include subfolders",
+    enumerate: "Enumerate",
+    old: "Old",
+    new: "New",
+    runRename: "Run rename",
+    renameFailed: "Rename failed",
+    cancel: "Cancel",
+    directoryNamePrompt: "Directory name",
     pathLabel: (title) => `${title} path`,
     rootLabel: (title) => `${title} root`,
     refreshLabel: (title) => `${title} refresh`,
     selectEntry: (name) => `Select ${name}`,
+    operationPreview: (type) => `${type} preview`,
+    operationType: (type) => type,
+    jobStatus: (status) => status,
   },
   "zh-CN": {
     subtitle: "自托管文件操作",
@@ -85,10 +151,59 @@ export const strings: Record<Language, UIStrings> = {
     type: "类型",
     size: "大小",
     modified: "修改时间",
+    close: "关闭",
+    loading: "加载中",
+    source: "来源",
+    destination: "目标",
+    status: "状态",
+    ready: "就绪",
+    confirm: "确认",
+    previewFailed: "预览失败",
+    jobCreationFailed: "创建任务失败",
+    batchRename: "批量重命名",
+    renameDialog: "重命名窗口",
+    search: "搜索",
+    replace: "替换",
+    regex: "正则",
+    caseSensitive: "区分大小写",
+    matchAll: "全部匹配",
+    target: "目标",
+    targetName: "名称",
+    targetExtension: "扩展名",
+    targetBoth: "名称和扩展名",
+    includeFiles: "包含文件",
+    includeFolders: "包含文件夹",
+    includeSubfolders: "包含子文件夹",
+    enumerate: "编号",
+    old: "原名称",
+    new: "新名称",
+    runRename: "运行重命名",
+    renameFailed: "重命名失败",
+    cancel: "取消",
+    directoryNamePrompt: "文件夹名称",
     pathLabel: (title) => `${title}路径`,
     rootLabel: (title) => `${title}根目录`,
     refreshLabel: (title) => `${title}刷新`,
     selectEntry: (name) => `选择 ${name}`,
+    operationPreview: (type) => `${strings["zh-CN"].operationType(type)}预览`,
+    operationType: (type) =>
+      ({
+        move: "移动",
+        copy: "复制",
+        symlink: "软链接",
+        hardlink: "硬链接",
+        delete: "删除",
+        mkdir: "新建文件夹",
+      })[type] ?? type,
+    jobStatus: (status) =>
+      ({
+        pending: "等待中",
+        running: "运行中",
+        cancel_requested: "正在取消",
+        canceled: "已取消",
+        completed: "已完成",
+        failed: "失败",
+      })[status] ?? status,
   },
 };
 

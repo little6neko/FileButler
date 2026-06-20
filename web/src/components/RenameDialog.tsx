@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { PlanItem, RenameOptions } from "../api/types";
+import { strings } from "../i18n";
+import type { UIStrings } from "../i18n";
 import { ErrorBanner } from "./ErrorBanner";
 
 type Props = {
@@ -8,6 +10,7 @@ type Props = {
   paths: string[];
   onJobCreated(id: string): void;
   onClose(): void;
+  labels?: UIStrings;
 };
 
 const defaultOptions: RenameOptions = {
@@ -23,7 +26,7 @@ const defaultOptions: RenameOptions = {
   enumerate: false,
 };
 
-export function RenameDialog({ rootId, paths, onJobCreated, onClose }: Props) {
+export function RenameDialog({ rootId, paths, onJobCreated, onClose, labels = strings.en }: Props) {
   const [options, setOptions] = useState<RenameOptions>(defaultOptions);
   const [items, setItems] = useState<PlanItem[]>([]);
   const [hasConflict, setHasConflict] = useState(false);
@@ -39,7 +42,7 @@ export function RenameDialog({ rootId, paths, onJobCreated, onClose }: Props) {
         setHasConflict(plan.hasConflict);
         setError(null);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Preview failed"));
+      .catch((err) => setError(err instanceof Error ? err.message : labels.previewFailed));
     return () => {
       active = false;
     };
@@ -50,74 +53,74 @@ export function RenameDialog({ rootId, paths, onJobCreated, onClose }: Props) {
       const job = await api.renameCreateJob({ rootId, paths, options });
       onJobCreated(job.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Rename failed");
+      setError(err instanceof Error ? err.message : labels.renameFailed);
     }
   }
 
   return (
     <div className="modal-backdrop">
-      <section className="modal rename-dialog" aria-label="Rename dialog">
+      <section className="modal rename-dialog" aria-label={labels.renameDialog}>
         <header className="modal-header">
-          <h2>Batch rename</h2>
+          <h2>{labels.batchRename}</h2>
           <button type="button" onClick={onClose}>
-            Close
+            {labels.close}
           </button>
         </header>
         <ErrorBanner message={error} />
         <div className="rename-controls">
           <label>
-            Search
+            {labels.search}
             <input value={options.search} onChange={(event) => update({ search: event.target.value })} />
           </label>
           <label>
-            Replace
+            {labels.replace}
             <input value={options.replace} onChange={(event) => update({ replace: event.target.value })} />
           </label>
           <label>
             <input type="checkbox" checked={options.useRegex} onChange={(event) => update({ useRegex: event.target.checked })} />
-            Regex
+            {labels.regex}
           </label>
           <label>
             <input type="checkbox" checked={options.caseSensitive} onChange={(event) => update({ caseSensitive: event.target.checked })} />
-            Case-sensitive
+            {labels.caseSensitive}
           </label>
           <label>
             <input type="checkbox" checked={options.matchAll} onChange={(event) => update({ matchAll: event.target.checked })} />
-            Match all
+            {labels.matchAll}
           </label>
           <fieldset>
-            <legend>Target</legend>
+            <legend>{labels.target}</legend>
             {(["name", "extension", "both"] as const).map((target) => (
               <label key={target}>
                 <input type="radio" name="target" checked={options.target === target} onChange={() => update({ target })} />
-                {target}
+                {targetLabel(target, labels)}
               </label>
             ))}
           </fieldset>
           <label>
             <input type="checkbox" checked={options.includeFiles} onChange={(event) => update({ includeFiles: event.target.checked })} />
-            Include files
+            {labels.includeFiles}
           </label>
           <label>
             <input type="checkbox" checked={options.includeDirs} onChange={(event) => update({ includeDirs: event.target.checked })} />
-            Include folders
+            {labels.includeFolders}
           </label>
           <label>
             <input type="checkbox" checked={options.includeSubfolders} onChange={(event) => update({ includeSubfolders: event.target.checked })} />
-            Include subfolders
+            {labels.includeSubfolders}
           </label>
           <label>
             <input type="checkbox" checked={options.enumerate} onChange={(event) => update({ enumerate: event.target.checked })} />
-            Enumerate
+            {labels.enumerate}
           </label>
         </div>
         <table className="preview-table">
           <thead>
             <tr>
-              <th>Source</th>
-              <th>Old</th>
-              <th>New</th>
-              <th>Status</th>
+              <th>{labels.source}</th>
+              <th>{labels.old}</th>
+              <th>{labels.new}</th>
+              <th>{labels.status}</th>
             </tr>
           </thead>
           <tbody>
@@ -126,14 +129,14 @@ export function RenameDialog({ rootId, paths, onJobCreated, onClose }: Props) {
                 <td>{item.sourcePath}</td>
                 <td>{item.oldName}</td>
                 <td>{item.newName}</td>
-                <td>{item.conflict ? item.errorText || item.errorCode : "Ready"}</td>
+                <td>{item.conflict ? item.errorText || item.errorCode : labels.ready}</td>
               </tr>
             ))}
           </tbody>
         </table>
         <footer className="modal-actions">
           <button type="button" onClick={run} disabled={hasConflict}>
-            Run rename
+            {labels.runRename}
           </button>
         </footer>
       </section>
@@ -143,4 +146,10 @@ export function RenameDialog({ rootId, paths, onJobCreated, onClose }: Props) {
   function update(partial: Partial<RenameOptions>) {
     setOptions((current) => ({ ...current, ...partial }));
   }
+}
+
+function targetLabel(target: RenameOptions["target"], labels: UIStrings) {
+  if (target === "name") return labels.targetName;
+  if (target === "extension") return labels.targetExtension;
+  return labels.targetBoth;
 }

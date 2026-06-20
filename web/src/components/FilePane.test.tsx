@@ -70,6 +70,25 @@ it("uses arrow keys to choose a directory suggestion", async () => {
   expect(onPathChange).toHaveBeenCalledWith("photos");
 });
 
+it("shows a slash root marker instead of a selector for one mapped root", () => {
+  renderPane();
+
+  expect(screen.queryByRole("combobox", { name: "Left pane root" })).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Left pane root")).toHaveTextContent("/");
+  expect(screen.getByRole("button", { name: "/" })).toBeInTheDocument();
+});
+
+it("renders current path as clickable segments", async () => {
+  const onPathChange = vi.fn();
+  renderPane({ currentPath: "photos/2026/raw", onPathChange });
+
+  await userEvent.click(screen.getByRole("button", { name: "photos" }));
+  expect(onPathChange).toHaveBeenCalledWith("photos");
+
+  await userEvent.click(screen.getByRole("button", { name: "2026" }));
+  expect(onPathChange).toHaveBeenCalledWith("photos/2026");
+});
+
 it("navigates into a directory", async () => {
   const onPathChange = vi.fn();
   render(

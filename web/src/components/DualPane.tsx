@@ -86,6 +86,7 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
         if (pane.rootId) void loadPane(which, pane.rootId, pane.path);
       },
       onActivate: () => setActivePane(which),
+      isActive: activePane === which,
     };
   }
 
@@ -107,7 +108,7 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
           {labels.jobs}
         </button>
       </div>
-      <section className="workspace" data-active-pane={activePane}>
+      <section className="workspace" data-testid="workspace" data-active-pane={activePane}>
         <FilePane title={labels.leftPane} labels={labels} {...paneProps("left", left)} />
         <div className="pane-divider" aria-hidden="true" />
         <FilePane title={labels.rightPane} labels={labels} {...paneProps("right", right)} />
@@ -115,6 +116,7 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
       {previewRequest ? (
         <OperationPreview
           request={previewRequest}
+          labels={labels}
           onClose={() => setPreviewRequest(null)}
           onJobCreated={() => {
             setPreviewRequest(null);
@@ -126,6 +128,7 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
         <RenameDialog
           rootId={activeState().rootId}
           paths={activeSelection()}
+          labels={labels}
           onClose={() => setRenameOpen(false)}
           onJobCreated={() => {
             setRenameOpen(false);
@@ -133,7 +136,7 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
           }}
         />
       ) : null}
-      <JobsPanel open={jobsOpen} />
+      <JobsPanel open={jobsOpen} labels={labels} />
     </>
   );
 
@@ -163,7 +166,7 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
 
   function openMkdir() {
     const source = activeState();
-    const name = window.prompt("Directory name");
+    const name = window.prompt(labels.directoryNamePrompt);
     if (!name) return;
     setPreviewRequest({
       type: "mkdir",

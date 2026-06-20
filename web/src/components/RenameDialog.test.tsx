@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
+import { strings } from "../i18n";
 import { RenameDialog } from "./RenameDialog";
 
 vi.mock("../api/client", () => ({
@@ -59,4 +60,31 @@ it("keeps enumerate option visible with a checkbox", () => {
   vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
   render(<RenameDialog rootId="data" paths={["file.txt"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
   expect(screen.getByLabelText("Enumerate")).toBeInTheDocument();
+});
+
+it("renders rename dialog labels in Chinese", async () => {
+  vi.mocked(api.renamePreview).mockResolvedValue({
+    hasConflict: false,
+    items: [{ sourcePath: "file.txt", oldName: "file.txt", newName: "photo.txt", conflict: false }],
+  });
+
+  render(
+    <RenameDialog
+      rootId="data"
+      paths={["file.txt"]}
+      labels={strings["zh-CN"]}
+      onJobCreated={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+
+  expect(screen.getByRole("heading", { name: "批量重命名" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
+  expect(screen.getByLabelText("搜索")).toBeInTheDocument();
+  expect(screen.getByLabelText("替换")).toBeInTheDocument();
+  expect(screen.getByLabelText("正则")).toBeInTheDocument();
+  expect(screen.getByLabelText("包含文件")).toBeInTheDocument();
+  expect(screen.getByLabelText("包含文件夹")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "运行重命名" })).toBeInTheDocument();
+  expect(await screen.findByText("就绪")).toBeInTheDocument();
 });

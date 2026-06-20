@@ -59,3 +59,68 @@ func TestPowerRenamePlanExcludesFolders(t *testing.T) {
 		t.Fatalf("items=%+v", plan.Items)
 	}
 }
+
+func TestPowerRenamePlanSkipsFileMetadataContextForPlainPreview(t *testing.T) {
+	original := powerRenameTemplateContextBuilder
+	called := false
+	powerRenameTemplateContextBuilder = func(string, powerRenameTemplateContextMode) PowerRenameTemplateContext {
+		called = true
+		return PowerRenameTemplateContext{}
+	}
+	t.Cleanup(func() { powerRenameTemplateContextBuilder = original })
+
+	_, err := PowerRenamePlan([]InputItem{{RelativePath: "clip01.mp4", AbsPath: "/tmp/clip01.mp4"}}, PowerRenameOptions{NameOnly: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Fatal("plain preview should not read file metadata")
+	}
+}
+
+func TestPowerRenamePlanSkipsFileMetadataContextForEnumerationToken(t *testing.T) {
+	original := powerRenameTemplateContextBuilder
+	called := false
+	powerRenameTemplateContextBuilder = func(string, powerRenameTemplateContextMode) PowerRenameTemplateContext {
+		called = true
+		return PowerRenameTemplateContext{}
+	}
+	t.Cleanup(func() { powerRenameTemplateContextBuilder = original })
+
+	_, err := PowerRenamePlan(
+		[]InputItem{{RelativePath: "clip01.mp4", AbsPath: "/tmp/clip01.mp4"}},
+		PowerRenameOptions{Search: `^.*`, Replace: `V${start=1, padding=2}`, UseRegex: true, NameOnly: true},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if called {
+		t.Fatal("enumeration token preview should not read file metadata")
+	}
+}
+
+func TestPowerRenamePlanBuildsFileMetadataContextForMetadataToken(t *testing.T) {
+	original := powerRenameTemplateContextBuilder
+	var gotMode powerRenameTemplateContextMode
+	powerRenameTemplateContextBuilder = func(_ string, mode powerRenameTemplateContextMode) PowerRenameTemplateContext {
+		gotMode = mode
+		return PowerRenameTemplateContext{Metadata: map[string]string{"CAMERA_MODEL": "X100"}}
+	}
+	t.Cleanup(func() { powerRenameTemplateContextBuilder = original })
+
+	plan, err := PowerRenamePlan(
+		[]InputItem{{RelativePath: "photo.jpg", AbsPath: "/tmp/photo.jpg"}},
+		PowerRenameOptions{Search: `^.*`, Replace: `${CAMERA_MODEL}`, UseRegex: true, NameOnly: true},
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gotMode&powerRenameTemplateContextMetadata == 0 {
+		t.Fatalf("expected metadata context mode, got %v", gotMode)
+	}
+	if plan.Items[0].NewName != "X100.jpg" {
+		t.Fatalf("plan=%+v", plan)
+	}
+}

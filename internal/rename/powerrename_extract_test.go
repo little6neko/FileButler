@@ -28,7 +28,7 @@ func TestBuildPowerRenameTemplateContextUsesFileTimes(t *testing.T) {
 	if err := os.Chtimes(path, mod, mod); err != nil {
 		t.Fatal(err)
 	}
-	ctx := buildPowerRenameTemplateContext(path)
+	ctx := buildPowerRenameTemplateContext(path, powerRenameTemplateContextTimes)
 	if ctx.ModifiedTime.IsZero() || ctx.AccessTime.IsZero() {
 		t.Fatalf("ctx=%+v", ctx)
 	}

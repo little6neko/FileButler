@@ -13,18 +13,33 @@ import (
 	"github.com/rwcarlsen/goexif/exif"
 )
 
-func buildPowerRenameTemplateContext(absPath string) PowerRenameTemplateContext {
-	ctx := PowerRenameTemplateContext{Metadata: map[string]string{}}
-	info, err := os.Stat(absPath)
-	if err == nil {
-		ctx.ModifiedTime = info.ModTime()
-		ctx.CreationTime = info.ModTime()
-		ctx.AccessTime = info.ModTime()
-		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-			ctx.AccessTime = time.Unix(stat.Atim.Sec, stat.Atim.Nsec)
-			ctx.CreationTime = time.Unix(stat.Ctim.Sec, stat.Ctim.Nsec)
+type powerRenameTemplateContextMode uint8
+
+const (
+	powerRenameTemplateContextTimes powerRenameTemplateContextMode = 1 << iota
+	powerRenameTemplateContextMetadata
+)
+
+var powerRenameTemplateContextBuilder = buildPowerRenameTemplateContext
+
+func buildPowerRenameTemplateContext(absPath string, mode powerRenameTemplateContextMode) PowerRenameTemplateContext {
+	ctx := PowerRenameTemplateContext{}
+	if mode&powerRenameTemplateContextTimes != 0 {
+		info, err := os.Stat(absPath)
+		if err == nil {
+			ctx.ModifiedTime = info.ModTime()
+			ctx.CreationTime = info.ModTime()
+			ctx.AccessTime = info.ModTime()
+			if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+				ctx.AccessTime = time.Unix(stat.Atim.Sec, stat.Atim.Nsec)
+				ctx.CreationTime = time.Unix(stat.Ctim.Sec, stat.Ctim.Nsec)
+			}
 		}
 	}
+	if mode&powerRenameTemplateContextMetadata == 0 {
+		return ctx
+	}
+	ctx.Metadata = map[string]string{}
 	if file, err := os.Open(absPath); err == nil {
 		defer file.Close()
 		for key, value := range extractPowerRenameEXIFPatterns(file) {

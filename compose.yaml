@@ -1,0 +1,14 @@
+services:
+  filebutler:
+    build:
+      context: .
+    image: filebutler:local
+    container_name: filebutler
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./configs/filebutler.docker.yaml:/app/filebutler.yaml:ro
+      - ./data:/app/data
+      - ./downloads:/data/downloads
+      - ./media:/data/media
+    restart: unless-stopped

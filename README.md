@@ -35,10 +35,17 @@ Run with mounted storage roots and SQLite data:
 
 ```bash
 docker run --rm -p 8080:8080 \
+  -v "$PWD/configs/filebutler.docker.yaml:/app/filebutler.yaml:ro" \
   -v "$PWD/data:/app/data" \
-  -v "$HOME/Downloads:/data/downloads" \
-  -v "$HOME/Videos:/data/media" \
+  -v "$PWD/downloads:/data/downloads" \
+  -v "$PWD/media:/data/media" \
   filebutler:local
+```
+
+Or use Compose:
+
+```bash
+docker compose up --build
 ```
 
 Open `http://127.0.0.1:8080`, create the first administrator account, then log in with that account. Initialization closes after the first administrator is created.

@@ -1,0 +1,16 @@
+listen: "0.0.0.0:8080"
+database_path: "/app/data/filebutler.db"
+static_dir: "/app/web/dist"
+job_concurrency: 2
+log_level: "info"
+session:
+  cookie_name: "filebutler_session"
+  secure: false
+  max_age_seconds: 86400
+roots:
+  - id: "downloads"
+    name: "Downloads"
+    path: "/data/downloads"
+  - id: "media"
+    name: "Media"
+    path: "/data/media"

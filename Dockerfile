@@ -18,7 +18,8 @@ FROM alpine:3.22
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=backend /out/filebutler /usr/local/bin/filebutler
-COPY configs/filebutler.example.yaml /app/filebutler.yaml
+COPY --from=frontend /src/web/dist /app/web/dist
+COPY configs/filebutler.docker.yaml /app/filebutler.yaml
 EXPOSE 8080
 ENTRYPOINT ["filebutler"]
 CMD ["-config", "/app/filebutler.yaml"]

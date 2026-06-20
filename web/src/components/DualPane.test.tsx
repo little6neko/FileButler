@@ -192,6 +192,66 @@ it("opens PowerRename with selected paths in the current visible sort order", as
   );
 });
 
+it("clears hidden selection after a rename job refreshes the pane", async () => {
+  let renamed = false;
+  vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
+  vi.mocked(api.browse).mockImplementation(async () =>
+    renamed
+      ? [{ name: "new.txt", relativePath: "new.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false }]
+      : [{ name: "old.txt", relativePath: "old.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false }],
+  );
+  vi.mocked(api.singleRenameCreateJob).mockImplementation(async () => {
+    renamed = true;
+    return { id: "job-rename" };
+  });
+  vi.mocked(api.job).mockResolvedValue({
+    id: "job-rename",
+    type: "rename",
+    status: "completed",
+    progressTotal: 1,
+    progressDone: 1,
+    errorMessage: "",
+    items: [],
+  });
+  render(<DualPane />);
+
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  await userEvent.click(await within(leftPane).findByLabelText("Select old.txt"));
+  await userEvent.click(screen.getByRole("button", { name: "Rename" }));
+  const dialog = await screen.findByRole("region", { name: "Rename dialog" });
+  await userEvent.clear(within(dialog).getByRole("textbox"));
+  await userEvent.type(within(dialog).getByRole("textbox"), "new.txt");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Rename" }));
+
+  expect(await within(leftPane).findByLabelText("Select new.txt")).not.toBeChecked();
+  await waitFor(() => expect(screen.getByRole("button", { name: "Rename" })).toBeDisabled());
+  expect(screen.getByRole("button", { name: "PowerRename" })).toBeDisabled();
+});
+
+it("clears selection when navigating to another folder", async () => {
+  vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
+  vi.mocked(api.browse).mockImplementation(async (_rootId, path) => {
+    if (path === ".") {
+      return [
+        { name: "selected.txt", relativePath: "selected.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+        { name: "folder", relativePath: "folder", type: "directory", size: 0, mode: "", modifiedUnix: 0, isSymlink: false },
+      ];
+    }
+    return [{ name: "inside.txt", relativePath: "folder/inside.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false }];
+  });
+  render(<DualPane />);
+
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  await userEvent.click(await within(leftPane).findByLabelText("Select selected.txt"));
+  expect(screen.getByRole("button", { name: "Rename" })).not.toBeDisabled();
+
+  await userEvent.dblClick(within(leftPane).getByText("folder"));
+
+  expect(screen.getByRole("button", { name: "Rename" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "PowerRename" })).toBeDisabled();
+  expect(await within(leftPane).findByLabelText("Select inside.txt")).not.toBeChecked();
+});
+
 it("refreshes both panes after an operation job reaches a terminal status", async () => {
   vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
   vi.mocked(api.browse).mockResolvedValue([
@@ -224,4 +284,6 @@ it("refreshes both panes after an operation job reaches a terminal status", asyn
   await waitFor(() => expect(api.opsCreateJob).toHaveBeenCalled());
   await waitFor(() => expect(api.job).toHaveBeenCalledWith("job-1"));
   await waitFor(() => expect(api.browse).toHaveBeenCalledTimes(2));
+  expect(within(leftPane).getByLabelText("Select source.txt")).not.toBeChecked();
+  expect(screen.getByRole("button", { name: "copy" })).toBeDisabled();
 });

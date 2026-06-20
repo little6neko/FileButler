@@ -65,7 +65,12 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
 
   async function loadPane(which: PaneKey, rootId: string, path: string) {
     const entries = await api.browse(rootId, path);
-    updatePane(which, (pane) => ({ ...pane, entries, visibleOrder: entries.map((entry) => entry.relativePath) }));
+    updatePane(which, (pane) => ({
+      ...pane,
+      entries,
+      selected: visibleSelection(pane.selected, entries),
+      visibleOrder: entries.map((entry) => entry.relativePath),
+    }));
   }
 
   function refreshBothPanes() {
@@ -74,6 +79,7 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
   }
 
   function handleJobCreated(id: string) {
+    clearSelections();
     setJobsOpen(true);
     void refreshWhenJobFinishes(id);
   }
@@ -97,6 +103,11 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
   function updatePane(which: PaneKey, update: (pane: PaneState) => PaneState) {
     if (which === "left") setLeft(update);
     else setRight(update);
+  }
+
+  function clearSelections() {
+    setLeft((pane) => (pane.selected.size ? { ...pane, selected: new Set() } : pane));
+    setRight((pane) => (pane.selected.size ? { ...pane, selected: new Set() } : pane));
   }
 
   function paneProps(which: PaneKey, pane: PaneState) {
@@ -299,6 +310,13 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
 
 function sameStringArray(left: string[], right: string[]) {
   return left.length === right.length && left.every((value, index) => value === right[index]);
+}
+
+function visibleSelection(selected: Set<string>, entries: Entry[]) {
+  if (!selected.size) return selected;
+  const visiblePaths = new Set(entries.map((entry) => entry.relativePath));
+  const next = new Set(Array.from(selected).filter((path) => visiblePaths.has(path)));
+  return next.size === selected.size ? selected : next;
 }
 
 const terminalJobStatuses = new Set(["completed", "completed_with_errors", "failed", "canceled"]);

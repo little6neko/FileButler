@@ -285,7 +285,7 @@ button:disabled {
 }
 
 .file-table {
-  width: 100%;
+  width: var(--file-table-width);
   height: auto;
   border-collapse: collapse;
   table-layout: fixed;
@@ -310,10 +310,23 @@ button:disabled {
   border-right: 0;
 }
 
+.file-table th.select-cell,
+.file-table td.select-cell {
+  padding: 0;
+  text-align: center;
+}
+
+.file-table .select-cell input[type="checkbox"] {
+  display: block;
+  width: 14px;
+  height: 14px;
+  margin: 0 auto;
+}
+
 .file-header-cell {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
 }
 
 .file-sort-button {

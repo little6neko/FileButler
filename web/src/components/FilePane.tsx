@@ -14,7 +14,6 @@ type FilePaneProps = {
   onRootChange(rootId: string): void;
   onPathChange(path: string): void;
   onToggleSelection(path: string): void;
-  onClearSelection(): void;
   onSelectAll(checked: boolean): void;
   onVisibleOrderChange?(paths: string[]): void;
   onRefresh(): void;
@@ -33,7 +32,6 @@ export function FilePane({
   onRootChange,
   onPathChange,
   onToggleSelection,
-  onClearSelection,
   onSelectAll,
   onVisibleOrderChange,
   onRefresh,
@@ -141,7 +139,7 @@ export function FilePane({
           </colgroup>
           <thead>
             <tr>
-              <th>
+              <th className="select-cell">
                 <div className="file-header-cell">
                   <input
                     aria-label={labels.selectAllVisible}
@@ -149,11 +147,7 @@ export function FilePane({
                     checked={allVisibleSelected}
                     onChange={(event) => onSelectAll(event.target.checked)}
                   />
-                  <button type="button" onClick={onClearSelection}>
-                    {labels.clear}
-                  </button>
                 </div>
-                <ResizeHandle label="Resize Selection column" onMouseDown={(event) => startResize(event, "select")} />
               </th>
               <SortableHeader column="name" label={labels.name} />
               <SortableHeader column="type" label={labels.type} />
@@ -170,7 +164,7 @@ export function FilePane({
                   if (entry.type === "directory") onPathChange(entry.relativePath);
                 }}
               >
-                <td>
+                <td className="select-cell">
                   <input
                     aria-label={labels.selectEntry(entry.name)}
                     type="checkbox"
@@ -185,7 +179,7 @@ export function FilePane({
                   ) : null}
                 </td>
                 <td>{entry.type}</td>
-                <td>{entry.size}</td>
+                <td>{formatSize(entry.size)}</td>
                 <td>{entry.modifiedUnix ? new Date(entry.modifiedUnix * 1000).toLocaleString() : ""}</td>
               </tr>
             ))}
@@ -226,9 +220,11 @@ export function FilePane({
     event.preventDefault();
     event.stopPropagation();
     const startX = event.clientX;
+    const headerRight = event.currentTarget.parentElement?.getBoundingClientRect().right ?? startX;
+    const boundaryX = headerRight > 0 ? headerRight : startX;
     const startWidth = columnWidths[column];
     function onMouseMove(moveEvent: MouseEvent) {
-      const next = Math.max(56, startWidth + moveEvent.clientX - startX);
+      const next = Math.max(56, startWidth + moveEvent.clientX - boundaryX);
       setColumnWidths((current) => ({ ...current, [column]: next }));
     }
     function onMouseUp() {
@@ -263,7 +259,7 @@ type ColumnKey = "select" | SortKey;
 type SortState = { column: SortKey; direction: "asc" | "desc" } | null;
 
 const defaultColumnWidths: Record<ColumnKey, number> = {
-  select: 88,
+  select: 36,
   name: 220,
   type: 96,
   size: 84,
@@ -292,14 +288,28 @@ function compareEntries(a: Entry, b: Entry, column: SortKey) {
 }
 
 function columnStyle(widths: Record<ColumnKey, number>) {
+  const totalWidth = Object.values(widths).reduce((sum, width) => sum + width, 0);
   return {
     "--file-col-select": `${widths.select}px`,
     "--file-col-name": `${widths.name}px`,
     "--file-col-type": `${widths.type}px`,
     "--file-col-size": `${widths.size}px`,
     "--file-col-modified": `${widths.modified}px`,
-    minWidth: `${Object.values(widths).reduce((sum, width) => sum + width, 0)}px`,
+    "--file-table-width": `${totalWidth}px`,
+    minWidth: `${totalWidth}px`,
   } as CSSProperties;
+}
+
+function formatSize(size: number) {
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = size;
+  let unitIndex = 0;
+  while (Math.abs(value) >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  const formatted = unitIndex === 0 || Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
+  return `${formatted} ${units[unitIndex]}`;
 }
 
 function displayPath(path: string) {

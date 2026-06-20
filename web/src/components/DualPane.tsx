@@ -79,7 +79,6 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
           else selected.add(path);
           return { ...current, selected };
         }),
-      onClearSelection: () => updatePane(which, (current) => ({ ...current, selected: new Set() })),
       onSelectAll: (checked: boolean) =>
         updatePane(which, (current) => ({
           ...current,

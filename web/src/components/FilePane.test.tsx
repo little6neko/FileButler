@@ -5,9 +5,8 @@ import { FilePane } from "./FilePane";
 
 const roots = [{ id: "data", name: "Data" }];
 
-it("supports selecting and clearing file selections", async () => {
+it("supports selecting file entries", async () => {
   const onToggleSelection = vi.fn();
-  const onClearSelection = vi.fn();
   render(
     <FilePane
       title="Left pane"
@@ -19,7 +18,6 @@ it("supports selecting and clearing file selections", async () => {
       onRootChange={vi.fn()}
       onPathChange={vi.fn()}
       onToggleSelection={onToggleSelection}
-      onClearSelection={onClearSelection}
       onSelectAll={vi.fn()}
       onRefresh={vi.fn()}
       onActivate={vi.fn()}
@@ -27,10 +25,8 @@ it("supports selecting and clearing file selections", async () => {
   );
 
   await userEvent.click(screen.getByLabelText("Select file.txt"));
-  await userEvent.click(screen.getByRole("button", { name: "Clear" }));
 
   expect(onToggleSelection).toHaveBeenCalledWith("file.txt");
-  expect(onClearSelection).toHaveBeenCalled();
 });
 
 it("selects all visible entries from the header checkbox", async () => {
@@ -108,7 +104,6 @@ it("navigates into a directory", async () => {
       onRootChange={vi.fn()}
       onPathChange={onPathChange}
       onToggleSelection={vi.fn()}
-      onClearSelection={vi.fn()}
       onSelectAll={vi.fn()}
       onRefresh={vi.fn()}
       onActivate={vi.fn()}
@@ -140,7 +135,6 @@ it("renders symlink target metadata", () => {
       onRootChange={vi.fn()}
       onPathChange={vi.fn()}
       onToggleSelection={vi.fn()}
-      onClearSelection={vi.fn()}
       onSelectAll={vi.fn()}
       onRefresh={vi.fn()}
       onActivate={vi.fn()}
@@ -174,12 +168,45 @@ it("resizes columns by dragging a header divider", () => {
   expect(table).toHaveStyle({ "--file-col-name": "280px" });
 });
 
-function entry(name: string, type: "file" | "directory" | "symlink" | "other" = "file") {
+it("locks the selection column to checkbox-only and keeps it non-resizable", () => {
+  renderPane();
+
+  expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("separator", { name: "Resize Selection column" })).not.toBeInTheDocument();
+});
+
+it("marks selection cells for checkbox-only styling", () => {
+  renderPane();
+
+  const headerCell = screen.getByLabelText("Select all visible").closest("th");
+  const bodyCell = screen.getByLabelText("Select file.txt").closest("td");
+
+  expect(headerCell).toHaveClass("select-cell");
+  expect(bodyCell).toHaveClass("select-cell");
+});
+
+it("renders file sizes with units", () => {
+  renderPane({ entries: [entry("small.txt", "file", 1), entry("large.bin", "file", 1536)] });
+
+  expect(screen.getByText("1 B")).toBeInTheDocument();
+  expect(screen.getByText("1.5 KB")).toBeInTheDocument();
+});
+
+it("sets table width from the sum of fixed column widths", () => {
+  renderPane();
+
+  expect(screen.getByRole("table")).toHaveStyle({
+    "--file-table-width": "596px",
+    minWidth: "596px",
+  });
+});
+
+function entry(name: string, type: "file" | "directory" | "symlink" | "other" = "file", size = 1) {
   return {
     name,
     relativePath: name,
     type,
-    size: 1,
+    size,
     mode: "-rw-r--r--",
     modifiedUnix: 0,
     isSymlink: false,
@@ -197,7 +224,6 @@ function renderPane(overrides: Partial<Parameters<typeof FilePane>[0]> = {}) {
     onRootChange: vi.fn(),
     onPathChange: vi.fn(),
     onToggleSelection: vi.fn(),
-    onClearSelection: vi.fn(),
     onSelectAll: vi.fn(),
     onRefresh: vi.fn(),
     onActivate: vi.fn(),

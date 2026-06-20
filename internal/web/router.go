@@ -10,18 +10,21 @@ import (
 	"github.com/little6neko/filebutler/internal/config"
 	"github.com/little6neko/filebutler/internal/jobs"
 	"github.com/little6neko/filebutler/internal/ops"
+	"github.com/little6neko/filebutler/internal/rename"
 	"github.com/little6neko/filebutler/internal/roots"
 )
 
 type Deps struct {
-	Config      config.Config
-	Auth        auth.Service
-	Roots       roots.Resolver
-	Browser     browser.Service
-	OpsPlanner  ops.Planner
-	RenameStore jobs.Store
-	JobStore    jobs.Store
-	AuditStore  audit.Store
+	Config       config.Config
+	Auth         auth.Service
+	Roots        roots.Resolver
+	Browser      browser.Service
+	OpsPlanner   ops.Planner
+	RenameStore  jobs.Store
+	JobStore     jobs.Store
+	AuditStore   audit.Store
+	OpsRunner    jobs.Runner
+	RenameRunner jobs.Runner
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -43,8 +46,10 @@ func NewRouter(deps Deps) http.Handler {
 		protected.Use(auth.RequireAuth(deps.Auth, cookieName))
 		protected.Get("/api/roots", rootsHandler(deps.Roots))
 		protected.Get("/api/browse", browseHandler(deps.Browser))
-		protected.Post("/api/ops/dry-run", opsDryRunHandler(deps.OpsPlanner))
-		protected.Post("/api/rename/preview", placeholderPost("rename preview endpoint not wired yet"))
+		protected.Post("/api/ops/dry-run", ops.DryRunHandler(deps.OpsPlanner))
+		protected.Post("/api/ops/jobs", ops.CreateJobHandler(deps.OpsPlanner, deps.JobStore, deps.OpsRunner))
+		protected.Post("/api/rename/preview", rename.PreviewHandler(deps.Browser))
+		protected.Post("/api/rename/jobs", rename.CreateJobHandler(deps.Browser, deps.JobStore, deps.RenameRunner))
 		protected.Get("/api/jobs", jobs.ListHandler(deps.JobStore))
 		protected.Get("/api/jobs/{id}", jobs.GetHandler(deps.JobStore))
 		protected.Post("/api/jobs/{id}/cancel", jobs.CancelHandler(deps.JobStore))
@@ -75,22 +80,6 @@ func browseHandler(service browser.Service) http.HandlerFunc {
 	}
 }
 
-func opsDryRunHandler(planner ops.Planner) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var req ops.Request
-		if err := DecodeJSON(r, &req); err != nil {
-			Error(w, http.StatusBadRequest, "invalid_request", "invalid JSON body")
-			return
-		}
-		plan, err := planner.Plan(r.Context(), req)
-		if err != nil {
-			Error(w, http.StatusBadRequest, "invalid_request", err.Error())
-			return
-		}
-		Data(w, http.StatusOK, plan)
-	}
-}
-
 func auditHandler(store audit.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		records, err := store.List(r.Context(), 50)
@@ -99,11 +88,5 @@ func auditHandler(store audit.Store) http.HandlerFunc {
 			return
 		}
 		Data(w, http.StatusOK, records)
-	}
-}
-
-func placeholderPost(message string) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		Error(w, http.StatusNotImplemented, "not_found", message)
 	}
 }

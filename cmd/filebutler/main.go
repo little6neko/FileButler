@@ -13,6 +13,7 @@ import (
 	"github.com/little6neko/filebutler/internal/config"
 	"github.com/little6neko/filebutler/internal/jobs"
 	"github.com/little6neko/filebutler/internal/ops"
+	"github.com/little6neko/filebutler/internal/rename"
 	"github.com/little6neko/filebutler/internal/roots"
 	"github.com/little6neko/filebutler/internal/store"
 	"github.com/little6neko/filebutler/internal/web"
@@ -43,14 +44,18 @@ func main() {
 		SessionMaxAge: time.Duration(cfg.Session.MaxAgeSeconds) * time.Second,
 	}
 	jobStore := jobs.Store{DB: db}
+	auditStore := audit.Store{DB: db}
+	opsExecutor := ops.Executor{Resolver: resolver}
 	r := web.NewRouter(web.Deps{
-		Config:     cfg,
-		Auth:       authService,
-		Roots:      resolver,
-		Browser:    browser.Service{Resolver: resolver},
-		OpsPlanner: ops.Planner{Resolver: resolver},
-		JobStore:   jobStore,
-		AuditStore: audit.Store{DB: db},
+		Config:       cfg,
+		Auth:         authService,
+		Roots:        resolver,
+		Browser:      browser.Service{Resolver: resolver},
+		OpsPlanner:   ops.Planner{Resolver: resolver},
+		JobStore:     jobStore,
+		AuditStore:   auditStore,
+		OpsRunner:    jobs.Runner{Store: jobStore, Audit: auditStore, Executor: ops.JobExecutor{Executor: opsExecutor}},
+		RenameRunner: jobs.Runner{Store: jobStore, Audit: auditStore, Executor: rename.Executor{Resolver: resolver}},
 	})
 
 	log.Printf("FileButler listening on %s", cfg.Listen)

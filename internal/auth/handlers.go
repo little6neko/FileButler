@@ -17,6 +17,10 @@ func CurrentUser(ctx context.Context) (User, bool) {
 	return user, ok
 }
 
+func ContextWithUser(ctx context.Context, user User) context.Context {
+	return context.WithValue(ctx, userContextKey, user)
+}
+
 func InitStatusHandler(service Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		needs, err := service.NeedsInitialization(r.Context())

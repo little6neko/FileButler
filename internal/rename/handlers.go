@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/little6neko/filebutler/internal/auth"
 	"github.com/little6neko/filebutler/internal/browser"
@@ -92,7 +93,29 @@ func BuildPlan(ctx context.Context, resolver roots.Resolver, req HandlerRequest)
 	if err != nil {
 		return PlanResult{}, err
 	}
-	return Plan(inputs, req.Options, existingPathFunc(resolver, req.RootID))
+	return PowerRenamePlan(inputs, powerRenameOptionsFromLegacy(req.Options), existingPathFunc(resolver, req.RootID))
+}
+
+func powerRenameOptionsFromLegacy(opts Options) PowerRenameOptions {
+	replace := opts.Replace
+	enumerateItems := opts.Enumerate && strings.Contains(replace, "${")
+	legacyAppendEnumeration := opts.Enumerate && !enumerateItems
+	return PowerRenameOptions{
+		Search:            opts.Search,
+		Replace:           replace,
+		UseRegex:          opts.UseRegex,
+		CaseSensitive:     opts.CaseSensitive,
+		MatchAll:          opts.MatchAll,
+		NameOnly:          opts.Target == "" || opts.Target == TargetName,
+		ExtensionOnly:     opts.Target == TargetExtension,
+		FullName:          opts.Target == TargetBoth,
+		ExcludeFiles:      !opts.IncludeFiles,
+		ExcludeFolders:    !opts.IncludeDirs,
+		ExcludeSubfolders: !opts.IncludeSubfolders,
+		EnumerateItems:    enumerateItems,
+
+		LegacyAppendEnumeration: legacyAppendEnumeration,
+	}
 }
 
 func resolveRenameInputs(ctx context.Context, resolver roots.Resolver, rootID string, paths []string) ([]InputItem, error) {

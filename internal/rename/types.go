@@ -21,6 +21,28 @@ type Options struct {
 	Enumerate         bool       `json:"enumerate"`
 }
 
+type PowerRenameOptions struct {
+	Search            string `json:"search"`
+	Replace           string `json:"replace"`
+	UseRegex          bool   `json:"useRegex"`
+	CaseSensitive     bool   `json:"caseSensitive"`
+	MatchAll          bool   `json:"matchAll"`
+	NameOnly          bool   `json:"nameOnly"`
+	ExtensionOnly     bool   `json:"extensionOnly"`
+	FullName          bool   `json:"fullName"`
+	ExcludeFiles      bool   `json:"excludeFiles"`
+	ExcludeFolders    bool   `json:"excludeFolders"`
+	ExcludeSubfolders bool   `json:"excludeSubfolders"`
+	Uppercase         bool   `json:"uppercase"`
+	Lowercase         bool   `json:"lowercase"`
+	Titlecase         bool   `json:"titlecase"`
+	Capitalized       bool   `json:"capitalized"`
+	EnumerateItems    bool   `json:"enumerateItems"`
+	RandomizeItems    bool   `json:"randomizeItems"`
+
+	LegacyAppendEnumeration bool `json:"-"`
+}
+
 type InputItem struct {
 	RelativePath string
 	IsDir        bool

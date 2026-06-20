@@ -77,3 +77,24 @@ it("marks the clicked pane as active", async () => {
   await userEvent.click(screen.getByRole("region", { name: "Right pane" }));
   expect(workspace).toHaveAttribute("data-active-pane", "right");
 });
+
+it("enables ordinary rename only for one selected item and keeps PowerRename for batch selection", async () => {
+  vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
+  vi.mocked(api.browse).mockResolvedValue([
+    { name: "a.txt", relativePath: "a.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+    { name: "b.txt", relativePath: "b.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+  ]);
+  render(<DualPane />);
+
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  expect(screen.getByRole("button", { name: "Rename" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "PowerRename" })).toBeDisabled();
+
+  await userEvent.click(within(leftPane).getByLabelText("Select a.txt"));
+  expect(screen.getByRole("button", { name: "Rename" })).not.toBeDisabled();
+  expect(screen.getByRole("button", { name: "PowerRename" })).not.toBeDisabled();
+
+  await userEvent.click(within(leftPane).getByLabelText("Select b.txt"));
+  expect(screen.getByRole("button", { name: "Rename" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "PowerRename" })).not.toBeDisabled();
+});

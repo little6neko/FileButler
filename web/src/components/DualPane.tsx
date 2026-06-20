@@ -7,6 +7,7 @@ import { FilePane } from "./FilePane";
 import { JobsPanel } from "./JobsPanel";
 import { OperationPreview } from "./OperationPreview";
 import { RenameDialog } from "./RenameDialog";
+import { SingleRenameDialog } from "./SingleRenameDialog";
 
 type PaneKey = "left" | "right";
 
@@ -21,7 +22,8 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
   const [roots, setRoots] = useState<Root[]>([]);
   const [activePane, setActivePane] = useState<PaneKey>("left");
   const [previewRequest, setPreviewRequest] = useState<OpsRequest | null>(null);
-  const [renameOpen, setRenameOpen] = useState(false);
+  const [singleRenameOpen, setSingleRenameOpen] = useState(false);
+  const [powerRenameOpen, setPowerRenameOpen] = useState(false);
   const [jobsOpen, setJobsOpen] = useState(false);
   const [left, setLeft] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set() });
   const [right, setRight] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set() });
@@ -101,8 +103,11 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
         <button type="button" onClick={openMkdir}>
           {labels.mkdir}
         </button>
-        <button type="button" onClick={() => setRenameOpen(true)} disabled={!activeSelection().length}>
+        <button type="button" onClick={() => setSingleRenameOpen(true)} disabled={activeSelection().length !== 1}>
           {labels.rename}
+        </button>
+        <button type="button" onClick={() => setPowerRenameOpen(true)} disabled={!activeSelection().length}>
+          {labels.powerRename}
         </button>
         <button type="button" onClick={() => setJobsOpen((value) => !value)}>
           {labels.jobs}
@@ -124,14 +129,27 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
           }}
         />
       ) : null}
-      {renameOpen ? (
+      {singleRenameOpen ? (
+        <SingleRenameDialog
+          rootId={activeState().rootId}
+          path={activeSelection()[0]}
+          initialName={basename(activeSelection()[0])}
+          labels={labels}
+          onClose={() => setSingleRenameOpen(false)}
+          onJobCreated={() => {
+            setSingleRenameOpen(false);
+            setJobsOpen(true);
+          }}
+        />
+      ) : null}
+      {powerRenameOpen ? (
         <RenameDialog
           rootId={activeState().rootId}
           paths={activeSelection()}
           labels={labels}
-          onClose={() => setRenameOpen(false)}
+          onClose={() => setPowerRenameOpen(false)}
           onJobCreated={() => {
-            setRenameOpen(false);
+            setPowerRenameOpen(false);
             setJobsOpen(true);
           }}
         />
@@ -150,6 +168,11 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
 
   function activeSelection() {
     return Array.from(activeState().selected);
+  }
+
+  function basename(path: string) {
+    const parts = path.split("/").filter(Boolean);
+    return parts[parts.length - 1] ?? path;
   }
 
   function openOperation(type: OpsRequest["type"]) {

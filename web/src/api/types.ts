@@ -39,6 +39,12 @@ export type RenameRequest = {
   options: RenameOptions;
 };
 
+export type SingleRenameRequest = {
+  rootId: string;
+  paths: string[];
+  newName: string;
+};
+
 export type PlanItem = {
   operation?: string;
   sourcePath: string;

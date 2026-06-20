@@ -418,6 +418,20 @@ button:disabled {
   margin-top: 12px;
 }
 
+.single-rename-field {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 13px;
+}
+
+.single-rename-field input {
+  min-height: 32px;
+  border: 1px solid #c7d0d9;
+  border-radius: 4px;
+  padding: 0 8px;
+}
+
 .rename-controls label {
   display: flex;
   gap: 6px;

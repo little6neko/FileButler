@@ -17,6 +17,7 @@ export type UIStrings = {
   delete: string;
   mkdir: string;
   rename: string;
+  powerRename: string;
   jobs: string;
   refresh: string;
   clear: string;
@@ -55,6 +56,7 @@ export type UIStrings = {
   renameFailed: string;
   cancel: string;
   directoryNamePrompt: string;
+  newName: string;
   pathLabel(title: string): string;
   rootLabel(title: string): string;
   refreshLabel(title: string): string;
@@ -81,6 +83,7 @@ export const strings: Record<Language, UIStrings> = {
     delete: "delete",
     mkdir: "mkdir",
     rename: "Rename",
+    powerRename: "PowerRename",
     jobs: "Jobs",
     refresh: "Refresh",
     clear: "Clear",
@@ -119,6 +122,7 @@ export const strings: Record<Language, UIStrings> = {
     renameFailed: "Rename failed",
     cancel: "Cancel",
     directoryNamePrompt: "Directory name",
+    newName: "New name",
     pathLabel: (title) => `${title} path`,
     rootLabel: (title) => `${title} root`,
     refreshLabel: (title) => `${title} refresh`,
@@ -143,6 +147,7 @@ export const strings: Record<Language, UIStrings> = {
     delete: "删除",
     mkdir: "新建文件夹",
     rename: "重命名",
+    powerRename: "PowerRename",
     jobs: "任务",
     refresh: "刷新",
     clear: "清除",
@@ -181,6 +186,7 @@ export const strings: Record<Language, UIStrings> = {
     renameFailed: "重命名失败",
     cancel: "取消",
     directoryNamePrompt: "文件夹名称",
+    newName: "新名称",
     pathLabel: (title) => `${title}路径`,
     rootLabel: (title) => `${title}根目录`,
     refreshLabel: (title) => `${title}刷新`,

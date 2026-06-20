@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { FilePane } from "./FilePane";
@@ -202,17 +202,21 @@ it("renders file sizes with units", () => {
   expect(screen.getByText("1.5 KB")).toBeInTheDocument();
 });
 
-it("lets the name column fill remaining table width while other columns stay fixed", () => {
+it("lets the name column fill remaining table width while staying resizable", async () => {
+  const clientWidth = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(800);
   renderPane();
 
   const table = screen.getByRole("table");
   const columns = table.querySelectorAll("col");
-  expect(table).toHaveStyle({ width: "100%", minWidth: "596px" });
+
+  await waitFor(() => expect(table).toHaveStyle({ "--file-col-name": "424px", "--file-table-width": "800px" }));
+  expect(table).toHaveStyle({ width: "var(--file-table-width)", minWidth: "800px" });
   expect(columns[0]).toHaveStyle({ width: "var(--file-col-select)" });
-  expect(columns[1]).not.toHaveAttribute("style");
+  expect(columns[1]).toHaveStyle({ width: "var(--file-col-name)" });
   expect(columns[2]).toHaveStyle({ width: "var(--file-col-type)" });
   expect(columns[3]).toHaveStyle({ width: "var(--file-col-size)" });
   expect(columns[4]).toHaveStyle({ width: "var(--file-col-modified)" });
+  clientWidth.mockRestore();
 });
 
 function entry(name: string, type: "file" | "directory" | "symlink" | "other" = "file", size = 1) {

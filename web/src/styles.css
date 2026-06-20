@@ -292,7 +292,7 @@ button:disabled {
 }
 
 .file-table {
-  width: 100%;
+  width: var(--file-table-width);
   height: auto;
   border-collapse: collapse;
   table-layout: fixed;

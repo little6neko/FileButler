@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import type { Entry, Root } from "../api/types";
 import { strings } from "../i18n";
@@ -45,6 +45,8 @@ export function FilePane({
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
   const [sortState, setSortState] = useState<SortState>({ column: "name", direction: "asc" });
   const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(defaultColumnWidths);
+  const fileListRef = useRef<HTMLDivElement>(null);
+  const columnsResizedRef = useRef(false);
   const visibleEntries = useMemo(() => sortEntries(entries, sortState), [entries, sortState]);
   const allVisibleSelected = visibleEntries.length > 0 && visibleEntries.every((entry) => selectedPaths.has(entry.relativePath));
   const suggestions = useMemo(
@@ -67,6 +69,30 @@ export function FilePane({
   useEffect(() => {
     onVisibleOrderChange?.(visibleEntries.map((entry) => entry.relativePath));
   }, [onVisibleOrderChange, visibleEntries]);
+
+  useEffect(() => {
+    function fitDefaultNameColumn() {
+      if (columnsResizedRef.current) return;
+      const listWidth = fileListRef.current?.clientWidth ?? 0;
+      if (listWidth <= 0) return;
+
+      setColumnWidths((current) => {
+        const fixedWidth = current.select + current.type + current.size + current.modified;
+        const nextNameWidth = Math.max(defaultColumnWidths.name, listWidth - fixedWidth);
+        if (current.name === nextNameWidth) return current;
+        return { ...current, name: nextNameWidth };
+      });
+    }
+
+    fitDefaultNameColumn();
+
+    const fileList = fileListRef.current;
+    if (!fileList || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(fitDefaultNameColumn);
+    observer.observe(fileList);
+    return () => observer.disconnect();
+  }, []);
 
   return (
     <section className={`file-pane${isActive ? " is-active" : ""}`} aria-label={title} onClick={onActivate}>
@@ -130,11 +156,11 @@ export function FilePane({
           </button>
         ))}
       </nav>
-      <div className="file-list">
+      <div className="file-list" ref={fileListRef}>
         <table className="file-table" style={columnStyle(columnWidths)}>
           <colgroup>
             <col style={{ width: "var(--file-col-select)" }} />
-            <col />
+            <col style={{ width: "var(--file-col-name)" }} />
             <col style={{ width: "var(--file-col-type)" }} />
             <col style={{ width: "var(--file-col-size)" }} />
             <col style={{ width: "var(--file-col-modified)" }} />
@@ -222,6 +248,7 @@ export function FilePane({
   function startResize(event: ReactMouseEvent<HTMLSpanElement>, column: ColumnKey) {
     event.preventDefault();
     event.stopPropagation();
+    columnsResizedRef.current = true;
     const startX = event.clientX;
     const headerRight = event.currentTarget.parentElement?.getBoundingClientRect().right ?? startX;
     const boundaryX = headerRight > 0 ? headerRight : startX;
@@ -293,12 +320,13 @@ function compareEntries(a: Entry, b: Entry, column: SortKey) {
 function columnStyle(widths: Record<ColumnKey, number>) {
   const totalWidth = Object.values(widths).reduce((sum, width) => sum + width, 0);
   return {
-    width: "100%",
+    width: "var(--file-table-width)",
     "--file-col-select": `${widths.select}px`,
     "--file-col-name": `${widths.name}px`,
     "--file-col-type": `${widths.type}px`,
     "--file-col-size": `${widths.size}px`,
     "--file-col-modified": `${widths.modified}px`,
+    "--file-table-width": `${totalWidth}px`,
     minWidth: `${totalWidth}px`,
   } as CSSProperties;
 }

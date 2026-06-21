@@ -13,8 +13,15 @@
   box-sizing: border-box;
 }
 
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
+  overflow: hidden;
 }
 
 button,
@@ -43,9 +50,11 @@ button:disabled {
 }
 
 .app-shell {
+  height: 100vh;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .topbar {
@@ -149,6 +158,7 @@ button:disabled {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 8px minmax(0, 1fr);
   background: #eef2f5;
+  overflow: hidden;
 }
 
 .workspace-toolbar {
@@ -182,6 +192,7 @@ button:disabled {
   border-top: 1px solid #d9e0e7;
   outline: 2px solid transparent;
   outline-offset: -2px;
+  overflow: hidden;
 }
 
 .file-pane.is-active {
@@ -315,6 +326,13 @@ button:disabled {
 .file-table th:last-child,
 .file-table td:last-child {
   border-right: 0;
+}
+
+.file-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #ffffff;
 }
 
 .file-table th.select-cell,

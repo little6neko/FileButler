@@ -184,6 +184,7 @@ button:disabled {
 }
 
 .file-pane {
+  position: relative;
   min-width: 0;
   min-height: 0;
   display: grid;
@@ -198,6 +199,15 @@ button:disabled {
 .file-pane.is-active {
   outline-color: #2b72c4;
   box-shadow: inset 0 0 0 1px #2b72c4;
+}
+
+.file-pane.is-active::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  border: 2px solid #2b72c4;
 }
 
 .pane-header {
@@ -401,6 +411,7 @@ button:disabled {
 .modal-backdrop {
   position: fixed;
   inset: 0;
+  z-index: 10;
   display: grid;
   place-items: center;
   background: rgb(29 35 42 / 0.32);
@@ -470,6 +481,7 @@ button:disabled {
   top: 56px;
   right: 0;
   bottom: 0;
+  z-index: 6;
   width: min(360px, 100%);
   background: #ffffff;
   border-left: 1px solid #c7d0d9;

@@ -9,6 +9,7 @@ import type { MediaKind } from "../media";
 import { FilePane } from "./FilePane";
 import { JobsPanel } from "./JobsPanel";
 import { MediaPreview } from "./MediaPreview";
+import { MkdirDialog } from "./MkdirDialog";
 import { OperationPreview } from "./OperationPreview";
 import { RenameDialog } from "./RenameDialog";
 import { SingleRenameDialog } from "./SingleRenameDialog";
@@ -34,6 +35,7 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
   const [activePane, setActivePane] = useState<PaneKey>("left");
   const [previewRequest, setPreviewRequest] = useState<OpsRequest | null>(null);
   const [mediaPreview, setMediaPreview] = useState<MediaPreviewState | null>(null);
+  const [mkdirOpen, setMkdirOpen] = useState(false);
   const [singleRenameOpen, setSingleRenameOpen] = useState(false);
   const [powerRenameOpen, setPowerRenameOpen] = useState(false);
   const [jobsOpen, setJobsOpen] = useState(false);
@@ -204,6 +206,16 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
           onClose={() => setMediaPreview(null)}
         />
       ) : null}
+      {mkdirOpen ? (
+        <MkdirDialog
+          labels={labels}
+          onClose={() => setMkdirOpen(false)}
+          onSubmit={(name) => {
+            setMkdirOpen(false);
+            createMkdirPreview(name);
+          }}
+        />
+      ) : null}
       {singleRenameOpen ? (
         <SingleRenameDialog
           rootId={activeState().rootId}
@@ -277,9 +289,11 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
   }
 
   function openMkdir() {
+    setMkdirOpen(true);
+  }
+
+  function createMkdirPreview(name: string) {
     const source = activeState();
-    const name = window.prompt(labels.directoryNamePrompt);
-    if (!name) return;
     setPreviewRequest({
       type: "mkdir",
       sourceRoot: source.rootId,

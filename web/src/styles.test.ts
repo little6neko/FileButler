@@ -19,6 +19,21 @@ it("keeps file table headers fixed while pane contents scroll", () => {
   expect(rule(".file-table thead th")).toContain("background: #ffffff;");
 });
 
+it("draws the active pane border above sticky file headers", () => {
+  expect(rule(".file-pane")).toContain("position: relative;");
+  expect(rule(".file-pane.is-active::after")).toContain('content: "";');
+  expect(rule(".file-pane.is-active::after")).toContain("position: absolute;");
+  expect(rule(".file-pane.is-active::after")).toContain("inset: 0;");
+  expect(rule(".file-pane.is-active::after")).toContain("z-index: 4;");
+  expect(rule(".file-pane.is-active::after")).toContain("pointer-events: none;");
+  expect(rule(".file-pane.is-active::after")).toContain("border: 2px solid #2b72c4;");
+});
+
+it("keeps overlays above the active pane border", () => {
+  expect(rule(".jobs-panel")).toContain("z-index: 6;");
+  expect(rule(".modal-backdrop")).toContain("z-index: 10;");
+});
+
 function rule(selector: string) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = css.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { api } from "../api/client";
-import type { Entry, OpsRequest, Root } from "../api/types";
+import type { Entry, OpsRequest, RenameOptions, Root } from "../api/types";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
 import { mediaKindForPath } from "../media";
@@ -38,6 +38,7 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
   const [mkdirOpen, setMkdirOpen] = useState(false);
   const [singleRenameOpen, setSingleRenameOpen] = useState(false);
   const [powerRenameOpen, setPowerRenameOpen] = useState(false);
+  const [powerRenameOptions, setPowerRenameOptions] = useState<RenameOptions | undefined>();
   const [jobsOpen, setJobsOpen] = useState(false);
   const [leftPanePercent, setLeftPanePercent] = useState(50);
   const [left, setLeft] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), visibleOrder: [] });
@@ -233,8 +234,10 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
         <RenameDialog
           rootId={activeState().rootId}
           paths={activeSelection()}
+          initialOptions={powerRenameOptions}
           labels={labels}
           onClose={() => setPowerRenameOpen(false)}
+          onOptionsCommitted={setPowerRenameOptions}
           onJobCreated={(id) => {
             setPowerRenameOpen(false);
             handleJobCreated(id);

@@ -222,6 +222,51 @@ it("opens PowerRename with selected paths in the current visible sort order", as
   );
 });
 
+it("keeps PowerRename settings only after a rename job is created", async () => {
+  vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
+  vi.mocked(api.browse).mockResolvedValue([
+    { name: "file.txt", relativePath: "file.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+  ]);
+  vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
+  vi.mocked(api.renameCreateJob).mockResolvedValue({ id: "job-rename" });
+  vi.mocked(api.job).mockResolvedValue({
+    id: "job-rename",
+    type: "rename",
+    status: "completed",
+    progressTotal: 1,
+    progressDone: 1,
+    errorMessage: "",
+    items: [],
+  });
+  render(<DualPane />);
+
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  await userEvent.click(await within(leftPane).findByLabelText("Select file.txt"));
+  await userEvent.click(screen.getByRole("button", { name: "PowerRename" }));
+  let dialog = await screen.findByRole("region", { name: "Rename dialog" });
+  await userEvent.type(within(dialog).getByLabelText("Search"), "draft");
+  await userEvent.click(within(dialog).getByLabelText("Use regular expressions"));
+  await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+
+  await userEvent.click(screen.getByRole("button", { name: "PowerRename" }));
+  dialog = await screen.findByRole("region", { name: "Rename dialog" });
+  expect(within(dialog).getByLabelText("Search")).toHaveValue("");
+  expect(within(dialog).getByLabelText("Use regular expressions")).not.toBeChecked();
+
+  await userEvent.type(within(dialog).getByLabelText("Search"), "committed");
+  await userEvent.type(within(dialog).getByLabelText("Replace"), "renamed");
+  await userEvent.click(within(dialog).getByLabelText("Use regular expressions"));
+  await userEvent.click(within(dialog).getByRole("button", { name: "Run rename" }));
+  await waitFor(() => expect(api.renameCreateJob).toHaveBeenCalled());
+
+  await userEvent.click(await within(leftPane).findByLabelText("Select file.txt"));
+  await userEvent.click(screen.getByRole("button", { name: "PowerRename" }));
+  dialog = await screen.findByRole("region", { name: "Rename dialog" });
+  expect(within(dialog).getByLabelText("Search")).toHaveValue("committed");
+  expect(within(dialog).getByLabelText("Replace")).toHaveValue("renamed");
+  expect(within(dialog).getByLabelText("Use regular expressions")).toBeChecked();
+});
+
 it("clears hidden selection after a rename job refreshes the pane", async () => {
   let renamed = false;
   vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);

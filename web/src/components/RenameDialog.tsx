@@ -8,12 +8,14 @@ import { ErrorBanner } from "./ErrorBanner";
 type Props = {
   rootId: string;
   paths: string[];
+  initialOptions?: RenameOptions;
+  onOptionsCommitted?(options: RenameOptions): void;
   onJobCreated(id: string): void;
   onClose(): void;
   labels?: UIStrings;
 };
 
-const defaultOptions: RenameOptions = {
+export const defaultRenameOptions: RenameOptions = {
   search: "",
   replace: "",
   useRegex: false,
@@ -38,8 +40,16 @@ const defaultOptions: RenameOptions = {
   randomizeItems: false,
 };
 
-export function RenameDialog({ rootId, paths, onJobCreated, onClose, labels = strings.en }: Props) {
-  const [options, setOptions] = useState<RenameOptions>(defaultOptions);
+export function RenameDialog({
+  rootId,
+  paths,
+  initialOptions,
+  onOptionsCommitted,
+  onJobCreated,
+  onClose,
+  labels = strings.en,
+}: Props) {
+  const [options, setOptions] = useState<RenameOptions>(() => ({ ...(initialOptions ?? defaultRenameOptions) }));
   const [items, setItems] = useState<PlanItem[]>([]);
   const [hasConflict, setHasConflict] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +73,7 @@ export function RenameDialog({ rootId, paths, onJobCreated, onClose, labels = st
   async function run() {
     try {
       const job = await api.renameCreateJob({ rootId, paths, options });
+      onOptionsCommitted?.({ ...options });
       onJobCreated(job.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : labels.renameFailed);

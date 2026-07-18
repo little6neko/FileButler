@@ -11,6 +11,9 @@ vi.mock("./api/client", () => ({
     me: vi.fn(),
     roots: vi.fn(),
     browse: vi.fn(),
+    jobs: vi.fn(),
+    job: vi.fn(),
+    cancelJob: vi.fn(),
   },
 }));
 
@@ -19,6 +22,7 @@ beforeEach(() => {
   vi.mocked(api.me).mockResolvedValue({ id: 1, username: "admin" });
   vi.mocked(api.roots).mockResolvedValue([{ id: "downloads", name: "Downloads" }]);
   vi.mocked(api.browse).mockResolvedValue([]);
+  vi.mocked(api.jobs).mockResolvedValue([]);
 });
 
 it("renders the FileButler app shell", async () => {

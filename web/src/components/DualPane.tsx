@@ -9,7 +9,7 @@ import type { MediaKind } from "../media";
 import { ActionToolbar } from "./ActionToolbar";
 import { AppShell } from "./AppShell";
 import { FilePane } from "./FilePane";
-import { JobsPanel } from "./JobsPanel";
+import { JobsSheet } from "./JobsSheet";
 import { LanguageSelect } from "./LanguageSelect";
 import { MediaPreview } from "./MediaPreview";
 import { MkdirDialog } from "./MkdirDialog";
@@ -53,7 +53,7 @@ export function DualPane({
   const [powerRenameOpen, setPowerRenameOpen] = useState(false);
   const [powerRenameOptions, setPowerRenameOptions] = useState<RenameOptions | undefined>();
   const [jobsOpen, setJobsOpen] = useState(false);
-  const [activeJobCount] = useState(0);
+  const [activeJobCount, setActiveJobCount] = useState(0);
   const [leftPanePercent, setLeftPanePercent] = useState(50);
   const [left, setLeft] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), visibleOrder: [], loading: false, error: null });
   const [right, setRight] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), visibleOrder: [], loading: false, error: null });
@@ -278,7 +278,12 @@ export function DualPane({
           }}
         />
       ) : null}
-      <JobsPanel open={jobsOpen} labels={labels} />
+      <JobsSheet
+        open={jobsOpen}
+        onOpenChange={setJobsOpen}
+        onActiveCountChange={setActiveJobCount}
+        labels={labels}
+      />
     </>
   );
 

@@ -42,6 +42,11 @@ export type UIStrings = {
   rename: string;
   powerRename: string;
   jobs: string;
+  allJobs: string;
+  runningJobs: string;
+  completedJobs: string;
+  emptyJobs: string;
+  jobProgress(type: string): string;
   refresh: string;
   resizePanes: string;
   selectAllVisible: string;
@@ -152,6 +157,11 @@ export const strings: Record<Language, UIStrings> = {
     rename: "Rename",
     powerRename: "PowerRename",
     jobs: "Jobs",
+    allJobs: "All",
+    runningJobs: "Running",
+    completedJobs: "Completed",
+    emptyJobs: "No background jobs yet",
+    jobProgress: (type) => `${strings.en.operationType(type)} progress`,
     refresh: "Refresh",
     resizePanes: "Resize panes",
     selectAllVisible: "Select all visible",
@@ -260,6 +270,11 @@ export const strings: Record<Language, UIStrings> = {
     rename: "重命名",
     powerRename: "PowerRename",
     jobs: "任务",
+    allJobs: "全部",
+    runningJobs: "进行中",
+    completedJobs: "已完成",
+    emptyJobs: "暂无后台任务",
+    jobProgress: (type) => `${strings["zh-CN"].operationType(type)}进度`,
     refresh: "刷新",
     resizePanes: "调整左右栏宽度",
     selectAllVisible: "全选可见文件",

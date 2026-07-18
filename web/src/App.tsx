@@ -60,8 +60,8 @@ export default function App() {
           <h2>{t.loadingWorkspace}</h2>
         </section>
       )}
-      {state === "init" && <InitScreen onInitialized={() => setState("ready")} />}
-      {state === "login" && <LoginScreen onLoggedIn={() => setState("ready")} />}
+      {state === "init" && <InitScreen labels={t} onInitialized={() => setState("ready")} />}
+      {state === "login" && <LoginScreen labels={t} onLoggedIn={() => setState("ready")} />}
       {state === "ready" && <DualPane labels={t} />}
     </main>
   );

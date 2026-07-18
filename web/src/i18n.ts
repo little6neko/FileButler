@@ -8,6 +8,22 @@ export type UIStrings = {
   languageEnglish: string;
   languageChinese: string;
   loadingWorkspace: string;
+  authTagline: string;
+  authDescription: string;
+  administratorLogin: string;
+  loginDescription: string;
+  initializeAdministrator: string;
+  initializeDescription: string;
+  username: string;
+  password: string;
+  confirmPassword: string;
+  logIn: string;
+  createAdministrator: string;
+  usernameRequired: string;
+  passwordTooShort: string;
+  passwordMismatch: string;
+  loginFailed: string;
+  initializationFailed: string;
   leftPane: string;
   rightPane: string;
   move: string;
@@ -90,6 +106,22 @@ export const strings: Record<Language, UIStrings> = {
     languageEnglish: "English",
     languageChinese: "简体中文",
     loadingWorkspace: "Loading workspace",
+    authTagline: "Keep file work under control",
+    authDescription: "A secure, self-hosted dual-pane file workspace.",
+    administratorLogin: "Administrator login",
+    loginDescription: "Sign in to continue to FileButler.",
+    initializeAdministrator: "Initialize administrator",
+    initializeDescription: "Create the first administrator account for this installation.",
+    username: "Username",
+    password: "Password",
+    confirmPassword: "Confirm password",
+    logIn: "Log in",
+    createAdministrator: "Create administrator",
+    usernameRequired: "Username is required",
+    passwordTooShort: "Password must be at least 10 characters",
+    passwordMismatch: "Passwords do not match",
+    loginFailed: "Login failed",
+    initializationFailed: "Initialization failed",
     leftPane: "Left pane",
     rightPane: "Right pane",
     move: "move",
@@ -170,6 +202,22 @@ export const strings: Record<Language, UIStrings> = {
     languageEnglish: "English",
     languageChinese: "简体中文",
     loadingWorkspace: "正在加载工作区",
+    authTagline: "让文件整理更从容",
+    authDescription: "安全、自托管的双栏文件工作台。",
+    administratorLogin: "管理员登录",
+    loginDescription: "登录以进入 FileButler。",
+    initializeAdministrator: "初始化管理员",
+    initializeDescription: "为当前 FileButler 实例创建首个管理员账户。",
+    username: "用户名",
+    password: "密码",
+    confirmPassword: "确认密码",
+    logIn: "登录",
+    createAdministrator: "创建管理员",
+    usernameRequired: "请输入用户名",
+    passwordTooShort: "密码长度至少为 10 个字符",
+    passwordMismatch: "两次输入的密码不一致",
+    loginFailed: "登录失败",
+    initializationFailed: "初始化失败",
     leftPane: "左栏",
     rightPane: "右栏",
     move: "移动",

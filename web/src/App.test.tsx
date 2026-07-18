@@ -37,3 +37,11 @@ it("allows manually switching to Simplified Chinese labels", async () => {
 
   expect(screen.getByRole("button", { name: "移动" })).toBeInTheDocument();
 });
+
+it("uses the selected language on the login screen", async () => {
+  vi.mocked(api.me).mockRejectedValue(new Error("unauthorized"));
+  render(<App />);
+
+  await userEvent.selectOptions(await screen.findByLabelText("Language"), "zh-CN");
+  expect(screen.getByRole("heading", { name: "管理员登录" })).toBeInTheDocument();
+});

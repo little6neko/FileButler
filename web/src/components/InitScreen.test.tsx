@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
+import { strings } from "../i18n";
 import { InitScreen } from "./InitScreen";
 
 vi.mock("../api/client", () => ({
@@ -37,4 +38,12 @@ it("shows validation message for short password in InitScreen", async () => {
 
   expect(screen.getByRole("alert")).toHaveTextContent("Password must be at least 10 characters");
   expect(api.createAdmin).not.toHaveBeenCalled();
+});
+
+it("renders the initialization form in Chinese", () => {
+  render(<InitScreen labels={strings["zh-CN"]} onInitialized={vi.fn()} />);
+
+  expect(screen.getByRole("heading", { name: "初始化管理员" })).toBeInTheDocument();
+  expect(screen.getByLabelText("确认密码")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "创建管理员" })).toBeInTheDocument();
 });

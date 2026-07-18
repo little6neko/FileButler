@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
+import { strings } from "../i18n";
 import { LoginScreen } from "./LoginScreen";
 
 vi.mock("../api/client", () => ({
@@ -36,4 +37,12 @@ it("shows API errors in LoginScreen", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Log in" }));
 
   expect(screen.getByRole("alert")).toHaveTextContent("invalid username or password");
+});
+
+it("renders the login form in Chinese", () => {
+  render(<LoginScreen labels={strings["zh-CN"]} onLoggedIn={vi.fn()} />);
+
+  expect(screen.getByRole("heading", { name: "管理员登录" })).toBeInTheDocument();
+  expect(screen.getByLabelText("用户名")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "登录" })).toBeInTheDocument();
 });

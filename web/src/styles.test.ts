@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 
@@ -39,6 +38,15 @@ it("uses compact file rows and a token-based active pane ring", () => {
   expect(rule(".file-table th,\n.file-table td")).toContain("height: 28px;");
   expect(rule('.file-pane[data-active="true"]')).toContain("border-color: var(--primary);");
   expect(rule('.file-pane[data-active="true"]')).toContain("box-shadow:");
+});
+
+it("uses padded desktop workbench mechanics", () => {
+  expect(rule(".workspace")).toContain("padding: 10px;");
+  expect(rule(".workspace")).toContain("background: var(--muted);");
+  expect(rule(".pane-divider")).toContain("position: relative;");
+  expect(rule(".pane-divider::after")).toContain('content: "";');
+  expect(css).toContain("@media (max-width: 1180px)");
+  expect(rule(".action-label")).toContain("clip: rect(0, 0, 0, 0);");
 });
 
 function rule(selector: string) {

@@ -226,12 +226,13 @@ button:disabled {
 }
 
 .workspace {
-  flex: 1;
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(0, 1fr) 8px minmax(0, 1fr);
-  background: #eef2f5;
+  gap: 0;
+  padding: 10px;
   overflow: hidden;
+  background: var(--muted);
 }
 
 .workspace-toolbar {
@@ -246,14 +247,40 @@ button:disabled {
 }
 
 .pane-divider {
-  background: linear-gradient(90deg, #d5dde5, #eef2f5, #d5dde5);
+  position: relative;
   cursor: col-resize;
   user-select: none;
 }
 
-.pane-divider:hover,
-.pane-divider:active {
-  background: #9dbfe5;
+.pane-divider::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 38px;
+  border-radius: 999px;
+  background: var(--border);
+  transform: translate(-50%, -50%);
+}
+
+.pane-divider:hover::after,
+.pane-divider:active::after {
+  background: var(--primary);
+}
+
+@media (max-width: 1180px) {
+  .action-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
 }
 
 .file-pane {

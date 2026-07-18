@@ -24,6 +24,13 @@ export type UIStrings = {
   passwordMismatch: string;
   loginFailed: string;
   initializationFailed: string;
+  workspace: string;
+  workspaceNavigation: string;
+  files: string;
+  activeJobs(count: number): string;
+  copyToPane(pane: string): string;
+  moveToPane(pane: string): string;
+  selectionSummary(count: number): string;
   leftPane: string;
   rightPane: string;
   move: string;
@@ -127,6 +134,13 @@ export const strings: Record<Language, UIStrings> = {
     passwordMismatch: "Passwords do not match",
     loginFailed: "Login failed",
     initializationFailed: "Initialization failed",
+    workspace: "Dual-pane file workspace",
+    workspaceNavigation: "Workspace navigation",
+    files: "Files",
+    activeJobs: (count) => `${count} active ${count === 1 ? "job" : "jobs"}`,
+    copyToPane: (pane) => `Copy to ${pane.toLowerCase()}`,
+    moveToPane: (pane) => `Move to ${pane.toLowerCase()}`,
+    selectionSummary: (count) => `${count} selected`,
     leftPane: "Left pane",
     rightPane: "Right pane",
     move: "move",
@@ -228,6 +242,13 @@ export const strings: Record<Language, UIStrings> = {
     passwordMismatch: "两次输入的密码不一致",
     loginFailed: "登录失败",
     initializationFailed: "初始化失败",
+    workspace: "双栏文件工作台",
+    workspaceNavigation: "工作区导航",
+    files: "文件",
+    activeJobs: (count) => `${count} 个任务运行中`,
+    copyToPane: (pane) => `复制到${pane}`,
+    moveToPane: (pane) => `移动到${pane}`,
+    selectionSummary: (count) => `已选择 ${count} 项`,
     leftPane: "左栏",
     rightPane: "右栏",
     move: "移动",

@@ -72,8 +72,8 @@ it("uses the opposite pane path as operation destination", async () => {
   await waitFor(() => expect(api.browse).toHaveBeenCalledWith("root", "target"));
 
   const leftPane = screen.getByRole("region", { name: "Left pane" });
-  await userEvent.click(within(leftPane).getByLabelText("Select source.txt"));
-  await userEvent.click(screen.getByRole("button", { name: "copy" }));
+  await userEvent.click(await within(leftPane).findByLabelText("Select source.txt"));
+  await userEvent.click(screen.getByRole("button", { name: "Copy to right pane" }));
 
   await waitFor(() =>
     expect(api.opsDryRun).toHaveBeenCalledWith(
@@ -353,12 +353,35 @@ it("refreshes both panes after an operation job reaches a terminal status", asyn
   vi.mocked(api.browse).mockClear();
 
   await userEvent.click(await within(leftPane).findByLabelText("Select source.txt"));
-  await userEvent.click(screen.getByRole("button", { name: "copy" }));
+  await userEvent.click(screen.getByRole("button", { name: "Copy to right pane" }));
   await userEvent.click(await screen.findByRole("button", { name: "Confirm" }));
 
   await waitFor(() => expect(api.opsCreateJob).toHaveBeenCalled());
   await waitFor(() => expect(api.job).toHaveBeenCalledWith("job-1"));
   await waitFor(() => expect(api.browse).toHaveBeenCalledTimes(2));
   expect(within(leftPane).getByLabelText("Select source.txt")).not.toBeChecked();
-  expect(screen.getByRole("button", { name: "copy" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Copy to right pane" })).toBeDisabled();
+});
+
+it("updates transfer labels when the active pane changes", async () => {
+  vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
+  vi.mocked(api.browse).mockResolvedValue([
+    { name: "a.txt", relativePath: "a.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+  ]);
+  render(<DualPane />);
+
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  await userEvent.click(await within(leftPane).findByLabelText("Select a.txt"));
+  expect(screen.getByRole("button", { name: "Copy to right pane" })).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("region", { name: "Right pane" }));
+  expect(screen.getByRole("button", { name: "Copy to left pane" })).toBeInTheDocument();
+});
+
+it("shows browse failures inside the affected panes", async () => {
+  vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
+  vi.mocked(api.browse).mockRejectedValue(new Error("permission denied"));
+  render(<DualPane />);
+
+  expect((await screen.findAllByRole("alert"))[0]).toHaveTextContent("permission denied");
 });

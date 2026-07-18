@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "./api/client";
 import { DualPane } from "./components/DualPane";
 import { InitScreen } from "./components/InitScreen";
+import { LanguageSelect } from "./components/LanguageSelect";
 import { LoginScreen } from "./components/LoginScreen";
 import { resolveLanguage, strings } from "./i18n";
 import type { LanguageMode } from "./i18n";
@@ -35,34 +36,20 @@ export default function App() {
     };
   }, []);
 
+  if (state === "ready") {
+    return <DualPane labels={t} languageMode={languageMode} onLanguageModeChange={setLanguageMode} />;
+  }
+
   return (
-    <main className="app-shell">
-      <header className="topbar">
-        <div>
-          <h1>FileButler</h1>
-          <p>{t.subtitle}</p>
-        </div>
-        <label className="language-select">
-          {t.language}
-          <select
-            aria-label="Language"
-            value={languageMode}
-            onChange={(event) => setLanguageMode(event.target.value as LanguageMode)}
-          >
-            <option value="auto">{t.languageAuto}</option>
-            <option value="en">{t.languageEnglish}</option>
-            <option value="zh-CN">{t.languageChinese}</option>
-          </select>
-        </label>
-      </header>
-      {state === "loading" && (
-        <section className="empty-state">
-          <h2>{t.loadingWorkspace}</h2>
-        </section>
-      )}
-      {state === "init" && <InitScreen labels={t} onInitialized={() => setState("ready")} />}
-      {state === "login" && <LoginScreen labels={t} onLoggedIn={() => setState("ready")} />}
-      {state === "ready" && <DualPane labels={t} />}
-    </main>
+    <div className="relative h-screen min-w-[1024px] overflow-hidden">
+      <div className="absolute right-4 top-4 z-20">
+        <LanguageSelect value={languageMode} onChange={setLanguageMode} labels={t} />
+      </div>
+      {state === "loading" ? (
+        <main className="grid h-full place-items-center bg-slate-50 text-sm text-slate-500">{t.loadingWorkspace}</main>
+      ) : null}
+      {state === "init" ? <InitScreen labels={t} onInitialized={() => setState("ready")} /> : null}
+      {state === "login" ? <LoginScreen labels={t} onLoggedIn={() => setState("ready")} /> : null}
+    </div>
   );
 }

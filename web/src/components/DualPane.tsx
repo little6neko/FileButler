@@ -1,13 +1,16 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { api } from "../api/client";
 import type { Entry, OpsRequest, RenameOptions, Root } from "../api/types";
 import { strings } from "../i18n";
-import type { UIStrings } from "../i18n";
+import type { LanguageMode, UIStrings } from "../i18n";
 import { mediaKindForPath } from "../media";
 import type { MediaKind } from "../media";
+import { ActionToolbar } from "./ActionToolbar";
+import { AppShell } from "./AppShell";
 import { FilePane } from "./FilePane";
 import { JobsPanel } from "./JobsPanel";
+import { LanguageSelect } from "./LanguageSelect";
 import { MediaPreview } from "./MediaPreview";
 import { MkdirDialog } from "./MkdirDialog";
 import { OperationPreview } from "./OperationPreview";
@@ -22,6 +25,8 @@ type PaneState = {
   entries: Entry[];
   selected: Set<string>;
   visibleOrder: string[];
+  loading: boolean;
+  error: string | null;
 };
 
 type MediaPreviewState = {
@@ -30,7 +35,15 @@ type MediaPreviewState = {
   kind: MediaKind;
 };
 
-export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
+export function DualPane({
+  labels = strings.en,
+  languageMode = "auto",
+  onLanguageModeChange = () => undefined,
+}: {
+  labels?: UIStrings;
+  languageMode?: LanguageMode;
+  onLanguageModeChange?(mode: LanguageMode): void;
+}) {
   const [roots, setRoots] = useState<Root[]>([]);
   const [activePane, setActivePane] = useState<PaneKey>("left");
   const [previewRequest, setPreviewRequest] = useState<OpsRequest | null>(null);
@@ -40,9 +53,39 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
   const [powerRenameOpen, setPowerRenameOpen] = useState(false);
   const [powerRenameOptions, setPowerRenameOptions] = useState<RenameOptions | undefined>();
   const [jobsOpen, setJobsOpen] = useState(false);
+  const [activeJobCount] = useState(0);
   const [leftPanePercent, setLeftPanePercent] = useState(50);
-  const [left, setLeft] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), visibleOrder: [] });
-  const [right, setRight] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), visibleOrder: [] });
+  const [left, setLeft] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), visibleOrder: [], loading: false, error: null });
+  const [right, setRight] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), visibleOrder: [], loading: false, error: null });
+
+  const updatePane = useCallback((which: PaneKey, update: (pane: PaneState) => PaneState) => {
+    if (which === "left") setLeft(update);
+    else setRight(update);
+  }, []);
+
+  const loadPane = useCallback(async (which: PaneKey, rootId: string, path: string) => {
+    updatePane(which, (pane) => ({ ...pane, loading: true, error: null }));
+    try {
+      const entries = await api.browse(rootId, path);
+      updatePane(which, (pane) => ({
+        ...pane,
+        entries,
+        selected: visibleSelection(pane.selected, entries),
+        visibleOrder: entries.map((entry) => entry.relativePath),
+        loading: false,
+        error: null,
+      }));
+    } catch (err) {
+      updatePane(which, (pane) => ({
+        ...pane,
+        entries: [],
+        selected: new Set(),
+        visibleOrder: [],
+        loading: false,
+        error: err instanceof Error ? err.message : labels.browseFailed,
+      }));
+    }
+  }, [labels.browseFailed, updatePane]);
 
   useEffect(() => {
     let active = true;
@@ -60,21 +103,11 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
 
   useEffect(() => {
     if (left.rootId) void loadPane("left", left.rootId, left.path);
-  }, [left.rootId, left.path]);
+  }, [left.rootId, left.path, loadPane]);
 
   useEffect(() => {
     if (right.rootId) void loadPane("right", right.rootId, right.path);
-  }, [right.rootId, right.path]);
-
-  async function loadPane(which: PaneKey, rootId: string, path: string) {
-    const entries = await api.browse(rootId, path);
-    updatePane(which, (pane) => ({
-      ...pane,
-      entries,
-      selected: visibleSelection(pane.selected, entries),
-      visibleOrder: entries.map((entry) => entry.relativePath),
-    }));
-  }
+  }, [right.rootId, right.path, loadPane]);
 
   function refreshBothPanes() {
     if (left.rootId) void loadPane("left", left.rootId, left.path);
@@ -103,11 +136,6 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
     }
   }
 
-  function updatePane(which: PaneKey, update: (pane: PaneState) => PaneState) {
-    if (which === "left") setLeft(update);
-    else setRight(update);
-  }
-
   function clearSelections() {
     setLeft((pane) => (pane.selected.size ? { ...pane, selected: new Set() } : pane));
     setRight((pane) => (pane.selected.size ? { ...pane, selected: new Set() } : pane));
@@ -120,6 +148,8 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
       currentPath: pane.path,
       entries: pane.entries,
       selectedPaths: pane.selected,
+      loading: pane.loading,
+      error: pane.error,
       onRootChange: (rootId: string) =>
         updatePane(which, (current) => ({ ...current, rootId, path: ".", selected: new Set(), visibleOrder: [] })),
       onPathChange: (path: string) =>
@@ -157,41 +187,40 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
 
   return (
     <>
-      <div className="workspace-toolbar">
-        {(["move", "copy", "symlink", "hardlink", "delete"] as const).map((type) => (
-          <button key={type} type="button" onClick={() => openOperation(type)} disabled={!activeSelection().length}>
-            {labels[type]}
-          </button>
-        ))}
-        <button type="button" onClick={openMkdir}>
-          {labels.mkdir}
-        </button>
-        <button type="button" onClick={() => setSingleRenameOpen(true)} disabled={activeSelection().length !== 1}>
-          {labels.rename}
-        </button>
-        <button type="button" onClick={() => setPowerRenameOpen(true)} disabled={!activeSelection().length}>
-          {labels.powerRename}
-        </button>
-        <button type="button" onClick={() => setJobsOpen((value) => !value)}>
-          {labels.jobs}
-        </button>
-      </div>
-      <section
-        className="workspace"
-        data-testid="workspace"
-        data-active-pane={activePane}
-        style={workspaceStyle(leftPanePercent)}
+      <AppShell
+        labels={labels}
+        activeJobCount={activeJobCount}
+        onJobsOpen={() => setJobsOpen(true)}
+        languageControl={<LanguageSelect value={languageMode} onChange={onLanguageModeChange} labels={labels} />}
       >
-        <FilePane title={labels.leftPane} labels={labels} {...paneProps("left", left)} />
-        <div
-          className="pane-divider"
-          role="separator"
-          aria-label={labels.resizePanes}
-          aria-orientation="vertical"
-          onMouseDown={startPaneResize}
-        />
-        <FilePane title={labels.rightPane} labels={labels} {...paneProps("right", right)} />
-      </section>
+        <div className="grid h-full min-h-0 grid-rows-[42px_minmax(0,1fr)] overflow-hidden">
+          <ActionToolbar
+            activePane={activePane}
+            selectedCount={activeSelection().length}
+            labels={labels}
+            onOperation={openOperation}
+            onMkdir={openMkdir}
+            onRename={() => setSingleRenameOpen(true)}
+            onPowerRename={() => setPowerRenameOpen(true)}
+          />
+          <section
+            className="workspace"
+            data-testid="workspace"
+            data-active-pane={activePane}
+            style={workspaceStyle(leftPanePercent)}
+          >
+            <FilePane title={labels.leftPane} labels={labels} {...paneProps("left", left)} />
+            <div
+              className="pane-divider"
+              role="separator"
+              aria-label={labels.resizePanes}
+              aria-orientation="vertical"
+              onMouseDown={startPaneResize}
+            />
+            <FilePane title={labels.rightPane} labels={labels} {...paneProps("right", right)} />
+          </section>
+        </div>
+      </AppShell>
       {previewRequest ? (
         <OperationPreview
           request={previewRequest}

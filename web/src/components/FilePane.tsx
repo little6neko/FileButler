@@ -368,7 +368,12 @@ export function FilePane({
     return Array.from(rows)
       .filter((row) => {
         const rowRect = row.getBoundingClientRect();
-        return rectsIntersect(selectionRect, listRect ? { ...rowRect, left: listRect.left, right: listRect.right } : rowRect);
+        return rectsIntersect(selectionRect, {
+          left: listRect?.left ?? rowRect.left,
+          top: rowRect.top,
+          right: listRect?.right ?? rowRect.right,
+          bottom: rowRect.bottom,
+        });
       })
       .map((row) => row.dataset.entryPath)
       .filter((path): path is string => Boolean(path));
@@ -413,7 +418,20 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "bas
 function sortEntries(entries: Entry[], sortState: SortState) {
   if (!sortState) return entries;
   const direction = sortState.direction === "asc" ? 1 : -1;
-  return [...entries].sort((a, b) => compareEntries(a, b, sortState.column) * direction);
+  return [...entries].sort((a, b) => {
+    const groupOrder = compareEntryGroups(a, b, sortState);
+    return groupOrder || compareEntries(a, b, sortState.column) * direction;
+  });
+}
+
+function compareEntryGroups(a: Entry, b: Entry, sortState: NonNullable<SortState>) {
+  const aIsDirectory = a.type === "directory";
+  const bIsDirectory = b.type === "directory";
+  if (aIsDirectory === bIsDirectory) return 0;
+
+  const nonDirectoriesFirst = sortState.column === "name" && sortState.direction === "desc";
+  if (nonDirectoriesFirst) return aIsDirectory ? 1 : -1;
+  return aIsDirectory ? -1 : 1;
 }
 
 function compareEntries(a: Entry, b: Entry, column: SortKey) {

@@ -145,23 +145,53 @@ it("renders symlink target metadata", () => {
 
 it("sorts visible entries when clicking a column header", async () => {
   renderPane({
-    entries: [entry("b.txt"), entry("a.txt"), entry("folder", "directory")],
+    entries: [entry("b.txt", "file", 2), entry("a.txt", "file", 1), entry("folder", "directory", 0)],
   });
 
   await userEvent.click(screen.getByRole("button", { name: "Size" }));
 
-  const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
-  expect(rows.map((row) => within(row).getAllByRole("cell")[1].textContent)).toEqual(["a.txt", "b.txt", "folder"]);
+  expect(visibleEntryNames()).toEqual(["folder", "a.txt", "b.txt"]);
 });
 
-it("sorts by name ascending by default", () => {
+it("sorts by name ascending with directories first by default", () => {
   renderPane({
-    entries: [entry("b.txt"), entry("a.txt"), entry("folder", "directory")],
+    entries: [entry("b.txt"), entry("a-link", "symlink"), entry("c-other", "other"), entry("folder", "directory")],
   });
 
-  const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
   expect(screen.getByRole("columnheader", { name: /Name/ })).toHaveAttribute("aria-sort", "ascending");
-  expect(rows.map((row) => within(row).getAllByRole("cell")[1].textContent)).toEqual(["a.txt", "b.txt", "folder"]);
+  expect(visibleEntryNames()).toEqual(["folder", "a-link", "b.txt", "c-other"]);
+});
+
+it("puts non-directories first when sorting names from Z to A", async () => {
+  renderPane({
+    entries: [
+      entry("b-file"),
+      entry("y-link", "symlink"),
+      entry("m-other", "other"),
+      entry("a-folder", "directory"),
+      entry("z-folder", "directory"),
+    ],
+  });
+
+  await userEvent.click(screen.getByRole("button", { name: "Name" }));
+
+  expect(visibleEntryNames()).toEqual(["y-link", "m-other", "b-file", "z-folder", "a-folder"]);
+});
+
+it("keeps directories first when sorting another column descending", async () => {
+  renderPane({
+    entries: [
+      entry("file-small", "file", 2),
+      entry("dir-small", "directory", 1),
+      entry("file-large", "file", 10),
+      entry("dir-large", "directory", 9),
+    ],
+  });
+
+  await userEvent.click(screen.getByRole("button", { name: "Size" }));
+  await userEvent.click(screen.getByRole("button", { name: "Size" }));
+
+  expect(visibleEntryNames()).toEqual(["dir-large", "dir-small", "file-large", "file-small"]);
 });
 
 it("resizes columns by dragging a header divider", () => {
@@ -242,6 +272,26 @@ it("replaces selection with rows intersecting a drag marquee", () => {
   fireEvent.mouseUp(document, { clientX: 380, clientY: 94 });
 
   expect(onSelectPaths).toHaveBeenCalledWith(["a.txt", "b.txt"]);
+});
+
+it("excludes a row that only touches the drag marquee edge", () => {
+  const onSelectPaths = vi.fn();
+  const { container } = renderPane({
+    entries: [entry("a.txt"), entry("b.txt")],
+    onSelectPaths,
+  });
+
+  const fileList = container.querySelector(".file-list") as HTMLDivElement;
+  const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
+  mockRect(fileList, { left: 0, top: 0, right: 400, bottom: 160, width: 400, height: 160 });
+  mockRect(rows[0], { left: 0, top: 32, right: 376, bottom: 64, width: 376, height: 32 });
+  mockRect(rows[1], { left: 0, top: 94, right: 376, bottom: 126, width: 376, height: 32 });
+
+  fireEvent.mouseDown(fileList, { button: 0, clientX: 376, clientY: 36 });
+  fireEvent.mouseMove(document, { clientX: 380, clientY: 94 });
+  fireEvent.mouseUp(document);
+
+  expect(onSelectPaths).toHaveBeenCalledWith(["a.txt"]);
 });
 
 it("does not start drag marquee from file controls", () => {
@@ -327,11 +377,12 @@ function renderPane(overrides: Partial<Parameters<typeof FilePane>[0]> = {}) {
   return render(<FilePane {...props} />);
 }
 
+function visibleEntryNames() {
+  const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
+  return rows.map((row) => within(row).getAllByRole("cell")[1].textContent);
+}
+
 function mockRect(element: Element, rect: Omit<DOMRect, "toJSON" | "x" | "y"> & Partial<Pick<DOMRect, "x" | "y">>) {
-  element.getBoundingClientRect = vi.fn(() => ({
-    x: rect.x ?? rect.left,
-    y: rect.y ?? rect.top,
-    toJSON: () => ({}),
-    ...rect,
-  }));
+  const browserRect = new DOMRect(rect.x ?? rect.left, rect.y ?? rect.top, rect.width, rect.height);
+  element.getBoundingClientRect = vi.fn(() => browserRect);
 }

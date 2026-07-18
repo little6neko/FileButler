@@ -28,6 +28,17 @@ it("reports active jobs even while the sheet is closed", async () => {
   expect(api.job).not.toHaveBeenCalled();
 });
 
+it("treats a null jobs response as an empty list", async () => {
+  const onActiveCountChange = vi.fn();
+  vi.mocked(api.jobs).mockResolvedValue(null as never);
+
+  render(<JobsSheet open onOpenChange={vi.fn()} onActiveCountChange={onActiveCountChange} />);
+
+  expect(await screen.findByText("No background jobs yet")).toBeInTheDocument();
+  await waitFor(() => expect(onActiveCountChange).toHaveBeenCalledWith(0));
+  expect(api.job).not.toHaveBeenCalled();
+});
+
 it("renders progress and selected-job details in the open sheet", async () => {
   vi.mocked(api.jobs).mockResolvedValue([
     { id: "job_1", type: "copy", status: "running", progressTotal: 4, progressDone: 2, errorMessage: "" },

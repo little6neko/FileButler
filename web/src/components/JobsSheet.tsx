@@ -34,7 +34,7 @@ export function JobsSheet({
     async function loadJobs() {
       let list: Job[];
       try {
-        list = await api.jobs();
+        list = (await api.jobs()) ?? [];
       } catch {
         return;
       }

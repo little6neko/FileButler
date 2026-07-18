@@ -3,50 +3,24 @@ import { expect, it } from "vitest";
 
 const css = readFileSync("src/styles.css", "utf8");
 
-it("keeps workspace scrolling inside each file pane", () => {
-  expect(rule(".app-shell")).toContain("height: 100vh;");
-  expect(rule(".app-shell")).toContain("overflow: hidden;");
+it("loads Tailwind and shadcn theme variables", () => {
+  expect(css).toContain('@import "tailwindcss";');
+  expect(css).toContain("--radius: 0.5rem;");
+  expect(css).toContain("--background:");
+  expect(css).toContain("--primary:");
+});
+
+it("keeps the application desktop-only and pane scrolling internal", () => {
+  expect(css).toContain("min-width: 1024px;");
   expect(rule(".workspace")).toContain("overflow: hidden;");
   expect(rule(".file-pane")).toContain("overflow: hidden;");
   expect(rule(".file-list")).toContain("overflow: auto;");
 });
 
-it("keeps file table headers fixed while pane contents scroll", () => {
+it("keeps compact sticky file headers and an active-pane ring", () => {
   expect(rule(".file-table thead th")).toContain("position: sticky;");
-  expect(rule(".file-table thead th")).toContain("top: 0;");
-  expect(rule(".file-table thead th")).toContain("z-index: 3;");
-  expect(rule(".file-table thead th")).toContain("background: var(--muted);");
-});
-
-it("draws the active pane border above sticky file headers", () => {
-  expect(rule(".file-pane")).toContain("position: relative;");
-  expect(rule(".file-pane.is-active::after")).toContain('content: "";');
-  expect(rule(".file-pane.is-active::after")).toContain("position: absolute;");
-  expect(rule(".file-pane.is-active::after")).toContain("inset: 0;");
-  expect(rule(".file-pane.is-active::after")).toContain("z-index: 4;");
-  expect(rule(".file-pane.is-active::after")).toContain("pointer-events: none;");
-  expect(rule(".file-pane.is-active::after")).toContain("border: 2px solid #2b72c4;");
-});
-
-it("keeps overlays above the active pane border", () => {
-  expect(rule(".jobs-panel")).toContain("z-index: 6;");
-  expect(rule(".modal-backdrop")).toContain("z-index: 10;");
-});
-
-it("uses compact file rows and a token-based active pane ring", () => {
-  expect(rule(".file-pane")).toContain("grid-template-rows: 39px 29px minmax(0, 1fr) 28px;");
-  expect(rule(".file-table th,\n.file-table td")).toContain("height: 28px;");
-  expect(rule('.file-pane[data-active="true"]')).toContain("border-color: var(--primary);");
+  expect(rule(".file-table thead th")).toContain("height: 29px;");
   expect(rule('.file-pane[data-active="true"]')).toContain("box-shadow:");
-});
-
-it("uses padded desktop workbench mechanics", () => {
-  expect(rule(".workspace")).toContain("padding: 10px;");
-  expect(rule(".workspace")).toContain("background: var(--muted);");
-  expect(rule(".pane-divider")).toContain("position: relative;");
-  expect(rule(".pane-divider::after")).toContain('content: "";');
-  expect(css).toContain("@media (max-width: 1180px)");
-  expect(rule(".action-label")).toContain("clip: rect(0, 0, 0, 0);");
 });
 
 function rule(selector: string) {

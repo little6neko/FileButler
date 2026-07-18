@@ -136,6 +136,11 @@ export function DualPane({ labels = strings.en }: { labels?: UIStrings }) {
           ...current,
           selected: checked ? new Set(current.entries.map((entry) => entry.relativePath)) : new Set(),
         })),
+      onSelectPaths: (paths: string[]) =>
+        updatePane(which, (current) => ({
+          ...current,
+          selected: new Set(paths),
+        })),
       onVisibleOrderChange: (visibleOrder: string[]) =>
         updatePane(which, (current) => {
           if (sameStringArray(current.visibleOrder, visibleOrder)) return current;

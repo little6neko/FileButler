@@ -209,14 +209,55 @@ it("lets the name column fill remaining table width while staying resizable", as
   const table = screen.getByRole("table");
   const columns = table.querySelectorAll("col");
 
-  await waitFor(() => expect(table).toHaveStyle({ "--file-col-name": "424px", "--file-table-width": "800px" }));
-  expect(table).toHaveStyle({ width: "var(--file-table-width)", minWidth: "800px" });
+  await waitFor(() => expect(table).toHaveStyle({ "--file-col-name": "420px", "--file-col-modified": "140px", "--file-table-width": "776px" }));
+  expect(table).toHaveStyle({ width: "var(--file-table-width)", minWidth: "776px" });
   expect(columns[0]).toHaveStyle({ width: "var(--file-col-select)" });
   expect(columns[1]).toHaveStyle({ width: "var(--file-col-name)" });
   expect(columns[2]).toHaveStyle({ width: "var(--file-col-type)" });
   expect(columns[3]).toHaveStyle({ width: "var(--file-col-size)" });
   expect(columns[4]).toHaveStyle({ width: "var(--file-col-modified)" });
   clientWidth.mockRestore();
+});
+
+it("replaces selection with rows intersecting a drag marquee", () => {
+  const onSelectPaths = vi.fn();
+  const { container } = renderPane({
+    entries: [entry("a.txt"), entry("b.txt"), entry("c.txt")],
+    selectedPaths: new Set(["c.txt"]),
+    onSelectPaths,
+  });
+
+  const fileList = container.querySelector(".file-list") as HTMLDivElement;
+  const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
+  mockRect(fileList, { left: 0, top: 0, right: 400, bottom: 160, width: 400, height: 160 });
+  rows.forEach((row, index) => {
+    mockRect(row, { left: 0, top: 32 + index * 32, right: 376, bottom: 64 + index * 32, width: 376, height: 32 });
+  });
+
+  fireEvent.mouseDown(fileList, { button: 0, clientX: 376, clientY: 36 });
+  fireEvent.mouseMove(document, { clientX: 380, clientY: 94 });
+
+  expect(container.querySelector(".drag-selection-box")).toBeInTheDocument();
+
+  fireEvent.mouseUp(document, { clientX: 380, clientY: 94 });
+
+  expect(onSelectPaths).toHaveBeenCalledWith(["a.txt", "b.txt"]);
+});
+
+it("does not start drag marquee from file controls", () => {
+  const onSelectPaths = vi.fn();
+  const { container } = renderPane({ entries: [entry("a.txt")], onSelectPaths });
+  const fileList = container.querySelector(".file-list") as HTMLDivElement;
+  const row = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row")[0];
+  mockRect(fileList, { left: 0, top: 0, right: 400, bottom: 96, width: 400, height: 96 });
+  mockRect(row, { left: 0, top: 32, right: 376, bottom: 64, width: 376, height: 32 });
+
+  fireEvent.mouseDown(screen.getByLabelText("Select a.txt"), { button: 0, clientX: 10, clientY: 40 });
+  fireEvent.mouseMove(document, { clientX: 380, clientY: 60 });
+  fireEvent.mouseUp(document);
+
+  expect(onSelectPaths).not.toHaveBeenCalled();
+  expect(container.querySelector(".drag-selection-box")).not.toBeInTheDocument();
 });
 
 function entry(name: string, type: "file" | "directory" | "symlink" | "other" = "file", size = 1) {
@@ -243,9 +284,19 @@ function renderPane(overrides: Partial<Parameters<typeof FilePane>[0]> = {}) {
     onPathChange: vi.fn(),
     onToggleSelection: vi.fn(),
     onSelectAll: vi.fn(),
+    onSelectPaths: vi.fn(),
     onRefresh: vi.fn(),
     onActivate: vi.fn(),
     ...overrides,
   };
   return render(<FilePane {...props} />);
+}
+
+function mockRect(element: Element, rect: Omit<DOMRect, "toJSON" | "x" | "y"> & Partial<Pick<DOMRect, "x" | "y">>) {
+  element.getBoundingClientRect = vi.fn(() => ({
+    x: rect.x ?? rect.left,
+    y: rect.y ?? rect.top,
+    toJSON: () => ({}),
+    ...rect,
+  }));
 }

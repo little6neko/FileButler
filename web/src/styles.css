@@ -283,9 +283,18 @@ button:disabled {
 }
 
 .file-list {
+  position: relative;
   min-height: 0;
   overflow: auto;
   background: linear-gradient(#ffffff, #ffffff) padding-box;
+}
+
+.drag-selection-box {
+  position: absolute;
+  z-index: 2;
+  pointer-events: none;
+  border: 1px solid #2b72c4;
+  background: rgb(43 114 196 / 0.16);
 }
 
 .path-segments {

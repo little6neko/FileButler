@@ -15,6 +15,7 @@ type FilePaneProps = {
   onPathChange(path: string): void;
   onToggleSelection(path: string): void;
   onSelectAll(checked: boolean): void;
+  onSelectPaths?(paths: string[]): void;
   onVisibleOrderChange?(paths: string[]): void;
   onOpenFile?(entry: Entry): void;
   onRefresh(): void;
@@ -34,6 +35,7 @@ export function FilePane({
   onPathChange,
   onToggleSelection,
   onSelectAll,
+  onSelectPaths,
   onVisibleOrderChange,
   onOpenFile,
   onRefresh,
@@ -45,6 +47,7 @@ export function FilePane({
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
   const [sortState, setSortState] = useState<SortState>({ column: "name", direction: "asc" });
   const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(defaultColumnWidths);
+  const [dragBox, setDragBox] = useState<DragBox | null>(null);
   const fileListRef = useRef<HTMLDivElement>(null);
   const columnsResizedRef = useRef(false);
   const visibleEntries = useMemo(() => sortEntries(entries, sortState), [entries, sortState]);
@@ -78,7 +81,8 @@ export function FilePane({
 
       setColumnWidths((current) => {
         const fixedWidth = current.select + current.type + current.size + current.modified;
-        const nextNameWidth = Math.max(defaultColumnWidths.name, listWidth - fixedWidth);
+        const targetWidth = Math.max(defaultTableWidth, listWidth - rightSelectionGutter);
+        const nextNameWidth = Math.max(defaultColumnWidths.name, targetWidth - fixedWidth);
         if (current.name === nextNameWidth) return current;
         return { ...current, name: nextNameWidth };
       });
@@ -156,7 +160,7 @@ export function FilePane({
           </button>
         ))}
       </nav>
-      <div className="file-list" ref={fileListRef}>
+      <div className="file-list" ref={fileListRef} onMouseDown={startDragSelection}>
         <table className="file-table" style={columnStyle(columnWidths)}>
           <colgroup>
             <col style={{ width: "var(--file-col-select)" }} />
@@ -187,6 +191,7 @@ export function FilePane({
             {visibleEntries.map((entry) => (
               <tr
                 key={entry.relativePath}
+                data-entry-path={entry.relativePath}
                 className={entry.type === "directory" ? "directory-row" : undefined}
                 onDoubleClick={() => {
                   if (entry.type === "directory") onPathChange(entry.relativePath);
@@ -214,6 +219,7 @@ export function FilePane({
             ))}
           </tbody>
         </table>
+        {dragBox ? <div className="drag-selection-box" style={dragBox} /> : null}
       </div>
     </section>
   );
@@ -265,6 +271,69 @@ export function FilePane({
     document.addEventListener("mouseup", onMouseUp);
   }
 
+  function startDragSelection(event: ReactMouseEvent<HTMLDivElement>) {
+    if (event.button !== 0 || isDragBlockedTarget(event.target)) return;
+    event.preventDefault();
+    onActivate();
+
+    const fileListElement = fileListRef.current;
+    if (!fileListElement) return;
+    const listElement: HTMLDivElement = fileListElement;
+
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let lastX = startX;
+    let lastY = startY;
+    let moved = false;
+
+    function updateBox(clientX: number, clientY: number) {
+      const listRect = listElement.getBoundingClientRect();
+      const left = Math.min(startX, clientX);
+      const top = Math.min(startY, clientY);
+      const right = Math.max(startX, clientX);
+      const bottom = Math.max(startY, clientY);
+      setDragBox({
+        left: left - listRect.left + listElement.scrollLeft,
+        top: top - listRect.top + listElement.scrollTop,
+        width: right - left,
+        height: bottom - top,
+      });
+    }
+
+    function onMouseMove(moveEvent: MouseEvent) {
+      const distance = Math.abs(moveEvent.clientX - startX) + Math.abs(moveEvent.clientY - startY);
+      if (distance < 4) return;
+      moved = true;
+      lastX = moveEvent.clientX;
+      lastY = moveEvent.clientY;
+      updateBox(moveEvent.clientX, moveEvent.clientY);
+    }
+
+    function onMouseUp() {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      setDragBox(null);
+      if (!moved) return;
+      onSelectPaths?.(pathsInsideSelection(startX, startY, lastX, lastY));
+    }
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }
+
+  function pathsInsideSelection(startX: number, startY: number, endX: number, endY: number) {
+    const selectionRect = normalizeRect(startX, startY, endX, endY);
+    const listRect = fileListRef.current?.getBoundingClientRect();
+    const rows = fileListRef.current?.querySelectorAll<HTMLTableRowElement>("tbody tr[data-entry-path]") ?? [];
+    return Array.from(rows)
+      .filter((row) => {
+        const rowRect = row.getBoundingClientRect();
+        return rectsIntersect(selectionRect, listRect ? { ...rowRect, left: listRect.left, right: listRect.right } : rowRect);
+      })
+      .map((row) => row.dataset.entryPath)
+      .filter((path): path is string => Boolean(path));
+  }
+
   function handlePathKeyDown(event: KeyboardEvent<HTMLInputElement>) {
     if (event.key === "ArrowDown") {
       event.preventDefault();
@@ -287,14 +356,17 @@ export function FilePane({
 type SortKey = "name" | "type" | "size" | "modified";
 type ColumnKey = "select" | SortKey;
 type SortState = { column: SortKey; direction: "asc" | "desc" } | null;
+type DragBox = Pick<CSSProperties, "left" | "top" | "width" | "height">;
 
 const defaultColumnWidths: Record<ColumnKey, number> = {
   select: 36,
   name: 220,
   type: 96,
   size: 84,
-  modified: 160,
+  modified: 140,
 };
+const defaultTableWidth = Object.values(defaultColumnWidths).reduce((sum, width) => sum + width, 0);
+const rightSelectionGutter = 24;
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
@@ -329,6 +401,26 @@ function columnStyle(widths: Record<ColumnKey, number>) {
     "--file-table-width": `${totalWidth}px`,
     minWidth: `${totalWidth}px`,
   } as CSSProperties;
+}
+
+function isDragBlockedTarget(target: EventTarget) {
+  return target instanceof Element && Boolean(target.closest("button, input, select, textarea, a, thead, [role='separator']"));
+}
+
+function normalizeRect(startX: number, startY: number, endX: number, endY: number) {
+  return {
+    left: Math.min(startX, endX),
+    top: Math.min(startY, endY),
+    right: Math.max(startX, endX),
+    bottom: Math.max(startY, endY),
+  };
+}
+
+function rectsIntersect(
+  left: { left: number; top: number; right: number; bottom: number },
+  right: { left: number; top: number; right: number; bottom: number },
+) {
+  return left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
 }
 
 function formatSize(size: number) {

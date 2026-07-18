@@ -19,6 +19,7 @@ it("creates a single rename job with the new basename", async () => {
   const onJobCreated = vi.fn();
   render(<SingleRenameDialog rootId="root" path="old.txt" initialName="old.txt" onJobCreated={onJobCreated} onClose={vi.fn()} />);
 
+  expect(screen.getByRole("dialog", { name: "Rename dialog" })).toBeInTheDocument();
   await userEvent.clear(screen.getByLabelText("New name"));
   await userEvent.type(screen.getByLabelText("New name"), "new.txt");
   await userEvent.click(screen.getByRole("button", { name: "Rename" }));

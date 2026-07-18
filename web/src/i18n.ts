@@ -111,6 +111,11 @@ export type UIStrings = {
   refreshLabel(title: string): string;
   selectEntry(name: string): string;
   operationPreview(type: string): string;
+  operationDescription(type: string, count: number): string;
+  confirmOperation(type: string, count: number): string;
+  deleteWarning: string;
+  conflictsFound(count: number): string;
+  jobCreated: string;
   operationType(type: string): string;
   jobStatus(status: string): string;
 };
@@ -226,6 +231,12 @@ export const strings: Record<Language, UIStrings> = {
     refreshLabel: (title) => `${title} refresh`,
     selectEntry: (name) => `Select ${name}`,
     operationPreview: (type) => `${type} preview`,
+    operationDescription: (type, count) => `${strings.en.operationType(type)} ${count} ${count === 1 ? "item" : "items"}`,
+    confirmOperation: (type, count) =>
+      type === "delete" ? `Delete ${count} ${count === 1 ? "item" : "items"}` : `Start ${strings.en.operationType(type)}`,
+    deleteWarning: "Deleted items cannot be restored by FileButler.",
+    conflictsFound: (count) => `${count} ${count === 1 ? "conflict" : "conflicts"} must be resolved before continuing.`,
+    jobCreated: "Background job created",
     operationType: (type) => type,
     jobStatus: (status) => status,
   },
@@ -339,6 +350,12 @@ export const strings: Record<Language, UIStrings> = {
     refreshLabel: (title) => `${title}刷新`,
     selectEntry: (name) => `选择 ${name}`,
     operationPreview: (type) => `${strings["zh-CN"].operationType(type)}预览`,
+    operationDescription: (type, count) => `${strings["zh-CN"].operationType(type)} ${count} 项`,
+    confirmOperation: (type, count) =>
+      type === "delete" ? `删除 ${count} 项` : `开始${strings["zh-CN"].operationType(type)}`,
+    deleteWarning: "FileButler 无法恢复已删除的项目。",
+    conflictsFound: (count) => `发现 ${count} 个冲突，解决后才能继续。`,
+    jobCreated: "后台任务已创建",
     operationType: (type) =>
       ({
         move: "移动",

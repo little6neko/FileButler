@@ -1,8 +1,11 @@
 import { fireEvent, within, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
+import { toast } from "sonner";
 import { api } from "../api/client";
 import { DualPane } from "./DualPane";
+
+vi.mock("sonner", () => ({ toast: { success: vi.fn() } }));
 
 vi.mock("../api/client", () => ({
   api: {
@@ -21,6 +24,7 @@ vi.mock("../api/client", () => ({
 }));
 
 beforeEach(() => {
+  vi.mocked(toast.success).mockClear();
   vi.mocked(api.roots).mockReset();
   vi.mocked(api.browse).mockReset();
   vi.mocked(api.mediaUrl).mockClear();
@@ -95,7 +99,7 @@ it("opens mkdir in an app modal instead of the browser prompt", async () => {
   await userEvent.click(screen.getByRole("button", { name: "mkdir" }));
 
   expect(prompt).not.toHaveBeenCalled();
-  const dialog = screen.getByRole("region", { name: "Directory name" });
+  const dialog = screen.getByRole("dialog", { name: "Directory name" });
   await userEvent.type(within(dialog).getByLabelText("Directory name"), "modal-folder");
   await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
 
@@ -296,7 +300,7 @@ it("clears hidden selection after a rename job refreshes the pane", async () => 
   const leftPane = await screen.findByRole("region", { name: "Left pane" });
   await userEvent.click(await within(leftPane).findByLabelText("Select old.txt"));
   await userEvent.click(screen.getByRole("button", { name: "Rename" }));
-  const dialog = await screen.findByRole("region", { name: "Rename dialog" });
+  const dialog = await screen.findByRole("dialog", { name: "Rename dialog" });
   await userEvent.clear(within(dialog).getByRole("textbox"));
   await userEvent.type(within(dialog).getByRole("textbox"), "new.txt");
   await userEvent.click(within(dialog).getByRole("button", { name: "Rename" }));
@@ -358,9 +362,10 @@ it("refreshes both panes after an operation job reaches a terminal status", asyn
 
   await userEvent.click(await within(leftPane).findByLabelText("Select source.txt"));
   await userEvent.click(screen.getByRole("button", { name: "Copy to right pane" }));
-  await userEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+  await userEvent.click(await screen.findByRole("button", { name: "Start copy" }));
 
   await waitFor(() => expect(api.opsCreateJob).toHaveBeenCalled());
+  expect(toast.success).toHaveBeenCalledWith("Background job created");
   await waitFor(() => expect(api.job).toHaveBeenCalledWith("job-1"));
   await waitFor(() => expect(api.browse).toHaveBeenCalledTimes(2));
   await closeJobsSheet();

@@ -25,7 +25,9 @@ it("shows conflicts in operation preview and disables confirmation", async () =>
   render(<OperationPreview request={request()} onJobCreated={vi.fn()} onClose={vi.fn()} />);
 
   expect(await screen.findByText("exists")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Confirm" })).toBeDisabled();
+  expect(screen.getByText("1 conflict must be resolved before continuing.")).toBeInTheDocument();
+  expect(screen.getByRole("dialog", { name: "copy preview" })).toHaveClass("sm:max-w-3xl");
+  expect(screen.getByRole("button", { name: "Start copy" })).toBeDisabled();
 });
 
 it("creates a job from a conflict-free operation plan", async () => {
@@ -37,8 +39,8 @@ it("creates a job from a conflict-free operation plan", async () => {
   const onJobCreated = vi.fn();
   render(<OperationPreview request={request()} onJobCreated={onJobCreated} onClose={vi.fn()} />);
 
-  await waitFor(() => expect(screen.getByRole("button", { name: "Confirm" })).not.toBeDisabled());
-  await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Start copy" })).not.toBeDisabled());
+  await userEvent.click(screen.getByRole("button", { name: "Start copy" }));
   expect(onJobCreated).toHaveBeenCalledWith("job_1");
 });
 
@@ -51,12 +53,12 @@ it("renders operation preview labels in Chinese", async () => {
   render(<OperationPreview request={request()} labels={strings["zh-CN"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
 
   expect(await screen.findByRole("heading", { name: "复制预览" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "来源" })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "目标" })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "状态" })).toBeInTheDocument();
   expect(screen.getByText("就绪")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "确认" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "开始复制" })).toBeInTheDocument();
 });
 
 it("shows the destination root in operation preview paths", async () => {
@@ -79,6 +81,57 @@ it("shows the source root in operation preview paths", async () => {
   render(<OperationPreview request={request()} onJobCreated={vi.fn()} onClose={vi.fn()} />);
 
   expect(await screen.findByText("downloads:/a.txt")).toBeInTheDocument();
+});
+
+it("uses a destructive item-count label for delete", async () => {
+  vi.mocked(api.opsDryRun).mockResolvedValue({
+    hasConflict: false,
+    items: [
+      { sourcePath: "a.txt", conflict: false },
+      { sourcePath: "b.txt", conflict: false },
+    ],
+  });
+  render(
+    <OperationPreview
+      request={{ type: "delete", sourceRoot: "root", sources: ["a.txt", "b.txt"] }}
+      onJobCreated={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+
+  const confirm = await screen.findByRole("button", { name: "Delete 2 items" });
+  expect(screen.getByText("Deleted items cannot be restored by FileButler.")).toBeInTheDocument();
+  expect(confirm).toHaveAttribute("data-variant", "destructive");
+});
+
+it("prevents duplicate submission while a job is being created", async () => {
+  vi.mocked(api.opsDryRun).mockResolvedValue({
+    hasConflict: false,
+    items: [{ sourcePath: "a.txt", destPath: "a.txt", conflict: false }],
+  });
+  let resolveJob!: (value: { id: string }) => void;
+  vi.mocked(api.opsCreateJob).mockReturnValue(new Promise((resolve) => { resolveJob = resolve; }));
+  const onJobCreated = vi.fn();
+  render(<OperationPreview request={request()} onJobCreated={onJobCreated} onClose={vi.fn()} />);
+
+  const confirm = await screen.findByRole("button", { name: "Start copy" });
+  await waitFor(() => expect(confirm).toBeEnabled());
+  await userEvent.click(confirm);
+
+  expect(confirm).toBeDisabled();
+  await userEvent.click(confirm);
+  expect(api.opsCreateJob).toHaveBeenCalledTimes(1);
+
+  resolveJob({ id: "job_1" });
+  await waitFor(() => expect(onJobCreated).toHaveBeenCalledWith("job_1"));
+});
+
+it("keeps confirmation disabled when the operation preview fails", async () => {
+  vi.mocked(api.opsDryRun).mockRejectedValue(new Error("preview unavailable"));
+  render(<OperationPreview request={request()} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("preview unavailable");
+  expect(screen.getByRole("button", { name: "Start copy" })).toBeDisabled();
 });
 
 function request() {

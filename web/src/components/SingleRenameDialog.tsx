@@ -1,4 +1,9 @@
 import { useState } from "react";
+import { LoaderCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { api } from "../api/client";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
@@ -32,25 +37,30 @@ export function SingleRenameDialog({ rootId, path, initialName, onJobCreated, on
   }
 
   return (
-    <div className="modal-backdrop">
-      <section className="modal single-rename-dialog" aria-label={labels.renameDialog}>
-        <header className="modal-header">
-          <h2>{labels.rename}</h2>
-          <button type="button" onClick={onClose}>
-            {labels.close}
-          </button>
-        </header>
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-md" showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle className="sr-only">{labels.renameDialog}</DialogTitle>
+          <p className="text-base font-medium leading-none">{labels.rename}</p>
+        </DialogHeader>
         <ErrorBanner message={error} />
-        <label className="single-rename-field">
-          {labels.newName}
-          <input value={newName} onChange={(event) => setNewName(event.target.value)} autoFocus />
-        </label>
-        <footer className="modal-actions">
-          <button type="button" onClick={submit} disabled={submitting || !newName.trim()}>
+        <div className="grid gap-2">
+          <Label htmlFor="single-rename-name">{labels.newName}</Label>
+          <Input
+            id="single-rename-name"
+            value={newName}
+            onChange={(event) => setNewName(event.target.value)}
+            autoFocus
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>{labels.cancel}</Button>
+          <Button onClick={submit} disabled={submitting || !newName.trim()}>
+            {submitting ? <LoaderCircle className="animate-spin" /> : null}
             {labels.rename}
-          </button>
-        </footer>
-      </section>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

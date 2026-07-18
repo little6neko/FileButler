@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
+import { toast } from "sonner";
 import { api } from "../api/client";
 import type { Entry, OpsRequest, RenameOptions, Root } from "../api/types";
 import { strings } from "../i18n";
@@ -117,6 +118,7 @@ export function DualPane({
   function handleJobCreated(id: string) {
     clearSelections();
     setJobsOpen(true);
+    toast.success(labels.jobCreated);
     void refreshWhenJobFinishes(id);
   }
 

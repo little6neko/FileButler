@@ -1,4 +1,5 @@
 import type { MediaKind } from "../media";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
 
@@ -12,22 +13,20 @@ type Props = {
 
 export function MediaPreview({ name, url, kind, onClose, labels = strings.en }: Props) {
   return (
-    <div className="modal-backdrop">
-      <section className="modal media-preview" aria-label={labels.mediaPreview}>
-        <header className="modal-header">
-          <h2>{name}</h2>
-          <button type="button" onClick={onClose}>
-            {labels.close}
-          </button>
-        </header>
-        <div className="media-preview-content">
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-5xl">
+        <DialogHeader>
+          <DialogTitle className="sr-only">{labels.mediaPreview}</DialogTitle>
+          <p className="text-base font-medium leading-none">{name}</p>
+        </DialogHeader>
+        <div className="grid max-h-[78vh] place-items-center overflow-auto rounded-md bg-slate-950/5 p-2">
           {kind === "image" ? (
-            <img src={url} alt={name} />
+            <img src={url} alt={name} className="max-h-[74vh] max-w-full object-contain" />
           ) : (
-            <video src={url} controls aria-label={name} />
+            <video src={url} controls aria-label={name} className="max-h-[74vh] max-w-full" />
           )}
         </div>
-      </section>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

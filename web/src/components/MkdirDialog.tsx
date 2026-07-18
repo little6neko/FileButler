@@ -1,4 +1,8 @@
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
 
@@ -19,17 +23,15 @@ export function MkdirDialog({ labels = strings.en, onClose, onSubmit }: Props) {
   }
 
   return (
-    <div className="modal-backdrop">
-      <section className="modal single-rename-dialog" aria-label={labels.directoryNamePrompt}>
-        <header className="modal-header">
-          <h2>{labels.mkdir}</h2>
-          <button type="button" onClick={onClose}>
-            {labels.close}
-          </button>
-        </header>
-        <label className="single-rename-field">
-          {labels.directoryNamePrompt}
-          <input
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="sm:max-w-md" showCloseButton={false}>
+        <DialogHeader>
+          <DialogTitle>{labels.directoryNamePrompt}</DialogTitle>
+        </DialogHeader>
+        <div className="grid gap-2">
+          <Label htmlFor="mkdir-name">{labels.directoryNamePrompt}</Label>
+          <Input
+            id="mkdir-name"
             value={name}
             autoFocus
             onChange={(event) => setName(event.target.value)}
@@ -37,16 +39,12 @@ export function MkdirDialog({ labels = strings.en, onClose, onSubmit }: Props) {
               if (event.key === "Enter") submit();
             }}
           />
-        </label>
-        <footer className="modal-actions">
-          <button type="button" onClick={onClose}>
-            {labels.cancel}
-          </button>
-          <button type="button" onClick={submit} disabled={!canSubmit}>
-            {labels.confirm}
-          </button>
-        </footer>
-      </section>
-    </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>{labels.cancel}</Button>
+          <Button onClick={submit} disabled={!canSubmit}>{labels.confirm}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

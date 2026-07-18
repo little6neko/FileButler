@@ -16,7 +16,7 @@ it("keeps file table headers fixed while pane contents scroll", () => {
   expect(rule(".file-table thead th")).toContain("position: sticky;");
   expect(rule(".file-table thead th")).toContain("top: 0;");
   expect(rule(".file-table thead th")).toContain("z-index: 3;");
-  expect(rule(".file-table thead th")).toContain("background: #ffffff;");
+  expect(rule(".file-table thead th")).toContain("background: var(--muted);");
 });
 
 it("draws the active pane border above sticky file headers", () => {
@@ -32,6 +32,13 @@ it("draws the active pane border above sticky file headers", () => {
 it("keeps overlays above the active pane border", () => {
   expect(rule(".jobs-panel")).toContain("z-index: 6;");
   expect(rule(".modal-backdrop")).toContain("z-index: 10;");
+});
+
+it("uses compact file rows and a token-based active pane ring", () => {
+  expect(rule(".file-pane")).toContain("grid-template-rows: 39px 29px minmax(0, 1fr) 28px;");
+  expect(rule(".file-table th,\n.file-table td")).toContain("height: 28px;");
+  expect(rule('.file-pane[data-active="true"]')).toContain("border-color: var(--primary);");
+  expect(rule('.file-pane[data-active="true"]')).toContain("box-shadow:");
 });
 
 function rule(selector: string) {

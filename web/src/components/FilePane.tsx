@@ -1,8 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
+import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import type { Entry, Root } from "../api/types";
+import { formatBytes } from "../format";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
+import { ErrorBanner } from "./ErrorBanner";
+import { FileIcon } from "./FileIcon";
+import { PaneStatusBar } from "./PaneStatusBar";
 
 type FilePaneProps = {
   title: string;
@@ -22,6 +31,8 @@ type FilePaneProps = {
   onActivate(): void;
   labels?: UIStrings;
   isActive?: boolean;
+  loading?: boolean;
+  error?: string | null;
 };
 
 export function FilePane({
@@ -42,6 +53,8 @@ export function FilePane({
   onActivate,
   labels = strings.en,
   isActive = false,
+  loading = false,
+  error = null,
 }: FilePaneProps) {
   const [pathDraft, setPathDraft] = useState(displayPath(currentPath));
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
@@ -51,6 +64,8 @@ export function FilePane({
   const fileListRef = useRef<HTMLDivElement>(null);
   const columnsResizedRef = useRef(false);
   const visibleEntries = useMemo(() => sortEntries(entries, sortState), [entries, sortState]);
+  const selectedEntries = visibleEntries.filter((entry) => selectedPaths.has(entry.relativePath));
+  const selectedBytes = selectedEntries.reduce((total, entry) => total + entry.size, 0);
   const allVisibleSelected = visibleEntries.length > 0 && visibleEntries.every((entry) => selectedPaths.has(entry.relativePath));
   const suggestions = useMemo(
     () =>
@@ -99,7 +114,13 @@ export function FilePane({
   }, []);
 
   return (
-    <section className={`file-pane${isActive ? " is-active" : ""}`} aria-label={title} onClick={onActivate}>
+    <section
+      className="file-pane"
+      aria-label={title}
+      aria-current={isActive ? "true" : undefined}
+      data-active={isActive ? "true" : "false"}
+      onClick={onActivate}
+    >
       <div className="pane-header">
         <strong>{title}</strong>
         {singleRoot ? (
@@ -120,8 +141,9 @@ export function FilePane({
           </select>
         )}
         <div className="path-combobox">
-          <input
+          <Input
             aria-label={labels.pathLabel(title)}
+            className="h-7 min-w-0 text-xs"
             value={pathDraft}
             onChange={(event) => {
               setPathDraft(event.target.value);
@@ -149,9 +171,9 @@ export function FilePane({
             </div>
           ) : null}
         </div>
-        <button type="button" aria-label={labels.refreshLabel(title)} onClick={onRefresh}>
-          {labels.refresh}
-        </button>
+        <Button type="button" variant="outline" size="icon-sm" aria-label={labels.refreshLabel(title)} onClick={onRefresh}>
+          <RefreshCw />
+        </Button>
       </div>
       <nav className="path-segments" aria-label={`${title} segments`}>
         {pathSegments.map((segment, index) => (
@@ -161,7 +183,16 @@ export function FilePane({
         ))}
       </nav>
       <div className="file-list" ref={fileListRef} onMouseDown={startDragSelection}>
-        <table className="file-table" style={columnStyle(columnWidths)}>
+        {loading ? (
+          <div data-testid="pane-loading" className="grid gap-1 p-2">
+            {Array.from({ length: 8 }, (_, index) => <Skeleton key={index} className="h-7" />)}
+          </div>
+        ) : error ? (
+          <div className="p-3"><ErrorBanner message={error} /></div>
+        ) : visibleEntries.length === 0 ? (
+          <div className="grid h-full place-items-center text-xs text-slate-500">{labels.emptyDirectory}</div>
+        ) : (
+          <table className="file-table" style={columnStyle(columnWidths)}>
           <colgroup>
             <col style={{ width: "var(--file-col-select)" }} />
             <col style={{ width: "var(--file-col-name)" }} />
@@ -173,11 +204,10 @@ export function FilePane({
             <tr>
               <th className="select-cell">
                 <div className="file-header-cell">
-                  <input
+                  <Checkbox
                     aria-label={labels.selectAllVisible}
-                    type="checkbox"
                     checked={allVisibleSelected}
-                    onChange={(event) => onSelectAll(event.target.checked)}
+                    onCheckedChange={(checked) => onSelectAll(checked === true)}
                   />
                 </div>
               </th>
@@ -192,6 +222,7 @@ export function FilePane({
               <tr
                 key={entry.relativePath}
                 data-entry-path={entry.relativePath}
+                data-density="compact"
                 className={entry.type === "directory" ? "directory-row" : undefined}
                 onDoubleClick={() => {
                   if (entry.type === "directory") onPathChange(entry.relativePath);
@@ -199,28 +230,37 @@ export function FilePane({
                 }}
               >
                 <td className="select-cell">
-                  <input
+                  <Checkbox
                     aria-label={labels.selectEntry(entry.name)}
-                    type="checkbox"
                     checked={selectedPaths.has(entry.relativePath)}
-                    onChange={() => onToggleSelection(entry.relativePath)}
+                    onCheckedChange={() => onToggleSelection(entry.relativePath)}
                   />
                 </td>
                 <td>
-                  <span>{entry.name}</span>
+                  <span className="flex min-w-0 items-center gap-1.5">
+                    <FileIcon name={entry.name} type={entry.type} />
+                    <span className="truncate font-medium text-slate-700">{entry.name}</span>
                   {entry.isSymlink && entry.symlinkTarget ? (
-                    <small className="symlink-target">{" -> "}{entry.symlinkTarget}</small>
+                      <small className="truncate text-slate-400">{" -> "}{entry.symlinkTarget}</small>
                   ) : null}
+                  </span>
                 </td>
                 <td>{entry.type}</td>
-                <td>{formatSize(entry.size)}</td>
+                <td>{formatBytes(entry.size)}</td>
                 <td>{entry.modifiedUnix ? new Date(entry.modifiedUnix * 1000).toLocaleString() : ""}</td>
               </tr>
             ))}
           </tbody>
-        </table>
+          </table>
+        )}
         {dragBox ? <div className="drag-selection-box" style={dragBox} /> : null}
       </div>
+      <PaneStatusBar
+        selectedCount={selectedEntries.length}
+        selectedBytes={selectedBytes}
+        visibleCount={visibleEntries.length}
+        labels={labels}
+      />
     </section>
   );
 
@@ -231,7 +271,7 @@ export function FilePane({
       <th aria-sort={active ? (direction === "asc" ? "ascending" : "descending") : "none"}>
         <button type="button" className="file-sort-button" onClick={() => toggleSort(column)}>
           <span>{label}</span>
-          {active ? <span aria-hidden="true">{direction === "asc" ? "▲" : "▼"}</span> : null}
+          {active ? direction === "asc" ? <ChevronUp aria-hidden="true" className="size-3" /> : <ChevronDown aria-hidden="true" className="size-3" /> : null}
         </button>
         <ResizeHandle label={`Resize ${label} column`} onMouseDown={(event) => startResize(event, column)} />
       </th>
@@ -404,7 +444,7 @@ function columnStyle(widths: Record<ColumnKey, number>) {
 }
 
 function isDragBlockedTarget(target: EventTarget) {
-  return target instanceof Element && Boolean(target.closest("button, input, select, textarea, a, thead, [role='separator']"));
+  return target instanceof Element && Boolean(target.closest("button, input, select, textarea, a, thead, [role='checkbox'], [role='separator']"));
 }
 
 function normalizeRect(startX: number, startY: number, endX: number, endY: number) {
@@ -421,18 +461,6 @@ function rectsIntersect(
   right: { left: number; top: number; right: number; bottom: number },
 ) {
   return left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
-}
-
-function formatSize(size: number) {
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let value = size;
-  let unitIndex = 0;
-  while (Math.abs(value) >= 1024 && unitIndex < units.length - 1) {
-    value /= 1024;
-    unitIndex += 1;
-  }
-  const formatted = unitIndex === 0 || Number.isInteger(value) ? value.toFixed(0) : value.toFixed(1);
-  return `${formatted} ${units[unitIndex]}`;
 }
 
 function displayPath(path: string) {

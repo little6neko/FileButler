@@ -38,6 +38,11 @@ export type UIStrings = {
   refresh: string;
   resizePanes: string;
   selectAllVisible: string;
+  selectedItems(count: number): string;
+  visibleItems(count: number): string;
+  noSelection: string;
+  emptyDirectory: string;
+  browseFailed: string;
   name: string;
   type: string;
   size: string;
@@ -136,6 +141,11 @@ export const strings: Record<Language, UIStrings> = {
     refresh: "Refresh",
     resizePanes: "Resize panes",
     selectAllVisible: "Select all visible",
+    selectedItems: (count) => `${count} selected`,
+    visibleItems: (count) => `${count} ${count === 1 ? "item" : "items"}`,
+    noSelection: "No selection",
+    emptyDirectory: "This directory is empty",
+    browseFailed: "Unable to load this directory",
     name: "Name",
     type: "Type",
     size: "Size",
@@ -232,6 +242,11 @@ export const strings: Record<Language, UIStrings> = {
     refresh: "刷新",
     resizePanes: "调整左右栏宽度",
     selectAllVisible: "全选可见文件",
+    selectedItems: (count) => `已选择 ${count} 项`,
+    visibleItems: (count) => `共 ${count} 项`,
+    noSelection: "未选择",
+    emptyDirectory: "当前文件夹为空",
+    browseFailed: "无法加载当前文件夹",
     name: "名称",
     type: "类型",
     size: "大小",

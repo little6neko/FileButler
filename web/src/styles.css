@@ -261,12 +261,18 @@ button:disabled {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  background: #ffffff;
-  border-top: 1px solid #d9e0e7;
+  grid-template-rows: 39px 29px minmax(0, 1fr) 28px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
   outline: 2px solid transparent;
   outline-offset: -2px;
   overflow: hidden;
+}
+
+.file-pane[data-active="true"] {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 16%, transparent);
 }
 
 .file-pane.is-active {
@@ -405,7 +411,7 @@ button:disabled {
 .file-table th,
 .file-table td {
   position: relative;
-  height: 32px;
+  height: 28px;
   padding: 0 8px;
   border-bottom: 1px solid #edf1f4;
   border-right: 1px solid #edf1f4;
@@ -424,7 +430,8 @@ button:disabled {
   position: sticky;
   top: 0;
   z-index: 3;
-  background: #ffffff;
+  height: 29px;
+  background: var(--muted);
 }
 
 .file-table th.select-cell,

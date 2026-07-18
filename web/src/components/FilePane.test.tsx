@@ -260,6 +260,41 @@ it("does not start drag marquee from file controls", () => {
   expect(container.querySelector(".drag-selection-box")).not.toBeInTheDocument();
 });
 
+it("renders compact rows and a status footer", () => {
+  renderPane({
+    entries: [entry("a.txt", "file", 1024), entry("b.txt", "file", 512)],
+    selectedPaths: new Set(["a.txt", "b.txt"]),
+    isActive: true,
+  });
+
+  expect(screen.getByRole("region", { name: "Left pane" })).toHaveAttribute("data-active", "true");
+  expect(screen.getAllByRole("row")[1]).toHaveAttribute("data-density", "compact");
+  expect(screen.getByText("2 selected")).toBeInTheDocument();
+  expect(screen.getByText("1.5 KB")).toBeInTheDocument();
+  expect(screen.getByText("2 items")).toBeInTheDocument();
+});
+
+it("keeps the active state distinguishable without relying only on color", () => {
+  renderPane({ isActive: true });
+
+  expect(screen.getByRole("region", { name: "Left pane" })).toHaveAttribute("aria-current", "true");
+});
+
+it("renders a loading skeleton while browsing", () => {
+  renderPane({ entries: [], loading: true });
+  expect(screen.getByTestId("pane-loading")).toBeInTheDocument();
+});
+
+it("renders an empty directory message", () => {
+  renderPane({ entries: [], loading: false, error: null });
+  expect(screen.getByText("This directory is empty")).toBeInTheDocument();
+});
+
+it("renders browse failures inside the pane", () => {
+  renderPane({ entries: [], loading: false, error: "permission denied" });
+  expect(screen.getByRole("alert")).toHaveTextContent("permission denied");
+});
+
 function entry(name: string, type: "file" | "directory" | "symlink" | "other" = "file", size = 1) {
   return {
     name,

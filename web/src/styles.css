@@ -303,6 +303,10 @@ body {
   text-align: center;
 }
 
+.file-table td.select-cell [data-slot="checkbox"] {
+  margin: 0 auto;
+}
+
 .file-header-cell {
   display: flex;
   align-items: center;

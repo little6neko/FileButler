@@ -23,6 +23,10 @@ it("keeps compact sticky file headers and an active-pane ring", () => {
   expect(rule('.file-pane[data-active="true"]')).toContain("box-shadow:");
 });
 
+it("centers selection checkboxes in file rows", () => {
+  expect(rule('.file-table td.select-cell [data-slot="checkbox"]')).toContain("margin: 0 auto;");
+});
+
 function rule(selector: string) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = css.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));

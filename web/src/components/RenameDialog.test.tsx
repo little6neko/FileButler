@@ -45,8 +45,8 @@ it("highlights preview rows that match the PowerRename rule", async () => {
   });
   render(<RenameDialog rootId="data" paths={["file.txt", "notes.txt"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
 
-  expect((await screen.findByText("photo.txt")).closest("tr")).toHaveClass("powerrename-match");
-  expect(screen.getAllByText("notes.txt")[0].closest("tr")).not.toHaveClass("powerrename-match");
+  expect((await screen.findByText("photo.txt")).closest("tr")).toHaveClass("bg-blue-50");
+  expect(screen.getAllByText("notes.txt")[0].closest("tr")).not.toHaveClass("bg-blue-50");
 });
 
 it("disables run button when preview has conflicts", async () => {
@@ -57,7 +57,7 @@ it("disables run button when preview has conflicts", async () => {
   render(<RenameDialog rootId="data" paths={["file.txt"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
 
   expect(await screen.findByText("exists")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Run rename" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Rename 1 item" })).toBeDisabled();
 });
 
 it("creates a rename job from selected files", async () => {
@@ -66,7 +66,7 @@ it("creates a rename job from selected files", async () => {
   const onJobCreated = vi.fn();
   render(<RenameDialog rootId="data" paths={["file.txt"]} onJobCreated={onJobCreated} onClose={vi.fn()} />);
 
-  await userEvent.click(screen.getByRole("button", { name: "Run rename" }));
+  await userEvent.click(screen.getByRole("button", { name: "Rename 1 item" }));
   expect(onJobCreated).toHaveBeenCalledWith("job_1");
 });
 
@@ -93,13 +93,13 @@ it("renders rename dialog labels in Chinese", async () => {
   );
 
   expect(screen.getByRole("heading", { name: "PowerRename" })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "关闭" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument();
   expect(screen.getByLabelText("搜索")).toBeInTheDocument();
   expect(screen.getByLabelText("替换")).toBeInTheDocument();
   expect(screen.getByLabelText("使用正则表达式")).toBeInTheDocument();
   expect(screen.getByLabelText("排除文件")).toBeInTheDocument();
   expect(screen.getByLabelText("排除文件夹")).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "运行重命名" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "重命名 1 项" })).toBeInTheDocument();
   expect(await screen.findByText("就绪")).toBeInTheDocument();
 });
 
@@ -115,4 +115,20 @@ it("renders as PowerRename with PowerRename options", async () => {
   expect(screen.getByLabelText("Full name")).toBeInTheDocument();
   expect(screen.getByLabelText("Uppercase")).toBeInTheDocument();
   expect(screen.getByLabelText("Randomize items")).toBeInTheDocument();
+});
+
+it("renders controls and live preview in separate desktop columns", async () => {
+  vi.mocked(api.renamePreview).mockResolvedValue({
+    hasConflict: false,
+    items: [
+      { sourcePath: "a.txt", oldName: "a.txt", newName: "x.txt", changed: true, conflict: false },
+      { sourcePath: "b.txt", oldName: "b.txt", newName: "y.txt", changed: true, conflict: false },
+    ],
+  });
+  render(<RenameDialog rootId="data" paths={["a.txt", "b.txt"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  expect(screen.getByRole("dialog", { name: "Rename dialog" })).toBeInTheDocument();
+  expect(screen.getByTestId("rename-options-column")).toBeInTheDocument();
+  expect(screen.getByTestId("rename-preview-column")).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Rename 2 items" })).toBeEnabled();
 });

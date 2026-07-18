@@ -249,26 +249,26 @@ it("keeps PowerRename settings only after a rename job is created", async () => 
   const leftPane = await screen.findByRole("region", { name: "Left pane" });
   await userEvent.click(await within(leftPane).findByLabelText("Select file.txt"));
   await userEvent.click(screen.getByRole("button", { name: "PowerRename" }));
-  let dialog = await screen.findByRole("region", { name: "Rename dialog" });
+  let dialog = await screen.findByRole("dialog", { name: "Rename dialog" });
   await userEvent.type(within(dialog).getByLabelText("Search"), "draft");
   await userEvent.click(within(dialog).getByLabelText("Use regular expressions"));
-  await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+  await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
 
   await userEvent.click(screen.getByRole("button", { name: "PowerRename" }));
-  dialog = await screen.findByRole("region", { name: "Rename dialog" });
+  dialog = await screen.findByRole("dialog", { name: "Rename dialog" });
   expect(within(dialog).getByLabelText("Search")).toHaveValue("");
   expect(within(dialog).getByLabelText("Use regular expressions")).not.toBeChecked();
 
   await userEvent.type(within(dialog).getByLabelText("Search"), "committed");
   await userEvent.type(within(dialog).getByLabelText("Replace"), "renamed");
   await userEvent.click(within(dialog).getByLabelText("Use regular expressions"));
-  await userEvent.click(within(dialog).getByRole("button", { name: "Run rename" }));
+  await userEvent.click(within(dialog).getByRole("button", { name: "Rename 1 item" }));
   await waitFor(() => expect(api.renameCreateJob).toHaveBeenCalled());
   await closeJobsSheet();
 
   await userEvent.click(await within(leftPane).findByLabelText("Select file.txt"));
   await userEvent.click(screen.getByRole("button", { name: "PowerRename" }));
-  dialog = await screen.findByRole("region", { name: "Rename dialog" });
+  dialog = await screen.findByRole("dialog", { name: "Rename dialog" });
   expect(within(dialog).getByLabelText("Search")).toHaveValue("committed");
   expect(within(dialog).getByLabelText("Replace")).toHaveValue("renamed");
   expect(within(dialog).getByLabelText("Use regular expressions")).toBeChecked();

@@ -71,6 +71,9 @@ export type UIStrings = {
   jobCreationFailed: string;
   batchRename: string;
   renameDialog: string;
+  livePreview: string;
+  renamePreviewSummary(changed: number, total: number): string;
+  renameItems(count: number): string;
   search: string;
   replace: string;
   regex: string;
@@ -191,6 +194,9 @@ export const strings: Record<Language, UIStrings> = {
     jobCreationFailed: "Job creation failed",
     batchRename: "Batch rename",
     renameDialog: "Rename dialog",
+    livePreview: "Live preview",
+    renamePreviewSummary: (changed, total) => `${changed} changes · ${total} items`,
+    renameItems: (count) => `Rename ${count} ${count === 1 ? "item" : "items"}`,
     search: "Search",
     replace: "Replace",
     regex: "Regex",
@@ -310,6 +316,9 @@ export const strings: Record<Language, UIStrings> = {
     jobCreationFailed: "创建任务失败",
     batchRename: "批量重命名",
     renameDialog: "重命名窗口",
+    livePreview: "实时预览",
+    renamePreviewSummary: (changed, total) => `${changed} 项更改 · 共 ${total} 项`,
+    renameItems: (count) => `重命名 ${count} 项`,
     search: "搜索",
     replace: "替换",
     regex: "正则",

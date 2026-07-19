@@ -147,3 +147,66 @@ it("renders controls and live preview in separate desktop columns", async () => 
   expect(screen.getByTestId("rename-preview-column")).toBeInTheDocument();
   expect(await screen.findByRole("button", { name: "Rename 2 items" })).toBeEnabled();
 });
+
+it("shows each preset only for an empty focused input", async () => {
+  vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
+  render(<RenameDialog rootId="data" paths={["file.txt"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  expect(screen.queryByRole("option", { name: "^.*" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: "${start=1,padding=3}" })).not.toBeInTheDocument();
+
+  const search = screen.getByLabelText("Search");
+  const replace = screen.getByLabelText("Replace");
+  await userEvent.click(search);
+  expect(screen.getByRole("option", { name: "^.*" })).toBeInTheDocument();
+
+  await userEvent.type(search, "name");
+  expect(screen.queryByRole("option", { name: "^.*" })).not.toBeInTheDocument();
+  await userEvent.clear(search);
+  expect(screen.getByRole("option", { name: "^.*" })).toBeInTheDocument();
+
+  await userEvent.click(replace);
+  expect(screen.getByRole("option", { name: "${start=1,padding=3}" })).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: "^.*" })).not.toBeInTheDocument();
+});
+
+it("fills and closes the selected preset without changing other options", async () => {
+  vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
+  render(<RenameDialog rootId="data" paths={["file.txt"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  const search = screen.getByLabelText("Search");
+  await userEvent.click(search);
+  await userEvent.click(screen.getByRole("option", { name: "^.*" }));
+
+  expect(search).toHaveValue("^.*");
+  expect(screen.queryByRole("option", { name: "^.*" })).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Use regular expressions")).not.toBeChecked();
+  await waitFor(() =>
+    expect(api.renamePreview).toHaveBeenCalledWith(
+      expect.objectContaining({ options: expect.objectContaining({ search: "^.*", replace: "" }) }),
+    ),
+  );
+
+  await userEvent.clear(search);
+  expect(screen.getByRole("option", { name: "^.*" })).toBeInTheDocument();
+  await userEvent.click(screen.getByLabelText("Use regular expressions"));
+  expect(screen.queryByRole("option", { name: "^.*" })).not.toBeInTheDocument();
+});
+
+it("supports keyboard preset selection and Escape dismissal", async () => {
+  vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
+  render(<RenameDialog rootId="data" paths={["file.txt"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  const replace = screen.getByLabelText("Replace");
+  await userEvent.click(replace);
+  await userEvent.keyboard("{ArrowDown}{Enter}");
+  expect(replace).toHaveValue("${start=1,padding=3}");
+  expect(screen.queryByRole("option", { name: "${start=1,padding=3}" })).not.toBeInTheDocument();
+
+  await userEvent.clear(replace);
+  expect(screen.getByRole("option", { name: "${start=1,padding=3}" })).toBeInTheDocument();
+  await userEvent.keyboard("{Escape}");
+  expect(screen.queryByRole("option", { name: "${start=1,padding=3}" })).not.toBeInTheDocument();
+  await userEvent.click(replace);
+  expect(screen.getByRole("option", { name: "${start=1,padding=3}" })).toBeInTheDocument();
+});

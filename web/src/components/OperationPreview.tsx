@@ -66,6 +66,8 @@ export function OperationPreview({ request, onJobCreated, onClose, labels = stri
   const conflictCount = items.filter((item) => item.conflict).length;
   const itemCount = request.type === "mkdir" ? 1 : request.sources.length;
   const destructive = request.type === "delete";
+  const showSourceColumn = request.type !== "mkdir";
+  const showDestinationColumn = request.type !== "delete";
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -99,16 +101,16 @@ export function OperationPreview({ request, onJobCreated, onClose, labels = stri
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{labels.source}</TableHead>
-                  <TableHead>{labels.destination}</TableHead>
+                  {showSourceColumn ? <TableHead>{labels.source}</TableHead> : null}
+                  {showDestinationColumn ? <TableHead>{labels.destination}</TableHead> : null}
                   <TableHead>{labels.status}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {items.map((item) => (
                   <TableRow key={`${item.sourcePath}-${item.destPath ?? item.targetPath ?? ""}`}>
-                    <TableCell>{displaySource(item, request)}</TableCell>
-                    <TableCell>{displayDestination(item, request)}</TableCell>
+                    {showSourceColumn ? <TableCell>{displaySource(item, request)}</TableCell> : null}
+                    {showDestinationColumn ? <TableCell>{displayDestination(item, request)}</TableCell> : null}
                     <TableCell className={item.conflict ? "text-destructive" : "text-emerald-700"}>
                       {item.conflict ? item.errorText || item.errorCode : labels.ready}
                     </TableCell>

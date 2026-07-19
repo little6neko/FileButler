@@ -61,6 +61,54 @@ it("renders operation preview labels in Chinese", async () => {
   expect(screen.getByRole("button", { name: "开始复制" })).toBeInTheDocument();
 });
 
+it("omits the source column when previewing a new directory", async () => {
+  vi.mocked(api.opsDryRun).mockResolvedValue({
+    hasConflict: false,
+    items: [{ sourcePath: "", destPath: "new-folder", conflict: false }],
+  });
+  render(
+    <OperationPreview
+      request={{ type: "mkdir", sourceRoot: "root", sources: [], destRoot: "root", destPath: "new-folder" }}
+      onJobCreated={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+
+  expect(await screen.findByRole("columnheader", { name: "Destination" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+  expect(screen.queryByRole("columnheader", { name: "Source" })).not.toBeInTheDocument();
+});
+
+it("omits the destination column when previewing deletion", async () => {
+  vi.mocked(api.opsDryRun).mockResolvedValue({
+    hasConflict: false,
+    items: [{ sourcePath: "old.txt", conflict: false }],
+  });
+  render(
+    <OperationPreview
+      request={{ type: "delete", sourceRoot: "root", sources: ["old.txt"] }}
+      onJobCreated={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+
+  expect(await screen.findByRole("columnheader", { name: "Source" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+  expect(screen.queryByRole("columnheader", { name: "Destination" })).not.toBeInTheDocument();
+});
+
+it("keeps both path columns for copy previews", async () => {
+  vi.mocked(api.opsDryRun).mockResolvedValue({
+    hasConflict: false,
+    items: [{ sourcePath: "old.txt", destPath: "copy/old.txt", conflict: false }],
+  });
+  render(<OperationPreview request={request()} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  expect(await screen.findByRole("columnheader", { name: "Source" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "Destination" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+});
+
 it("shows the destination root in operation preview paths", async () => {
   vi.mocked(api.opsDryRun).mockResolvedValue({
     hasConflict: false,

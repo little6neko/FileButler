@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type KeyboardEvent } from "react";
 import { LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -46,6 +46,9 @@ const defaultRenameOptions: RenameOptions = {
   enumerateItems: false,
   randomizeItems: false,
 };
+
+const searchPresets = ["^.*"] as const;
+const replacePresets = ["${start=1,padding=3}"] as const;
 
 export function RenameDialog({
   rootId,
@@ -111,12 +114,24 @@ export function RenameDialog({
         <div className="grid min-h-0 flex-1 grid-cols-[340px_minmax(0,1fr)] gap-4">
           <section data-testid="rename-options-column" className="min-h-0 space-y-4 overflow-auto border-r pr-4">
             <div className="grid gap-2">
-              <Label htmlFor="rename-search">{labels.search}</Label>
-              <Input id="rename-search" value={options.search} onChange={(event) => update({ search: event.target.value })} />
+              <Label id="rename-search-label" htmlFor="rename-search">{labels.search}</Label>
+              <PresetInput
+                id="rename-search"
+                labelId="rename-search-label"
+                value={options.search}
+                presets={searchPresets}
+                onChange={(value) => update({ search: value })}
+              />
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="rename-replace">{labels.replace}</Label>
-              <Input id="rename-replace" value={options.replace} onChange={(event) => update({ replace: event.target.value })} />
+              <Label id="rename-replace-label" htmlFor="rename-replace">{labels.replace}</Label>
+              <PresetInput
+                id="rename-replace"
+                labelId="rename-replace-label"
+                value={options.replace}
+                presets={replacePresets}
+                onChange={(value) => update({ replace: value })}
+              />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <CheckOption id="rename-regex" checked={options.useRegex} label={labels.useRegularExpressions} onCheckedChange={(checked) => update({ useRegex: checked })} />
@@ -231,6 +246,109 @@ function CheckOption({
         onCheckedChange={(value) => onCheckedChange(value === true)}
       />
       <Label htmlFor={id} className="text-xs font-normal">{label}</Label>
+    </div>
+  );
+}
+
+type PresetInputProps = {
+  id: string;
+  labelId: string;
+  value: string;
+  presets: readonly string[];
+  onChange(value: string): void;
+};
+
+function PresetInput({ id, labelId, value, presets, onChange }: PresetInputProps) {
+  const [focused, setFocused] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const listId = `${id}-presets`;
+  const isOpen = focused && value.length === 0 && !dismissed && presets.length > 0;
+
+  function selectPreset(preset: string) {
+    onChange(preset);
+    setHighlightedIndex(-1);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (value.length > 0 || presets.length === 0) return;
+
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setDismissed(false);
+      setHighlightedIndex((current) => (current + 1) % presets.length);
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setDismissed(false);
+      setHighlightedIndex((current) => (current <= 0 ? presets.length - 1 : current - 1));
+      return;
+    }
+    if (event.key === "Enter" && isOpen && highlightedIndex >= 0) {
+      event.preventDefault();
+      selectPreset(presets[highlightedIndex]);
+      return;
+    }
+    if (event.key === "Escape" && isOpen) {
+      event.preventDefault();
+      setDismissed(true);
+      setHighlightedIndex(-1);
+    }
+  }
+
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={isOpen}
+        aria-controls={isOpen ? listId : undefined}
+        aria-labelledby={labelId}
+        aria-activedescendant={isOpen && highlightedIndex >= 0 ? `${listId}-${highlightedIndex}` : undefined}
+        value={value}
+        onChange={(event) => {
+          const nextValue = event.target.value;
+          onChange(nextValue);
+          setHighlightedIndex(-1);
+          if (nextValue.length === 0) setDismissed(false);
+        }}
+        onFocus={() => {
+          setFocused(true);
+          setDismissed(false);
+        }}
+        onClick={() => {
+          if (value.length === 0) setDismissed(false);
+        }}
+        onBlur={() => {
+          setFocused(false);
+          setHighlightedIndex(-1);
+        }}
+        onKeyDown={handleKeyDown}
+      />
+      {isOpen ? (
+        <div id={listId} role="listbox" aria-labelledby={labelId} className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+          {presets.map((preset, index) => (
+            <button
+              id={`${listId}-${index}`}
+              key={preset}
+              type="button"
+              role="option"
+              tabIndex={-1}
+              aria-selected={index === highlightedIndex}
+              className={index === highlightedIndex ? "flex w-full items-center rounded-sm bg-accent px-2 py-1.5 text-left font-mono text-xs text-accent-foreground" : "flex w-full items-center rounded-sm px-2 py-1.5 text-left font-mono text-xs hover:bg-accent hover:text-accent-foreground"}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                selectPreset(preset);
+              }}
+              onMouseEnter={() => setHighlightedIndex(index)}
+            >
+              {preset}
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

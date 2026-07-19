@@ -15,6 +15,8 @@ COPY --from=frontend /src/web/dist ./web/dist
 RUN go build -o /out/filebutler ./cmd/filebutler
 
 FROM alpine:3.22
+ARG VERSION=0.1.1
+LABEL org.opencontainers.image.version="${VERSION}"
 RUN apk add --no-cache ca-certificates
 WORKDIR /app
 COPY --from=backend /out/filebutler /usr/local/bin/filebutler

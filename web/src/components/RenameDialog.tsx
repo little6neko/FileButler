@@ -118,6 +118,7 @@ export function RenameDialog({
               <PresetInput
                 id="rename-search"
                 labelId="rename-search-label"
+                listLabel={labels.searchPresets}
                 value={options.search}
                 presets={searchPresets}
                 onChange={(value) => update({ search: value })}
@@ -128,6 +129,7 @@ export function RenameDialog({
               <PresetInput
                 id="rename-replace"
                 labelId="rename-replace-label"
+                listLabel={labels.replacePresets}
                 value={options.replace}
                 presets={replacePresets}
                 onChange={(value) => update({ replace: value })}
@@ -253,12 +255,13 @@ function CheckOption({
 type PresetInputProps = {
   id: string;
   labelId: string;
+  listLabel: string;
   value: string;
   presets: readonly string[];
   onChange(value: string): void;
 };
 
-function PresetInput({ id, labelId, value, presets, onChange }: PresetInputProps) {
+function PresetInput({ id, labelId, listLabel, value, presets, onChange }: PresetInputProps) {
   const [focused, setFocused] = useState(false);
   const [dismissed, setDismissed] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
@@ -328,7 +331,7 @@ function PresetInput({ id, labelId, value, presets, onChange }: PresetInputProps
         onKeyDown={handleKeyDown}
       />
       {isOpen ? (
-        <div id={listId} role="listbox" aria-labelledby={labelId} className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+        <div id={listId} role="listbox" aria-label={listLabel} className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
           {presets.map((preset, index) => (
             <button
               id={`${listId}-${index}`}

@@ -76,6 +76,8 @@ export type UIStrings = {
   renameItems(count: number): string;
   search: string;
   replace: string;
+  searchPresets: string;
+  replacePresets: string;
   regex: string;
   useRegularExpressions: string;
   caseSensitive: string;
@@ -200,6 +202,8 @@ export const strings: Record<Language, UIStrings> = {
     renameItems: (count) => `Rename ${count} ${count === 1 ? "item" : "items"}`,
     search: "Search",
     replace: "Replace",
+    searchPresets: "Search presets",
+    replacePresets: "Replace presets",
     regex: "Regex",
     useRegularExpressions: "Use regular expressions",
     caseSensitive: "Case-sensitive",
@@ -323,6 +327,8 @@ export const strings: Record<Language, UIStrings> = {
     renameItems: (count) => `重命名 ${count} 项`,
     search: "搜索",
     replace: "替换",
+    searchPresets: "搜索预设",
+    replacePresets: "替换预设",
     regex: "正则",
     useRegularExpressions: "使用正则表达式",
     caseSensitive: "区分大小写",

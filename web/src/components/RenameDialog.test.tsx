@@ -210,3 +210,14 @@ it("supports keyboard preset selection and Escape dismissal", async () => {
   await userEvent.click(replace);
   expect(screen.getByRole("option", { name: "${start=1,padding=3}" })).toBeInTheDocument();
 });
+
+it("keeps the input label distinct from the preset list label", async () => {
+  vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
+  render(<RenameDialog rootId="data" paths={["file.txt"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  const search = screen.getByRole("combobox", { name: "Search" });
+  await userEvent.click(search);
+
+  expect(screen.getByLabelText("Search")).toBe(search);
+  expect(screen.getByRole("listbox", { name: "Search presets" })).toBeInTheDocument();
+});

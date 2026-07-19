@@ -152,7 +152,6 @@ export function RenameDialog({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="h-8 text-xs">{labels.source}</TableHead>
                     <TableHead className="h-8 text-xs">{labels.old}</TableHead>
                     <TableHead className="h-8 text-xs">{labels.new}</TableHead>
                     <TableHead className="h-8 text-xs">{labels.status}</TableHead>
@@ -161,7 +160,6 @@ export function RenameDialog({
                 <TableBody>
                   {items.map((item) => (
                     <TableRow key={item.sourcePath} className={item.changed ? "bg-blue-50" : undefined}>
-                      <TableCell className="py-1.5 text-xs">{item.sourcePath}</TableCell>
                       <TableCell className="py-1.5 text-xs">{item.oldName}</TableCell>
                       <TableCell className={item.changed ? "py-1.5 text-xs font-medium text-blue-700" : "py-1.5 text-xs"}>{item.newName}</TableCell>
                       <TableCell className={item.conflict ? "py-1.5 text-xs text-destructive" : "py-1.5 text-xs text-emerald-700"}>

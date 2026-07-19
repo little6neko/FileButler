@@ -117,6 +117,21 @@ it("renders as PowerRename with PowerRename options", async () => {
   expect(screen.getByLabelText("Randomize items")).toBeInTheDocument();
 });
 
+it("omits the source column from the PowerRename live preview", async () => {
+  vi.mocked(api.renamePreview).mockResolvedValue({
+    hasConflict: false,
+    items: [{ sourcePath: "photos/file.txt", oldName: "file.txt", newName: "photo.txt", conflict: false }],
+  });
+  render(<RenameDialog rootId="data" paths={["photos/file.txt"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  expect(await screen.findByRole("columnheader", { name: "Old" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "New" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+  expect(screen.queryByRole("columnheader", { name: "Source" })).not.toBeInTheDocument();
+  expect(screen.queryByText("photos/file.txt", { exact: true })).not.toBeInTheDocument();
+  expect(screen.getByText("file.txt", { exact: true })).toBeInTheDocument();
+});
+
 it("renders controls and live preview in separate desktop columns", async () => {
   vi.mocked(api.renamePreview).mockResolvedValue({
     hasConflict: false,

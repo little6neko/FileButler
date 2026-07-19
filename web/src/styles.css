@@ -157,7 +157,7 @@ body {
 }
 
 .pane-header {
-  min-height: 42px;
+  min-height: 0;
   display: grid;
   grid-template-columns: auto minmax(120px, 160px) minmax(120px, 1fr) auto;
   gap: 8px;
@@ -240,27 +240,140 @@ body {
 }
 
 .path-segments {
-  min-height: 32px;
-  display: flex;
-  align-items: center;
-  gap: 3px;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  height: 29px;
   padding: 0 10px;
   border-bottom: 1px solid var(--border);
-  overflow-x: auto;
+  overflow: hidden;
 }
 
-.path-segments button {
-  min-height: 24px;
+.path-segments-content {
+  width: 100%;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.path-segment-pair {
+  display: contents;
+}
+
+.path-segment-button {
+  flex: 0 0 auto;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
   border: 0;
+  border-radius: 4px;
   background: transparent;
-  padding: 0 6px;
+  padding: 0 4px;
   color: var(--primary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
 }
 
-.path-segments button + button::before {
-  content: "/";
+.path-segments [data-slot="menu-trigger"] {
+  cursor: pointer;
+}
+
+.path-segment-button:hover,
+.path-segment-button[data-popup-open] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.path-segment-button:focus-visible {
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--ring) 42%, transparent);
+}
+
+.path-separator {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 0 2px;
   color: var(--muted-foreground);
-  margin-right: 6px;
+  font-size: 12px;
+  cursor: default;
+  pointer-events: none;
+  user-select: none;
+}
+
+.path-segments-measure {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  visibility: hidden;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.path-segments-measure [data-path-measure="segment"],
+.path-segments-measure [data-path-measure="ellipsis"] {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 4px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.path-segments-measure [data-path-measure="separator"] {
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 2px;
+  font-size: 12px;
+}
+
+[data-slot="menu-popup"] {
+  z-index: 20;
+  min-width: 132px;
+  max-width: min(280px, calc(100vw - 24px));
+  max-height: min(320px, var(--available-height));
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--popover);
+  color: var(--foreground);
+  box-shadow: 0 8px 20px color-mix(in oklab, var(--foreground) 14%, transparent);
+  overflow-y: auto;
+  outline: none;
+}
+
+[data-slot="menu-item"] {
+  min-height: 28px;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  padding: 0 8px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  outline: none;
+}
+
+[data-slot="menu-item"][data-highlighted] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+[data-slot="menu-item"][data-disabled] {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .file-table {

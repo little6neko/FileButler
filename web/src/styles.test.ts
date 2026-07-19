@@ -23,6 +23,33 @@ it("keeps compact sticky file headers and an active-pane ring", () => {
   expect(rule('.file-pane[data-active="true"]')).toContain("box-shadow:");
 });
 
+it("keeps the breadcrumb row compact with matching pane dividers", () => {
+  expect(rule(".file-pane")).toContain("grid-template-rows: 39px 29px minmax(0, 1fr) 28px;");
+  expect(rule(".pane-header")).toContain("border-bottom: 1px solid var(--border);");
+  expect(rule(".path-segments")).toContain("height: 29px;");
+  expect(rule(".path-segments")).toContain("border-bottom: 1px solid var(--border);");
+  expect(rule(".path-segments")).not.toContain("min-height: 32px;");
+});
+
+it("keeps breadcrumb separators passive and folder controls clickable", () => {
+  expect(rule(".path-separator")).toContain("pointer-events: none;");
+  expect(rule(".path-separator")).toContain("cursor: default;");
+  expect(rule(".path-segment-button")).toContain("cursor: pointer;");
+  expect(rule('.path-segments [data-slot="menu-trigger"]')).toContain("cursor: pointer;");
+});
+
+it("takes measurement labels out of layout and pointer interaction", () => {
+  expect(rule(".path-segments-measure")).toContain("position: absolute;");
+  expect(rule(".path-segments-measure")).toContain("visibility: hidden;");
+  expect(rule(".path-segments-measure")).toContain("pointer-events: none;");
+  expect(rule(".path-segments-measure")).toContain("white-space: nowrap;");
+});
+
+it("keeps deep hidden-folder menus within the available viewport", () => {
+  expect(rule('[data-slot="menu-popup"]')).toContain("max-height: min(320px, var(--available-height));");
+  expect(rule('[data-slot="menu-popup"]')).toContain("overflow-y: auto;");
+});
+
 it("centers selection checkboxes in file rows", () => {
   expect(rule('.file-table td.select-cell [data-slot="checkbox"]')).toContain("margin: 0 auto;");
 });

@@ -1,14 +1,17 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
+import { MenuItem, MenuPopup, MenuPortal, MenuPositioner, MenuRoot, MenuTrigger } from "@/components/ui/menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Entry, Root } from "../api/types";
 import { formatBytes } from "../format";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
+import { buildPathSegments, displayPath, fitPathSegments, normalizeInput } from "../pathSegments";
+import type { FittedPathSegments, PathSegment } from "../pathSegments";
 import { ErrorBanner } from "./ErrorBanner";
 import { FileIcon } from "./FileIcon";
 import { PaneStatusBar } from "./PaneStatusBar";
@@ -61,7 +64,13 @@ export function FilePane({
   const [sortState, setSortState] = useState<SortState>({ column: "name", direction: "asc" });
   const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(defaultColumnWidths);
   const [dragBox, setDragBox] = useState<DragBox | null>(null);
+  const [fittedPath, setFittedPath] = useState<FittedPathSegments>(() => ({
+    visible: buildPathSegments(currentPath),
+    hidden: [],
+  }));
   const fileListRef = useRef<HTMLDivElement>(null);
+  const pathSegmentsContentRef = useRef<HTMLDivElement>(null);
+  const pathSegmentsMeasureRef = useRef<HTMLDivElement>(null);
   const columnsResizedRef = useRef(false);
   const visibleEntries = useMemo(() => sortEntries(entries, sortState), [entries, sortState]);
   const selectedEntries = visibleEntries.filter((entry) => selectedPaths.has(entry.relativePath));
@@ -76,13 +85,61 @@ export function FilePane({
     [entries, pathDraft],
   );
 
-  const pathSegments = buildPathSegments(currentPath);
+  const pathSegments = useMemo(() => buildPathSegments(currentPath), [currentPath]);
   const singleRoot = roots.length <= 1;
 
   useEffect(() => {
     setPathDraft(displayPath(currentPath));
     setHighlightedSuggestion(-1);
   }, [currentPath]);
+
+  useLayoutEffect(() => {
+    const content = pathSegmentsContentRef.current;
+    const measureRow = pathSegmentsMeasureRef.current;
+    let disposed = false;
+
+    function naturalWidth(element: HTMLElement, fallback: number) {
+      return element.getBoundingClientRect().width || element.scrollWidth || element.offsetWidth || fallback;
+    }
+
+    function measurePath() {
+      if (disposed) return;
+      if (!content || !measureRow || content.clientWidth <= 0) {
+        setFittedPath((current) => (samePathFit(current, pathSegments) ? current : { visible: pathSegments, hidden: [] }));
+        return;
+      }
+
+      const measuredSegments = new Map(
+        Array.from(measureRow.querySelectorAll<HTMLElement>('[data-path-measure="segment"]')).map((element) => [
+          element.dataset.path ?? "",
+          naturalWidth(element, Math.max(8, (element.textContent?.length ?? 1) * 8)),
+        ]),
+      );
+      const widths = pathSegments.map((segment) => measuredSegments.get(segment.path) ?? Math.max(8, segment.label.length * 8));
+      const separator = measureRow.querySelector<HTMLElement>('[data-path-measure="separator"]');
+      const ellipsis = measureRow.querySelector<HTMLElement>('[data-path-measure="ellipsis"]');
+      const separatorWidth = separator ? naturalWidth(separator, 8) : 8;
+      const ellipsisWidth = ellipsis ? naturalWidth(ellipsis, 24) : 24;
+      const next = fitPathSegments(pathSegments, widths, separatorWidth, ellipsisWidth, content.clientWidth);
+      setFittedPath((current) => (samePathFit(current, next.visible, next.hidden) ? current : next));
+    }
+
+    setFittedPath({ visible: pathSegments, hidden: [] });
+    measurePath();
+
+    if (content && typeof ResizeObserver !== "undefined") {
+      const observer = new ResizeObserver(measurePath);
+      observer.observe(content);
+      return () => {
+        disposed = true;
+        observer.disconnect();
+      };
+    }
+
+    return () => {
+      disposed = true;
+    };
+  }, [pathSegments]);
 
   useEffect(() => {
     onVisibleOrderChange?.(visibleEntries.map((entry) => entry.relativePath));
@@ -176,11 +233,61 @@ export function FilePane({
         </Button>
       </div>
       <nav className="path-segments" aria-label={`${title} segments`}>
-        {pathSegments.map((segment, index) => (
-          <button key={`${segment.path}-${index}`} type="button" onClick={() => onPathChange(segment.path)}>
-            {segment.label}
-          </button>
-        ))}
+        <div className="path-segments-content" ref={pathSegmentsContentRef}>
+          {fittedPath.visible[0] ? renderPathButton(fittedPath.visible[0], 0) : null}
+          {fittedPath.visible[1] ? (
+            <>
+              <span className="path-separator" aria-hidden="true">
+                /
+              </span>
+              {renderPathButton(fittedPath.visible[1], 1)}
+            </>
+          ) : null}
+          {fittedPath.hidden.length > 0 ? (
+            <>
+              <span className="path-separator" aria-hidden="true">
+                /
+              </span>
+              <MenuRoot>
+                <MenuTrigger
+                  type="button"
+                  className="path-segment-button path-overflow-trigger"
+                  aria-label={labels.hiddenPathSegments(fittedPath.hidden.length)}
+                >
+                  …
+                </MenuTrigger>
+                <MenuPortal>
+                  <MenuPositioner side="bottom" align="start">
+                    <MenuPopup>
+                      {fittedPath.hidden.map((segment) => (
+                        <MenuItem key={segment.path} onClick={() => onPathChange(segment.path)}>
+                          {segment.label}
+                        </MenuItem>
+                      ))}
+                    </MenuPopup>
+                  </MenuPositioner>
+                </MenuPortal>
+              </MenuRoot>
+            </>
+          ) : null}
+          {fittedPath.visible.slice(2).map((segment, index) => (
+            <span className="path-segment-pair" key={segment.path}>
+              <span className="path-separator" aria-hidden="true">
+                /
+              </span>
+              {renderPathButton(segment, index + 2)}
+            </span>
+          ))}
+        </div>
+        <div className="path-segments-measure" ref={pathSegmentsMeasureRef} aria-hidden="true">
+          {pathSegments.map((segment) => (
+            <span key={segment.path} data-path-measure="segment" data-path={segment.path}>
+              {segment.label}
+            </span>
+          ))}
+          <span data-path-measure="separator">/</span>
+          <span data-path-measure="ellipsis">…</span>
+        </div>
       </nav>
       <div className="file-list" ref={fileListRef} onMouseDown={startDragSelection}>
         {loading ? (
@@ -275,6 +382,19 @@ export function FilePane({
         </button>
         <ResizeHandle label={`Resize ${label} column`} onMouseDown={(event) => startResize(event, column)} />
       </th>
+    );
+  }
+
+  function renderPathButton(segment: PathSegment, index: number) {
+    return (
+      <button
+        key={`${segment.path}-${index}`}
+        type="button"
+        className="path-segment-button"
+        onClick={() => onPathChange(segment.path)}
+      >
+        {segment.label}
+      </button>
     );
   }
 
@@ -481,25 +601,11 @@ function rectsIntersect(
   return left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
 }
 
-function displayPath(path: string) {
-  return path && path !== "." ? `/${path.replace(/^\/+/, "")}` : "/";
-}
-
-function normalizeInput(path: string) {
-  const trimmed = path.trim();
-  if (!trimmed || trimmed === "/") return ".";
-  return trimmed.replace(/^\/+/, "").replace(/\/+$/, "") || ".";
-}
-
-function buildPathSegments(path: string) {
-  const normalized = normalizeInput(path);
-  const segments = [{ label: "/", path: "." }];
-  if (normalized === ".") return segments;
-  const parts = normalized.split("/").filter(Boolean);
-  let current = "";
-  for (const part of parts) {
-    current = current ? `${current}/${part}` : part;
-    segments.push({ label: part, path: current });
-  }
-  return segments;
+function samePathFit(current: FittedPathSegments, visible: PathSegment[], hidden: PathSegment[] = []) {
+  return (
+    current.visible.length === visible.length &&
+    current.hidden.length === hidden.length &&
+    current.visible.every((segment, index) => segment.path === visible[index]?.path) &&
+    current.hidden.every((segment, index) => segment.path === hidden[index]?.path)
+  );
 }

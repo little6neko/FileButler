@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { FilePane } from "./FilePane";
@@ -89,6 +89,74 @@ it("renders current path as clickable segments", async () => {
 
   await userEvent.click(screen.getByRole("button", { name: "2026" }));
   expect(onPathChange).toHaveBeenCalledWith("photos/2026");
+});
+
+it("renders path separators outside the clickable folder controls", () => {
+  const { container } = renderPane({ currentPath: "photos/2026/raw" });
+  const nav = screen.getByRole("navigation", { name: "Left pane segments" });
+
+  expect(within(nav).getAllByRole("button").map((button) => button.textContent)).toEqual(["/", "photos", "2026", "raw"]);
+  expect(container.querySelectorAll(".path-separator")).toHaveLength(3);
+});
+
+it("keeps fixed folders and the newest ancestors visible in a narrow pane", async () => {
+  const restoreMeasurements = mockBreadcrumbMeasurements(280);
+  try {
+    renderPane({ currentPath: "photos/2026/raw/camera/original" });
+
+    const nav = screen.getByRole("navigation", { name: "Left pane segments" });
+    await waitFor(() => {
+      expect(within(nav).getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent)).toEqual([
+        "/",
+        "photos",
+        "Show 2 hidden folders",
+        "camera",
+        "original",
+      ]);
+    });
+  } finally {
+    restoreMeasurements();
+  }
+});
+
+it("recomputes hidden ancestors as the pane narrows and widens", async () => {
+  const measurements = mockResizableBreadcrumbMeasurements(900);
+  try {
+    const view = renderPane({ currentPath: "photos/2026/raw/camera/original" });
+    const nav = screen.getByRole("navigation", { name: "Left pane segments" });
+    const labels = () =>
+      within(nav)
+        .getAllByRole("button")
+        .map((button) => button.getAttribute("aria-label") ?? button.textContent);
+
+    expect(labels()).toEqual(["/", "photos", "2026", "raw", "camera", "original"]);
+
+    act(() => measurements.resize(280));
+    await waitFor(() => expect(labels()).toEqual(["/", "photos", "Show 2 hidden folders", "camera", "original"]));
+
+    act(() => measurements.resize(900));
+    await waitFor(() => expect(labels()).toEqual(["/", "photos", "2026", "raw", "camera", "original"]));
+
+    view.unmount();
+    expect(measurements.pathObserverDisconnected()).toBe(true);
+  } finally {
+    measurements.restore();
+  }
+});
+
+it("opens hidden folders from the ellipsis menu", async () => {
+  const restoreMeasurements = mockBreadcrumbMeasurements(280);
+  const onPathChange = vi.fn();
+  try {
+    renderPane({ currentPath: "photos/2026/raw/camera/original", onPathChange });
+
+    await userEvent.click(await screen.findByRole("button", { name: "Show 2 hidden folders" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "2026" }));
+
+    expect(onPathChange).toHaveBeenCalledWith("photos/2026");
+  } finally {
+    restoreMeasurements();
+  }
 });
 
 it("navigates into a directory", async () => {
@@ -386,3 +454,117 @@ function mockRect(element: Element, rect: Omit<DOMRect, "toJSON" | "x" | "y"> & 
   const browserRect = new DOMRect(rect.x ?? rect.left, rect.y ?? rect.top, rect.width, rect.height);
   element.getBoundingClientRect = vi.fn(() => browserRect);
 }
+
+function mockBreadcrumbMeasurements(availableWidth: number) {
+  const clientWidth = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+    if (this.classList.contains("path-segments-content")) return availableWidth;
+    return 800;
+  });
+  const boundingRect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const measureType = this.getAttribute("data-path-measure");
+    const width =
+      measureType === "segment"
+        ? breadcrumbSegmentWidths[this.textContent ?? ""] ?? 0
+        : measureType === "separator"
+          ? 8
+          : measureType === "ellipsis"
+            ? 24
+            : 100;
+    return new DOMRect(0, 0, width, 24);
+  });
+
+  return () => {
+    clientWidth.mockRestore();
+    boundingRect.mockRestore();
+  };
+}
+
+function mockResizableBreadcrumbMeasurements(initialWidth: number) {
+  let availableWidth = initialWidth;
+  const observers: Array<{
+    callback: ResizeObserverCallback;
+    instance: ResizeObserver;
+    targets: Set<Element>;
+    disconnected: boolean;
+  }> = [];
+  const originalResizeObserver = globalThis.ResizeObserver;
+
+  class ResizeObserverMock implements ResizeObserver {
+    private record: (typeof observers)[number];
+
+    constructor(callback: ResizeObserverCallback) {
+      this.record = { callback, instance: this, targets: new Set(), disconnected: false };
+      observers.push(this.record);
+    }
+
+    observe(target: Element) {
+      this.record.targets.add(target);
+    }
+
+    unobserve(target: Element) {
+      this.record.targets.delete(target);
+    }
+
+    disconnect() {
+      this.record.disconnected = true;
+    }
+  }
+
+  Object.defineProperty(globalThis, "ResizeObserver", {
+    configurable: true,
+    writable: true,
+    value: ResizeObserverMock,
+  });
+
+  const clientWidth = vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockImplementation(function (this: HTMLElement) {
+    if (this.classList.contains("path-segments-content")) return availableWidth;
+    return 800;
+  });
+  const boundingRect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const measureType = this.getAttribute("data-path-measure");
+    const width =
+      measureType === "segment"
+        ? breadcrumbSegmentWidths[this.textContent ?? ""] ?? 0
+        : measureType === "separator"
+          ? 8
+          : measureType === "ellipsis"
+            ? 24
+            : 100;
+    return new DOMRect(0, 0, width, 24);
+  });
+
+  function pathObservers() {
+    return observers.filter((observer) =>
+      Array.from(observer.targets).some((target) => target.classList.contains("path-segments-content")),
+    );
+  }
+
+  return {
+    resize(width: number) {
+      availableWidth = width;
+      pathObservers().forEach((observer) => observer.callback([], observer.instance));
+    },
+    pathObserverDisconnected() {
+      const matching = pathObservers();
+      return matching.length > 0 && matching.every((observer) => observer.disconnected);
+    },
+    restore() {
+      clientWidth.mockRestore();
+      boundingRect.mockRestore();
+      Object.defineProperty(globalThis, "ResizeObserver", {
+        configurable: true,
+        writable: true,
+        value: originalResizeObserver,
+      });
+    },
+  };
+}
+
+const breadcrumbSegmentWidths: Record<string, number> = {
+  "/": 14,
+  photos: 52,
+  "2026": 44,
+  raw: 36,
+  camera: 60,
+  original: 64,
+};

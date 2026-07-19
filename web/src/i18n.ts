@@ -112,6 +112,7 @@ export type UIStrings = {
   pathLabel(title: string): string;
   rootLabel(title: string): string;
   refreshLabel(title: string): string;
+  hiddenPathSegments(count: number): string;
   selectEntry(name: string): string;
   operationPreview(type: string): string;
   operationDescription(type: string, count: number): string;
@@ -235,6 +236,7 @@ export const strings: Record<Language, UIStrings> = {
     pathLabel: (title) => `${title} path`,
     rootLabel: (title) => `${title} root`,
     refreshLabel: (title) => `${title} refresh`,
+    hiddenPathSegments: (count) => `Show ${count} hidden folders`,
     selectEntry: (name) => `Select ${name}`,
     operationPreview: (type) => `${type} preview`,
     operationDescription: (type, count) => `${strings.en.operationType(type)} ${count} ${count === 1 ? "item" : "items"}`,
@@ -357,6 +359,7 @@ export const strings: Record<Language, UIStrings> = {
     pathLabel: (title) => `${title}路径`,
     rootLabel: (title) => `${title}根目录`,
     refreshLabel: (title) => `${title}刷新`,
+    hiddenPathSegments: (count) => `显示 ${count} 个隐藏文件夹`,
     selectEntry: (name) => `选择 ${name}`,
     operationPreview: (type) => `${strings["zh-CN"].operationType(type)}预览`,
     operationDescription: (type, count) => `${strings["zh-CN"].operationType(type)} ${count} 项`,

@@ -2,11 +2,8 @@ name: Publish Docker image
 
 on:
   push:
-    branches:
-      - main
     tags:
       - "v*.*.*"
-  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -14,6 +11,7 @@ env:
 
 jobs:
   publish:
+    name: Build and publish release image
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -42,10 +40,8 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
             type=ref,event=tag
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
 
       - name: Build and push image
         uses: docker/build-push-action@v6
@@ -56,5 +52,7 @@ jobs:
           push: true
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
+          provenance: false
+          sbom: false
           cache-from: type=gha
           cache-to: type=gha,mode=max

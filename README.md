@@ -32,7 +32,7 @@ docker pull ghcr.io/little6neko/filebutler:latest
 docker pull ghcr.io/little6neko/filebutler:v0.1.0
 ```
 
-The `latest` tag tracks the `main` branch. Version tags such as `v0.1.0` are immutable releases. If the package is private, authenticate before pulling with a GitHub token that has `read:packages` permission:
+The `latest` tag tracks the newest version release. Version tags such as `v0.1.0` are immutable releases. If the package is private, authenticate before pulling with a GitHub token that has `read:packages` permission:
 
 ```bash
 echo "$GHCR_TOKEN" | docker login ghcr.io -u little6neko --password-stdin

@@ -25,13 +25,37 @@ Run with a config file:
 
 ## Docker
 
-Build the image:
+Prebuilt multi-architecture images for `linux/amd64` and `linux/arm64` are published to GitHub Container Registry:
+
+```bash
+docker pull ghcr.io/little6neko/filebutler:latest
+docker pull ghcr.io/little6neko/filebutler:v0.1.0
+```
+
+The `latest` tag tracks the `main` branch. Version tags such as `v0.1.0` are immutable releases. If the package is private, authenticate before pulling with a GitHub token that has `read:packages` permission:
+
+```bash
+echo "$GHCR_TOKEN" | docker login ghcr.io -u little6neko --password-stdin
+```
+
+Run a published image with mounted storage roots and SQLite data:
+
+```bash
+docker run --rm -p 8080:8080 \
+  -v "$PWD/configs/filebutler.docker.yaml:/app/filebutler.yaml:ro" \
+  -v "$PWD/data:/app/data" \
+  -v "$PWD/downloads:/data/downloads" \
+  -v "$PWD/media:/data/media" \
+  ghcr.io/little6neko/filebutler:${FILEBUTLER_TAG:-latest}
+```
+
+To build the image locally instead:
 
 ```bash
 docker build -t filebutler:local .
 ```
 
-Run with mounted storage roots and SQLite data:
+Run the local image:
 
 ```bash
 docker run --rm -p 8080:8080 \

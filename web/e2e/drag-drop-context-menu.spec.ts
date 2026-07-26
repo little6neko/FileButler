@@ -60,6 +60,67 @@ test("previews same-pane and cross-pane drops with Windows-style defaults", asyn
   await dialog.getByRole("button", { name: "Cancel" }).click();
 });
 
+test("limits dragging to names and keeps feedback above table chrome", async ({ page }) => {
+  await installMockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  const workspace = page.getByTestId("workspace");
+  const left = page.getByRole("region", { name: "Left pane" });
+  const right = page.getByRole("region", { name: "Right pane" });
+  const source = entryRow(left, "source.txt");
+  const handle = source.locator('[data-file-drag-handle="true"]');
+  const nameCell = source.getByRole("cell").nth(1);
+  await expect(source).toBeVisible();
+
+  await handle.hover();
+  expect(await handle.evaluate((element) => getComputedStyle(element).cursor)).toBe("default");
+  const handleBox = await handle.boundingBox();
+  const nameCellBox = await nameCell.boundingBox();
+  if (!handleBox || !nameCellBox) throw new Error("name geometry is unavailable");
+  expect(handleBox.x + handleBox.width).toBeLessThan(nameCellBox.x + nameCellBox.width);
+
+  await holdFileDragTo(page, source, entryRow(left, "peer.txt"));
+  await expect(workspace).toHaveAttribute("data-file-drag-active", "true");
+  const invalidLayer = left.locator('.file-list-drop-feedback[data-drop-state="invalid"]');
+  await expect(invalidLayer).toBeVisible();
+  expect(await entryRow(left, "peer.txt").evaluate((element) => getComputedStyle(element).cursor)).toBe("not-allowed");
+  const invalidZ = await invalidLayer.evaluate((element) => Number(getComputedStyle(element).zIndex));
+  const headerZ = await left.locator("thead th").first().evaluate((element) => Number(getComputedStyle(element).zIndex));
+  expect(invalidZ).toBeGreaterThan(headerZ);
+  await page.screenshot({ path: "test-results/file-drop-feedback-invalid.png", fullPage: true });
+  await page.keyboard.press("Escape");
+  await expect(workspace).toHaveAttribute("data-file-drag-active", "false");
+  await page.mouse.up();
+  expect(await handle.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe("none");
+
+  await right.getByRole("combobox", { name: "Right pane root" }).selectOption("archive");
+  await expect(entryRow(right, "archive.txt")).toBeVisible();
+  await holdFileDragTo(page, source, entryRow(right, "archive.txt"));
+  const validLayer = right.locator('.file-list-drop-feedback[data-drop-state="valid"]');
+  await expect(validLayer).toBeVisible();
+  expect(await entryRow(right, "archive.txt").evaluate((element) => getComputedStyle(element).cursor)).toBe("grabbing");
+  await page.screenshot({ path: "test-results/file-drop-feedback-valid.png", fullPage: true });
+  await page.mouse.up();
+  const dialog = page.getByRole("dialog", { name: "copy preview" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  const typeCell = source.getByRole("cell").nth(2);
+  const peer = entryRow(left, "peer.txt");
+  const typeBox = await typeCell.boundingBox();
+  const peerBox = await peer.boundingBox();
+  if (!typeBox || !peerBox) throw new Error("marquee geometry is unavailable");
+  await page.mouse.move(typeBox.x + typeBox.width / 2, typeBox.y + typeBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(typeBox.x + typeBox.width / 2 + 8, peerBox.y + peerBox.height / 2, { steps: 8 });
+  await expect(left.locator(".drag-selection-box")).toBeVisible();
+  await expect(workspace).toHaveAttribute("data-file-drag-active", "false");
+  await page.mouse.up();
+  await expect(left.getByLabel("Select source.txt")).toBeChecked();
+  await expect(left.getByLabel("Select peer.txt")).toBeChecked();
+  await expect(page.getByRole("dialog", { name: /preview/ })).toHaveCount(0);
+});
+
 test("uses row and whitespace context selection while keeping all actions visible", async ({ page }) => {
   await installMockApi(page);
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -124,9 +185,9 @@ function entryRow(pane: Locator, name: string) {
 }
 
 async function dragFileTo(page: Page, source: Locator, target: Locator) {
-  const sourceBox = await source.boundingBox();
+  const sourceBox = await source.locator('[data-file-drag-handle="true"]').boundingBox();
   const targetBox = await target.boundingBox();
-  if (!sourceBox || !targetBox) throw new Error("drag source or target has no bounding box");
+  if (!sourceBox || !targetBox) throw new Error("drag source handle or target has no bounding box");
   const sourceX = sourceBox.x + sourceBox.width / 2;
   const sourceY = sourceBox.y + sourceBox.height / 2;
   const targetX = targetBox.x + targetBox.width / 2;
@@ -137,6 +198,21 @@ async function dragFileTo(page: Page, source: Locator, target: Locator) {
   await page.mouse.move(sourceX + 8, sourceY, { steps: 2 });
   await page.mouse.move(targetX, targetY, { steps: 8 });
   await page.mouse.up();
+}
+
+async function holdFileDragTo(page: Page, source: Locator, target: Locator) {
+  const sourceBox = await source.locator('[data-file-drag-handle="true"]').boundingBox();
+  const targetBox = await target.boundingBox();
+  if (!sourceBox || !targetBox) throw new Error("drag source handle or target has no bounding box");
+  const sourceX = sourceBox.x + sourceBox.width / 2;
+  const sourceY = sourceBox.y + sourceBox.height / 2;
+  const targetX = targetBox.x + targetBox.width / 2;
+  const targetY = targetBox.y + targetBox.height / 2;
+
+  await page.mouse.move(sourceX, sourceY);
+  await page.mouse.down();
+  await page.mouse.move(sourceX + 8, sourceY, { steps: 2 });
+  await page.mouse.move(targetX, targetY, { steps: 8 });
 }
 
 async function openBlankContextMenu(fileList: Locator) {

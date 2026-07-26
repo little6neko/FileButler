@@ -56,6 +56,7 @@ it("centers selection checkboxes in file rows", () => {
 
 it("keeps file drag cursors idle until dnd-kit activates a drag", () => {
   expect(rule(".file-drag-handle")).toContain("cursor: default;");
+  expect(rule(".file-drag-handle")).toContain("outline: none;");
   expect(css).not.toContain("cursor: grab;");
   expect(css).not.toContain(".file-table tbody tr.directory-row,\n.file-table tbody tr.directory-row *");
   expect(rule('.workspace[data-file-drag-active="true"]')).toContain("cursor: grabbing;");

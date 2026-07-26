@@ -218,7 +218,7 @@ it("opens PowerRename with selected paths in the current visible sort order", as
   const leftPane = await screen.findByRole("region", { name: "Left pane" });
   await within(leftPane).findByLabelText("Select b.txt");
   await userEvent.click(within(leftPane).getByLabelText("Select b.txt"));
-  await userEvent.click(within(leftPane).getByLabelText("Select a.txt"));
+  await userEvent.click(await within(leftPane).findByLabelText("Select a.txt"));
   await userEvent.click(screen.getByRole("button", { name: "PowerRename" }));
 
   await waitFor(() =>
@@ -407,6 +407,54 @@ it("opens the jobs sheet from the workbench", async () => {
 
   expect(screen.getByRole("dialog", { name: "Jobs" })).toBeInTheDocument();
 });
+
+it("preserves a selected group when opening the row context menu", async () => {
+  mockTwoEntries();
+  render(<DualPane />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  await userEvent.click(await within(leftPane).findByLabelText("Select a.txt"));
+  await userEvent.click(within(leftPane).getByLabelText("Select b.txt"));
+
+  fireEvent.contextMenu(within(leftPane).getByText("a.txt"), { clientX: 100, clientY: 100 });
+  const menu = await screen.findByRole("menu", { name: "File actions" });
+  expect(within(menu).getByRole("menuitem", { name: "Rename" })).toHaveAttribute("aria-disabled", "true");
+  expect(within(menu).getByRole("menuitem", { name: "PowerRename" })).not.toHaveAttribute("aria-disabled", "true");
+});
+
+it("replaces selection when opening an unselected row context menu", async () => {
+  mockTwoEntries();
+  render(<DualPane />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  await userEvent.click(await within(leftPane).findByLabelText("Select a.txt"));
+
+  fireEvent.contextMenu(within(leftPane).getByText("b.txt"), { clientX: 100, clientY: 100 });
+  const menu = await screen.findByRole("menu", { name: "File actions" });
+  expect(within(leftPane).getByLabelText("Select a.txt")).not.toBeChecked();
+  expect(within(leftPane).getByLabelText("Select b.txt")).toBeChecked();
+  expect(within(menu).getByRole("menuitem", { name: "Rename" })).not.toHaveAttribute("aria-disabled", "true");
+});
+
+it("clears selection on whitespace but keeps every action visible", async () => {
+  mockTwoEntries();
+  render(<DualPane />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  await userEvent.click(await within(leftPane).findByLabelText("Select a.txt"));
+
+  fireEvent.contextMenu(within(leftPane).getByTestId("file-list-left"), { clientX: 500, clientY: 400 });
+  const menu = await screen.findByRole("menu", { name: "File actions" });
+  const items = within(menu).getAllByRole("menuitem");
+  expect(items).toHaveLength(8);
+  expect(items.find((item) => item.dataset.actionId === "mkdir")).not.toHaveAttribute("aria-disabled", "true");
+  expect(items.filter((item) => item.dataset.actionId !== "mkdir").every((item) => item.getAttribute("aria-disabled") === "true")).toBe(true);
+});
+
+function mockTwoEntries() {
+  vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
+  vi.mocked(api.browse).mockResolvedValue([
+    { name: "a.txt", relativePath: "a.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+    { name: "b.txt", relativePath: "b.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+  ]);
+}
 
 async function closeJobsSheet() {
   const sheet = await screen.findByRole("dialog", { name: "Jobs" });

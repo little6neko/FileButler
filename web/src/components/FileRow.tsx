@@ -37,7 +37,13 @@ export function FileRow({
   onToggleSelection,
   onOpen,
 }: Props) {
-  const drag = useDraggable({
+  const {
+    attributes: dragAttributes,
+    isDragging,
+    listeners: dragListeners,
+    setActivatorNodeRef,
+    setNodeRef: setDragNodeRef,
+  } = useDraggable({
     id: fileDragId(paneKey, entry.relativePath),
     data: dragData,
     attributes: { role: "button", tabIndex: -1 },
@@ -55,7 +61,6 @@ export function FileRow({
     data: directoryTarget,
     disabled: entry.type !== "directory",
   });
-  const setDragNodeRef = drag.setNodeRef;
   const setDropNodeRef = drop.setNodeRef;
   const setNodeRef = useCallback((node: HTMLTableRowElement | null) => {
     setDragNodeRef(node);
@@ -70,7 +75,7 @@ export function FileRow({
       data-entry-path={entry.relativePath}
       data-density="compact"
       data-file-drag-source="true"
-      data-dragging={drag.isDragging ? "true" : "false"}
+      data-dragging={isDragging ? "true" : "false"}
       data-drop-kind={entry.type === "directory" ? "directory" : undefined}
       data-drop-state={feedback ? (feedback.valid ? "valid" : "invalid") : undefined}
       className={entry.type === "directory" ? "directory-row" : undefined}
@@ -87,9 +92,9 @@ export function FileRow({
       <td>
         <span className="file-name-content">
           <span
-            ref={drag.setActivatorNodeRef}
-            {...drag.attributes}
-            {...drag.listeners}
+            ref={setActivatorNodeRef}
+            {...dragAttributes}
+            {...dragListeners}
             className="file-drag-handle"
             data-file-drag-handle="true"
           >

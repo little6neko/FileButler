@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { api } from "../api/client";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
+import { confirmDialogOnEnter } from "./dialogConfirm";
 import { ErrorBanner } from "./ErrorBanner";
 
 type Props = {
@@ -22,6 +23,7 @@ export function SingleRenameDialog({ rootId, path, initialName, onJobCreated, on
   const [newName, setNewName] = useState(initialName);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const canSubmit = !submitting && newName.trim().length > 0;
 
   async function submit() {
     setSubmitting(true);
@@ -38,7 +40,11 @@ export function SingleRenameDialog({ rootId, path, initialName, onJobCreated, on
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="sm:max-w-md" showCloseButton={false}>
+      <DialogContent
+        className="sm:max-w-md"
+        showCloseButton={false}
+        onKeyDown={(event) => confirmDialogOnEnter(event, canSubmit, () => void submit())}
+      >
         <DialogHeader>
           <DialogTitle className="sr-only">{labels.renameDialog}</DialogTitle>
           <p className="text-base font-medium leading-none">{labels.rename}</p>
@@ -55,7 +61,7 @@ export function SingleRenameDialog({ rootId, path, initialName, onJobCreated, on
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{labels.cancel}</Button>
-          <Button onClick={submit} disabled={submitting || !newName.trim()}>
+          <Button onClick={submit} disabled={!canSubmit}>
             {submitting ? <LoaderCircle className="animate-spin" /> : null}
             {labels.rename}
           </Button>

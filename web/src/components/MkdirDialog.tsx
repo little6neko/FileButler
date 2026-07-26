@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
+import { confirmDialogOnEnter } from "./dialogConfirm";
 
 type Props = {
   labels?: UIStrings;
@@ -24,7 +25,11 @@ export function MkdirDialog({ labels = strings.en, onClose, onSubmit }: Props) {
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent className="sm:max-w-md" showCloseButton={false}>
+      <DialogContent
+        className="sm:max-w-md"
+        showCloseButton={false}
+        onKeyDown={(event) => confirmDialogOnEnter(event, canSubmit, submit)}
+      >
         <DialogHeader>
           <DialogTitle>{labels.directoryNamePrompt}</DialogTitle>
         </DialogHeader>
@@ -35,9 +40,6 @@ export function MkdirDialog({ labels = strings.en, onClose, onSubmit }: Props) {
             value={name}
             autoFocus
             onChange={(event) => setName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") submit();
-            }}
           />
         </div>
         <DialogFooter>

@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { DndContext } from "@dnd-kit/core";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
+import { paneDropId, type FileDropFeedback } from "../fileDrag";
 import { FilePane } from "./FilePane";
 
 const roots = [{ id: "data", name: "Data" }];
@@ -407,6 +408,49 @@ it("registers full rows as drag sources but activates from only the icon and vis
   expect(fileHandle).toContainElement(fileName);
   expect(linkHandle).toContainElement(linkName);
   expect(linkHandle).not.toContainElement(linkTarget);
+});
+
+it.each([
+  { state: "valid", valid: true },
+  { state: "invalid", valid: false },
+])("renders $state pane feedback in a non-interactive foreground layer", ({ state, valid }) => {
+  const feedback: FileDropFeedback = {
+    target: {
+      id: paneDropId("left"),
+      kind: "current-directory",
+      pane: "left",
+      rootId: "data",
+      path: ".",
+      label: "Current directory",
+    },
+    operation: "move",
+    valid,
+    reason: valid ? undefined : "same-directory",
+  };
+  renderPane({ dropFeedback: feedback });
+
+  const frame = screen.getByTestId("file-list-left").closest(".file-list-frame");
+  const layer = frame?.querySelector(".file-list-drop-feedback");
+  expect(frame).toHaveAttribute("data-drop-state", state);
+  expect(layer).toHaveAttribute("data-drop-state", state);
+  expect(layer).toHaveAttribute("aria-hidden", "true");
+});
+
+it("does not render pane feedback for a nonmatching target", () => {
+  const feedback: FileDropFeedback = {
+    target: {
+      id: paneDropId("right"),
+      kind: "current-directory",
+      pane: "right",
+      rootId: "data",
+      path: ".",
+      label: "Current directory",
+    },
+    operation: "move",
+    valid: true,
+  };
+  renderPane({ dropFeedback: feedback });
+  expect(document.querySelector(".file-list-drop-feedback")).not.toBeInTheDocument();
 });
 
 it("does not start marquee selection from the file drag activator", () => {

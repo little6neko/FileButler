@@ -54,6 +54,25 @@ it("centers selection checkboxes in file rows", () => {
   expect(rule('.file-table td.select-cell [data-slot="checkbox"]')).toContain("margin: 0 auto;");
 });
 
+it("keeps file drag cursors idle until dnd-kit activates a drag", () => {
+  expect(rule(".file-drag-handle")).toContain("cursor: default;");
+  expect(css).not.toContain("cursor: grab;");
+  expect(css).not.toContain(".file-table tbody tr.directory-row,\n.file-table tbody tr.directory-row *");
+  expect(rule('.workspace[data-file-drag-active="true"]')).toContain("cursor: grabbing;");
+  expect(css).toContain('[data-drop-state="invalid"]');
+  expect(css).toContain("cursor: not-allowed;");
+});
+
+it("draws pane and row drop feedback above sticky headers without intercepting input", () => {
+  expect(rule(".file-list-frame")).toContain("position: relative;");
+  expect(rule(".file-list-drop-feedback")).toContain("position: absolute;");
+  expect(rule(".file-list-drop-feedback")).toContain("z-index: 6;");
+  expect(rule(".file-list-drop-feedback")).toContain("pointer-events: none;");
+  expect(rule('.file-table tbody tr[data-drop-state] > td::after')).toContain("z-index: 5;");
+  expect(rule('.file-table tbody tr[data-drop-state] > td::after')).toContain("pointer-events: none;");
+  expect(rule(".file-table thead th")).toContain("z-index: 3;");
+});
+
 function rule(selector: string) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = css.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));

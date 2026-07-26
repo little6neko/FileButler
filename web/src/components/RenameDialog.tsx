@@ -10,6 +10,7 @@ import { api } from "../api/client";
 import type { PlanItem, RenameOptions } from "../api/types";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
+import { confirmDialogOnEnter } from "./dialogConfirm";
 import { ErrorBanner } from "./ErrorBanner";
 
 type Props = {
@@ -62,6 +63,7 @@ export function RenameDialog({
   const [options, setOptions] = useState<RenameOptions>(() => ({ ...(initialOptions ?? defaultRenameOptions) }));
   const [items, setItems] = useState<PlanItem[]>([]);
   const [hasConflict, setHasConflict] = useState(false);
+  const [previewedOptions, setPreviewedOptions] = useState<RenameOptions | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -74,9 +76,13 @@ export function RenameDialog({
         setItems(plan.items);
         setHasConflict(plan.hasConflict);
         setError(null);
+        setPreviewedOptions(options);
       })
       .catch((err) => {
-        if (active) setError(err instanceof Error ? err.message : labels.previewFailed);
+        if (active) {
+          setPreviewedOptions(null);
+          setError(err instanceof Error ? err.message : labels.previewFailed);
+        }
       });
     return () => {
       active = false;
@@ -98,12 +104,14 @@ export function RenameDialog({
   }
 
   const changedCount = items.filter((item) => item.changed).length;
+  const canSubmit = previewedOptions === options && !hasConflict && !submitting;
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
         className="flex h-[min(760px,90vh)] flex-col sm:max-w-6xl"
         showCloseButton={false}
+        onKeyDown={(event) => confirmDialogOnEnter(event, canSubmit, () => void run())}
       >
         <DialogHeader>
           <DialogTitle className="sr-only">{labels.renameDialog}</DialogTitle>
@@ -191,7 +199,7 @@ export function RenameDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>{labels.cancel}</Button>
-          <Button onClick={run} disabled={hasConflict || submitting}>
+          <Button onClick={run} disabled={!canSubmit}>
             {submitting ? <LoaderCircle className="animate-spin" /> : null}
             {labels.renameItems(paths.length)}
           </Button>

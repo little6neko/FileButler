@@ -379,28 +379,72 @@ it("does not start drag marquee from file controls", () => {
   expect(container.querySelector(".drag-selection-box")).not.toBeInTheDocument();
 });
 
-it("registers files as drag sources and directories as nested drop targets", () => {
-  renderPane({ entries: [entry("file.txt"), entry("folder", "directory")] });
+it("registers full rows as drag sources but activates from only the icon and visible name", () => {
+  renderPane({
+    entries: [
+      entry("file.txt"),
+      entry("folder", "directory"),
+      { ...entry("link", "symlink"), isSymlink: true, symlinkTarget: "target" },
+    ],
+  });
 
-  const fileRow = screen.getByText("file.txt").closest("tr");
+  const fileName = screen.getByText("file.txt");
+  const fileRow = fileName.closest("tr");
+  const fileHandle = fileName.closest<HTMLElement>("[data-file-drag-handle]");
   const directoryRow = screen.getByText("folder").closest("tr");
+  const linkName = screen.getByText("link");
+  const linkHandle = linkName.closest<HTMLElement>("[data-file-drag-handle]");
+  const linkTarget = screen.getByText(/target/);
+  if (!fileRow || !fileHandle || !directoryRow || !linkHandle) {
+    throw new Error("expected drag source rows and handles");
+  }
+
   expect(fileRow).toHaveAttribute("data-file-drag-source", "true");
   expect(fileRow).not.toHaveAttribute("data-drop-kind", "directory");
   expect(directoryRow).toHaveAttribute("data-file-drag-source", "true");
   expect(directoryRow).toHaveAttribute("data-drop-kind", "directory");
+  expect(fileHandle).toContainElement(within(fileRow).getByTestId("file-icon-file"));
+  expect(fileHandle).toContainElement(fileName);
+  expect(linkHandle).toContainElement(linkName);
+  expect(linkHandle).not.toContainElement(linkTarget);
 });
 
-it("does not start marquee selection from a draggable row", () => {
+it("does not start marquee selection from the file drag activator", () => {
   const onSelectPaths = vi.fn();
   const { container } = renderPane({ onSelectPaths });
-  const row = screen.getByText("file.txt").closest("tr");
-  expect(row).not.toBeNull();
+  const fileList = container.querySelector(".file-list") as HTMLDivElement;
+  const row = screen.getByText("file.txt").closest("tr") as HTMLTableRowElement;
+  const handle = screen.getByText("file.txt").closest("[data-file-drag-handle]");
+  if (!handle) throw new Error("file drag handle was not rendered");
+  mockRect(fileList, { left: 0, top: 0, right: 400, bottom: 96, width: 400, height: 96 });
+  mockRect(row, { left: 0, top: 32, right: 376, bottom: 64, width: 376, height: 32 });
 
-  fireEvent.mouseDown(row!, { button: 0, clientX: 20, clientY: 20 });
-  fireEvent.mouseMove(document, { clientX: 100, clientY: 100 });
+  fireEvent.mouseDown(handle, { button: 0, clientX: 44, clientY: 44 });
+  fireEvent.mouseMove(document, { clientX: 360, clientY: 60 });
   expect(container.querySelector(".drag-selection-box")).not.toBeInTheDocument();
   fireEvent.mouseUp(document);
   expect(onSelectPaths).not.toHaveBeenCalled();
+});
+
+it.each([
+  { label: "unused name-cell space", cellIndex: 1 },
+  { label: "type cell", cellIndex: 2 },
+  { label: "size cell", cellIndex: 3 },
+  { label: "modified-time cell", cellIndex: 4 },
+])("starts marquee selection from $label", ({ cellIndex }) => {
+  const onSelectPaths = vi.fn();
+  const { container } = renderPane({ onSelectPaths });
+  const fileList = container.querySelector(".file-list") as HTMLDivElement;
+  const row = screen.getByText("file.txt").closest("tr") as HTMLTableRowElement;
+  const cells = within(row).getAllByRole("cell");
+  mockRect(fileList, { left: 0, top: 0, right: 400, bottom: 96, width: 400, height: 96 });
+  mockRect(row, { left: 0, top: 32, right: 376, bottom: 64, width: 376, height: 32 });
+
+  fireEvent.mouseDown(cells[cellIndex], { button: 0, clientX: 300, clientY: 40 });
+  fireEvent.mouseMove(document, { clientX: 360, clientY: 60 });
+  expect(container.querySelector(".drag-selection-box")).toBeInTheDocument();
+  fireEvent.mouseUp(document, { clientX: 360, clientY: 60 });
+  expect(onSelectPaths).toHaveBeenCalledWith(["file.txt"]);
 });
 
 it("keeps the checkbox interactive instead of using it as a drag activator", async () => {

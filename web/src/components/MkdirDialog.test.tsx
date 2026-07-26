@@ -9,7 +9,7 @@ it("submits a trimmed directory name from an accessible dialog", async () => {
 
   const dialog = screen.getByRole("dialog", { name: "Directory name" });
   await userEvent.type(within(dialog).getByRole("textbox", { name: "Directory name" }), "  assets  ");
-  await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
+  await userEvent.keyboard("{Enter}");
 
   expect(dialog).toBeInTheDocument();
   expect(onSubmit).toHaveBeenCalledWith("assets");

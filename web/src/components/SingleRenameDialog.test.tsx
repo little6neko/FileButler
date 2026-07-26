@@ -22,8 +22,17 @@ it("creates a single rename job with the new basename", async () => {
   expect(screen.getByRole("dialog", { name: "Rename dialog" })).toBeInTheDocument();
   await userEvent.clear(screen.getByLabelText("New name"));
   await userEvent.type(screen.getByLabelText("New name"), "new.txt");
-  await userEvent.click(screen.getByRole("button", { name: "Rename" }));
+  await userEvent.keyboard("{Enter}");
 
   expect(api.singleRenameCreateJob).toHaveBeenCalledWith({ rootId: "root", paths: ["old.txt"], newName: "new.txt" });
   expect(onJobCreated).toHaveBeenCalledWith("job_1");
+});
+
+it("ignores Enter when the new name is empty", async () => {
+  render(<SingleRenameDialog rootId="root" path="old.txt" initialName="old.txt" onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  await userEvent.clear(screen.getByLabelText("New name"));
+  await userEvent.keyboard("{Enter}");
+
+  expect(api.singleRenameCreateJob).not.toHaveBeenCalled();
 });

@@ -1,5 +1,6 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
+import { useDroppable } from "@dnd-kit/core";
 import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -7,15 +8,14 @@ import { Input } from "@/components/ui/input";
 import { MenuItem, MenuPopup, MenuPortal, MenuPositioner, MenuRoot, MenuTrigger } from "@/components/ui/menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Entry, Root } from "../api/types";
-import type { PaneKey } from "../fileDrag";
-import { formatBytes } from "../format";
+import { paneDropId, type FileDropData, type FileDropFeedback, type PaneKey } from "../fileDrag";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
 import { buildPathSegments, displayPath, fitPathSegments, normalizeInput } from "../pathSegments";
 import type { FittedPathSegments, PathSegment } from "../pathSegments";
 import { ErrorBanner } from "./ErrorBanner";
 import type { FileAction } from "./fileActions";
-import { FileIcon } from "./FileIcon";
+import { FileRow } from "./FileRow";
 import { PaneContextMenu } from "./PaneContextMenu";
 import { PaneStatusBar } from "./PaneStatusBar";
 
@@ -23,6 +23,7 @@ type FilePaneProps = {
   paneKey?: PaneKey;
   actions?: FileAction[];
   onContextTarget?(path: string | null): void;
+  dropFeedback?: FileDropFeedback | null;
   title: string;
   roots: Root[];
   selectedRootId: string;
@@ -48,6 +49,7 @@ export function FilePane({
   paneKey = "left",
   actions = [],
   onContextTarget = () => undefined,
+  dropFeedback = null,
   title,
   roots,
   selectedRootId,
@@ -96,6 +98,23 @@ export function FilePane({
 
   const pathSegments = useMemo(() => buildPathSegments(currentPath), [currentPath]);
   const singleRoot = roots.length <= 1;
+  const paneTarget: FileDropData = {
+    id: paneDropId(paneKey),
+    kind: "current-directory",
+    pane: paneKey,
+    rootId: selectedRootId,
+    path: currentPath,
+    label: labels.currentDirectory,
+  };
+  const paneDrop = useDroppable({
+    id: paneTarget.id,
+    data: paneTarget,
+    disabled: loading || Boolean(error),
+  });
+  const setFileListNode = useCallback((node: HTMLDivElement | null) => {
+    fileListRef.current = node;
+    paneDrop.setNodeRef(node);
+  }, [paneDrop.setNodeRef]);
 
   useEffect(() => {
     setPathDraft(displayPath(currentPath));
@@ -302,7 +321,8 @@ export function FilePane({
         <div
           className="file-list"
           data-testid={`file-list-${paneKey}`}
-          ref={fileListRef}
+          ref={setFileListNode}
+          data-drop-state={dropFeedback?.target.id === paneTarget.id ? (dropFeedback.valid ? "valid" : "invalid") : undefined}
           onMouseDown={startDragSelection}
           onContextMenuCapture={(event) => {
             onActivate();
@@ -347,36 +367,29 @@ export function FilePane({
           </thead>
           <tbody>
             {visibleEntries.map((entry) => (
-              <tr
+              <FileRow
                 key={entry.relativePath}
-                data-entry-path={entry.relativePath}
-                data-density="compact"
-                className={entry.type === "directory" ? "directory-row" : undefined}
-                onDoubleClick={() => {
-                  if (entry.type === "directory") onPathChange(entry.relativePath);
-                  else onOpenFile?.(entry);
+                paneKey={paneKey}
+                rootId={selectedRootId}
+                entry={entry}
+                selected={selectedPaths.has(entry.relativePath)}
+                dragData={{
+                  kind: "file-entry",
+                  pane: paneKey,
+                  rootId: selectedRootId,
+                  parentPath: currentPath,
+                  entry,
+                  selectedPaths: Array.from(selectedPaths),
+                  visibleEntries,
                 }}
-              >
-                <td className="select-cell">
-                  <Checkbox
-                    aria-label={labels.selectEntry(entry.name)}
-                    checked={selectedPaths.has(entry.relativePath)}
-                    onCheckedChange={() => onToggleSelection(entry.relativePath)}
-                  />
-                </td>
-                <td>
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <FileIcon name={entry.name} type={entry.type} />
-                    <span className="truncate font-medium text-slate-700">{entry.name}</span>
-                  {entry.isSymlink && entry.symlinkTarget ? (
-                      <small className="truncate text-slate-400">{" -> "}{entry.symlinkTarget}</small>
-                  ) : null}
-                  </span>
-                </td>
-                <td>{entry.type}</td>
-                <td>{formatBytes(entry.size)}</td>
-                <td>{entry.modifiedUnix ? new Date(entry.modifiedUnix * 1000).toLocaleString() : ""}</td>
-              </tr>
+                dropFeedback={dropFeedback}
+                labels={labels}
+                onToggleSelection={onToggleSelection}
+                onOpen={(item) => {
+                  if (item.type === "directory") onPathChange(item.relativePath);
+                  else onOpenFile?.(item);
+                }}
+              />
             ))}
           </tbody>
           </table>
@@ -604,7 +617,9 @@ function columnStyle(widths: Record<ColumnKey, number>) {
 }
 
 function isDragBlockedTarget(target: EventTarget) {
-  return target instanceof Element && Boolean(target.closest("button, input, select, textarea, a, thead, [role='checkbox'], [role='separator']"));
+  return target instanceof Element && Boolean(
+    target.closest("button, input, select, textarea, a, thead, [data-entry-path], [role='checkbox'], [role='separator']"),
+  );
 }
 
 function normalizeRect(startX: number, startY: number, endX: number, endY: number) {

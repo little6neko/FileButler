@@ -55,6 +55,7 @@ export type UIStrings = {
   visibleItems(count: number): string;
   noSelection: string;
   emptyDirectory: string;
+  currentDirectory: string;
   browseFailed: string;
   name: string;
   type: string;
@@ -183,6 +184,7 @@ export const strings: Record<Language, UIStrings> = {
     visibleItems: (count) => `${count} ${count === 1 ? "item" : "items"}`,
     noSelection: "No selection",
     emptyDirectory: "This directory is empty",
+    currentDirectory: "Current directory",
     browseFailed: "Unable to load this directory",
     name: "Name",
     type: "Type",
@@ -310,6 +312,7 @@ export const strings: Record<Language, UIStrings> = {
     visibleItems: (count) => `共 ${count} 项`,
     noSelection: "未选择",
     emptyDirectory: "当前文件夹为空",
+    currentDirectory: "当前文件夹",
     browseFailed: "无法加载当前文件夹",
     name: "名称",
     type: "类型",

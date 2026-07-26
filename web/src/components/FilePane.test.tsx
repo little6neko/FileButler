@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { DndContext } from "@dnd-kit/core";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { FilePane } from "./FilePane";
@@ -491,7 +492,11 @@ function renderPane(overrides: Partial<Parameters<typeof FilePane>[0]> = {}) {
     onActivate: vi.fn(),
     ...overrides,
   };
-  return render(<FilePane {...props} />);
+  return render(
+    <DndContext>
+      <FilePane {...props} />
+    </DndContext>,
+  );
 }
 
 function visibleEntryNames() {

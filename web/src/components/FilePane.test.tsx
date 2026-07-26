@@ -378,6 +378,37 @@ it("does not start drag marquee from file controls", () => {
   expect(container.querySelector(".drag-selection-box")).not.toBeInTheDocument();
 });
 
+it("registers files as drag sources and directories as nested drop targets", () => {
+  renderPane({ entries: [entry("file.txt"), entry("folder", "directory")] });
+
+  const fileRow = screen.getByText("file.txt").closest("tr");
+  const directoryRow = screen.getByText("folder").closest("tr");
+  expect(fileRow).toHaveAttribute("data-file-drag-source", "true");
+  expect(fileRow).not.toHaveAttribute("data-drop-kind", "directory");
+  expect(directoryRow).toHaveAttribute("data-file-drag-source", "true");
+  expect(directoryRow).toHaveAttribute("data-drop-kind", "directory");
+});
+
+it("does not start marquee selection from a draggable row", () => {
+  const onSelectPaths = vi.fn();
+  const { container } = renderPane({ onSelectPaths });
+  const row = screen.getByText("file.txt").closest("tr");
+  expect(row).not.toBeNull();
+
+  fireEvent.mouseDown(row!, { button: 0, clientX: 20, clientY: 20 });
+  fireEvent.mouseMove(document, { clientX: 100, clientY: 100 });
+  expect(container.querySelector(".drag-selection-box")).not.toBeInTheDocument();
+  fireEvent.mouseUp(document);
+  expect(onSelectPaths).not.toHaveBeenCalled();
+});
+
+it("keeps the checkbox interactive instead of using it as a drag activator", async () => {
+  const onToggleSelection = vi.fn();
+  renderPane({ onToggleSelection });
+  await userEvent.click(screen.getByLabelText("Select file.txt"));
+  expect(onToggleSelection).toHaveBeenCalledWith("file.txt");
+});
+
 it("renders compact rows and a status footer", () => {
   renderPane({
     entries: [entry("a.txt", "file", 1024), entry("b.txt", "file", 512)],

@@ -150,7 +150,6 @@ export function DualPane({
 
   function handleJobCreated(id: string) {
     clearSelections();
-    setJobsOpen(true);
     toast.success(labels.jobCreated);
     void refreshWhenJobFinishes(id);
   }

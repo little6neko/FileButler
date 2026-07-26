@@ -488,6 +488,7 @@ body {
   align-items: center;
   gap: 6px;
   cursor: default;
+  outline: none;
 }
 
 .file-table tbody tr[data-dragging="true"] {

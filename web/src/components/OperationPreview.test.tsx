@@ -242,6 +242,39 @@ it("keeps toolbar previews fixed when operation choices are absent", async () =>
   expect(screen.queryByRole("radiogroup", { name: "Operation" })).not.toBeInTheDocument();
 });
 
+it("focuses the popup and creates a job with Enter when the preview is ready", async () => {
+  vi.mocked(api.opsDryRun).mockResolvedValue({
+    hasConflict: false,
+    items: [{ sourcePath: "a.txt", destPath: "a.txt", conflict: false }],
+  });
+  vi.mocked(api.opsCreateJob).mockResolvedValue({ id: "job-enter" });
+  const onJobCreated = vi.fn();
+  render(<OperationPreview request={request()} onJobCreated={onJobCreated} onClose={vi.fn()} />);
+
+  const dialog = screen.getByRole("dialog", { name: "copy preview" });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Start copy" })).toBeEnabled());
+  await waitFor(() => expect(dialog).toHaveFocus());
+  await userEvent.keyboard("{Enter}");
+
+  expect(api.opsCreateJob).toHaveBeenCalledWith(request());
+  expect(onJobCreated).toHaveBeenCalledWith("job-enter");
+});
+
+it("ignores Enter while the operation preview has conflicts", async () => {
+  vi.mocked(api.opsDryRun).mockResolvedValue({
+    hasConflict: true,
+    items: [{ sourcePath: "a.txt", destPath: "a.txt", conflict: true }],
+  });
+  render(<OperationPreview request={request()} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  const dialog = screen.getByRole("dialog", { name: "copy preview" });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Start copy" })).toBeDisabled());
+  dialog.focus();
+  await userEvent.keyboard("{Enter}");
+
+  expect(api.opsCreateJob).not.toHaveBeenCalled();
+});
+
 function request() {
   return { type: "copy" as const, sourceRoot: "a", sources: ["a.txt"], destRoot: "b", destPath: "." };
 }

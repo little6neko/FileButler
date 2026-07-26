@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CircleAlert, LoaderCircle, TriangleAlert } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,7 @@ import type { OpsRequest, PlanItem } from "../api/types";
 import type { DragOperation } from "../fileDrag";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
+import { confirmDialogOnEnter } from "./dialogConfirm";
 import { ErrorBanner } from "./ErrorBanner";
 
 type Props = {
@@ -28,6 +29,7 @@ type PreviewResult = {
 };
 
 export function OperationPreview({ request, operationChoices, onJobCreated, onClose, labels = strings.en }: Props) {
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [selectedType, setSelectedType] = useState<OpsRequest["type"]>(request.type);
   const activeRequest = useMemo(
     () => (selectedType === request.type ? request : { ...request, type: selectedType }),
@@ -82,6 +84,7 @@ export function OperationPreview({ request, operationChoices, onJobCreated, onCl
   const hasConflict = currentPreview?.hasConflict ?? false;
   const loading = currentPreview === null;
   const error = jobError ?? currentPreview?.error ?? null;
+  const canConfirm = Boolean(currentPreview) && !currentPreview?.error && !hasConflict && !submitting;
   const conflictCount = items.filter((item) => item.conflict).length;
   const itemCount = activeRequest.type === "mkdir" ? 1 : activeRequest.sources.length;
   const destructive = activeRequest.type === "delete";
@@ -91,8 +94,11 @@ export function OperationPreview({ request, operationChoices, onJobCreated, onCl
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent
+        ref={dialogRef}
+        initialFocus={dialogRef}
         className="sm:max-w-3xl"
         showCloseButton={false}
+        onKeyDown={(event) => confirmDialogOnEnter(event, canConfirm, () => void confirm())}
       >
         <DialogHeader>
           <DialogTitle>{labels.operationPreview(activeRequest.type)}</DialogTitle>
@@ -166,7 +172,7 @@ export function OperationPreview({ request, operationChoices, onJobCreated, onCl
           <Button
             variant={destructive ? "destructive" : "default"}
             onClick={confirm}
-            disabled={!currentPreview || Boolean(currentPreview.error) || hasConflict || submitting}
+            disabled={!canConfirm}
           >
             {submitting ? <LoaderCircle className="animate-spin" /> : null}
             {labels.confirmOperation(activeRequest.type, itemCount)}

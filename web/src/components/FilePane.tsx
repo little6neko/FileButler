@@ -111,10 +111,11 @@ export function FilePane({
     data: paneTarget,
     disabled: loading || Boolean(error),
   });
+  const setPaneDropNodeRef = paneDrop.setNodeRef;
   const setFileListNode = useCallback((node: HTMLDivElement | null) => {
     fileListRef.current = node;
-    paneDrop.setNodeRef(node);
-  }, [paneDrop.setNodeRef]);
+    setPaneDropNodeRef(node);
+  }, [setPaneDropNodeRef]);
 
   useEffect(() => {
     setPathDraft(displayPath(currentPath));

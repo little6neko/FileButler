@@ -55,10 +55,12 @@ export function FileRow({
     data: directoryTarget,
     disabled: entry.type !== "directory",
   });
+  const setDragNodeRef = drag.setNodeRef;
+  const setDropNodeRef = drop.setNodeRef;
   const setNodeRef = useCallback((node: HTMLTableRowElement | null) => {
-    drag.setNodeRef(node);
-    drop.setNodeRef(node);
-  }, [drag.setNodeRef, drop.setNodeRef]);
+    setDragNodeRef(node);
+    setDropNodeRef(node);
+  }, [setDragNodeRef, setDropNodeRef]);
   const feedback = dropFeedback?.target.id === directoryTarget.id ? dropFeedback : null;
 
   return (

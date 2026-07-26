@@ -20,41 +20,44 @@ type Props = {
   labels?: UIStrings;
 };
 
+type PreviewResult = {
+  request: OpsRequest;
+  items: PlanItem[];
+  hasConflict: boolean;
+  error: string | null;
+};
+
 export function OperationPreview({ request, operationChoices, onJobCreated, onClose, labels = strings.en }: Props) {
   const [selectedType, setSelectedType] = useState<OpsRequest["type"]>(request.type);
   const activeRequest = useMemo(
     () => (selectedType === request.type ? request : { ...request, type: selectedType }),
     [request, selectedType],
   );
-  const [items, setItems] = useState<PlanItem[]>([]);
-  const [hasConflict, setHasConflict] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
+  const [jobError, setJobError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [previewedRequest, setPreviewedRequest] = useState<OpsRequest | null>(null);
 
   useEffect(() => {
     let active = true;
-    setItems([]);
-    setHasConflict(false);
-    setError(null);
-    setLoading(true);
-    setPreviewedRequest(null);
-
     api
       .opsDryRun(activeRequest)
       .then((plan) => {
         if (!active) return;
-        setItems(plan.items);
-        setHasConflict(plan.hasConflict);
-        setPreviewedRequest(activeRequest);
+        setPreviewResult({
+          request: activeRequest,
+          items: plan.items,
+          hasConflict: plan.hasConflict,
+          error: null,
+        });
       })
       .catch((err) => {
         if (!active) return;
-        setError(err instanceof Error ? err.message : labels.previewFailed);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
+        setPreviewResult({
+          request: activeRequest,
+          items: [],
+          hasConflict: false,
+          error: err instanceof Error ? err.message : labels.previewFailed,
+        });
       });
     return () => {
       active = false;
@@ -63,17 +66,22 @@ export function OperationPreview({ request, operationChoices, onJobCreated, onCl
 
   async function confirm() {
     setSubmitting(true);
-    setError(null);
+    setJobError(null);
     try {
       const job = await api.opsCreateJob(activeRequest);
       onJobCreated(job.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : labels.jobCreationFailed);
+      setJobError(err instanceof Error ? err.message : labels.jobCreationFailed);
     } finally {
       setSubmitting(false);
     }
   }
 
+  const currentPreview = previewResult?.request === activeRequest ? previewResult : null;
+  const items = currentPreview?.items ?? [];
+  const hasConflict = currentPreview?.hasConflict ?? false;
+  const loading = currentPreview === null;
+  const error = jobError ?? currentPreview?.error ?? null;
   const conflictCount = items.filter((item) => item.conflict).length;
   const itemCount = activeRequest.type === "mkdir" ? 1 : activeRequest.sources.length;
   const destructive = activeRequest.type === "delete";
@@ -101,7 +109,10 @@ export function OperationPreview({ request, operationChoices, onJobCreated, onCl
                 role="radio"
                 aria-checked={activeRequest.type === type}
                 data-active={activeRequest.type === type ? "true" : "false"}
-                onClick={() => setSelectedType(type)}
+                onClick={() => {
+                  setJobError(null);
+                  setSelectedType(type);
+                }}
                 disabled={submitting}
               >
                 {labels.operationType(type)}
@@ -155,7 +166,7 @@ export function OperationPreview({ request, operationChoices, onJobCreated, onCl
           <Button
             variant={destructive ? "destructive" : "default"}
             onClick={confirm}
-            disabled={previewedRequest !== activeRequest || hasConflict || loading || submitting}
+            disabled={!currentPreview || Boolean(currentPreview.error) || hasConflict || submitting}
           >
             {submitting ? <LoaderCircle className="animate-spin" /> : null}
             {labels.confirmOperation(activeRequest.type, itemCount)}

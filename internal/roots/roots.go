@@ -22,9 +22,10 @@ type Root struct {
 }
 
 type ResolvedPath struct {
-	Root Root
-	Rel  string
-	Abs  string
+	Root         Root
+	Rel          string
+	Abs          string
+	CanonicalAbs string
 }
 
 type Resolver struct {
@@ -87,12 +88,14 @@ func (r Resolver) ResolveForWrite(rootID string, rel string) (ResolvedPath, erro
 			if !inside(rootEval, eval) {
 				return ResolvedPath{}, fmt.Errorf("%w: %s", ErrOutsideRoot, rel)
 			}
+			canonical := eval
 			if suffix != "" {
-				target := filepath.Clean(filepath.Join(eval, suffix))
-				if !inside(rootEval, target) {
+				canonical = filepath.Clean(filepath.Join(eval, suffix))
+				if !inside(rootEval, canonical) {
 					return ResolvedPath{}, fmt.Errorf("%w: %s", ErrOutsideRoot, rel)
 				}
 			}
+			resolved.CanonicalAbs = canonical
 			return resolved, nil
 		}
 		if !os.IsNotExist(err) {

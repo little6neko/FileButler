@@ -109,7 +109,15 @@ export function isFileDropData(value: unknown): value is FileDropData {
 }
 
 function normalizeRelativePath(path: string) {
-  const parts = path.split("/").filter((part) => part.length > 0 && part !== ".");
+  const parts: string[] = [];
+  for (const part of path.split("/")) {
+    if (!part || part === ".") continue;
+    if (part === "..") {
+      parts.pop();
+      continue;
+    }
+    parts.push(part);
+  }
   return parts.join("/") || ".";
 }
 

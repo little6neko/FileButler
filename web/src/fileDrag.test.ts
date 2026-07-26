@@ -50,6 +50,23 @@ it("rejects the existing parent, self, and descendants without prefix false posi
   expect(validateFileDrop(directorySource, drop("right", "root-a", "folder-two", "directory"))).toEqual({ valid: true });
 });
 
+it("normalizes dot segments before checking no-op and recursive destinations", () => {
+  const fileData = dragData(entry("b/a.txt"), [entry("b/a.txt")], []);
+  fileData.parentPath = "a/../b";
+  expect(validateFileDrop(buildFileDragSource(fileData), drop("right", "root-a", "b", "current-directory"))).toEqual({
+    valid: false,
+    reason: "same-directory",
+  });
+
+  const directorySource = buildFileDragSource(
+    dragData(entry("folder", "directory"), [entry("folder", "directory")], []),
+  );
+  expect(validateFileDrop(directorySource, drop("right", "root-a", "other/../folder", "directory"))).toEqual({
+    valid: false,
+    reason: "inside-source",
+  });
+});
+
 it("allows different roots and builds the existing OpsRequest shape", () => {
   const source = buildFileDragSource(dragData(entry("a.txt"), [entry("a.txt")], []));
   const target = drop("right", "root-b", "archive", "directory");

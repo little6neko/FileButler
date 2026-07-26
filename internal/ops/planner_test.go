@@ -124,6 +124,28 @@ func TestPlanCopyRejectsOverlappingRootInsideSource(t *testing.T) {
 	}
 }
 
+func TestPlanCopyRejectsSymlinkedDestinationInsideSource(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "folder", "child"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "folder", "child"), filepath.Join(root, "nested-link")); err != nil {
+		t.Fatal(err)
+	}
+	planner := Planner{Resolver: roots.NewResolver([]roots.Root{{ID: "root", Name: "Root", Path: root}})}
+
+	plan, err := planner.Plan(context.Background(), Request{
+		Type: OpCopy, SourceRoot: "root", Sources: []string{"folder"},
+		DestRoot: "root", DestPath: "nested-link",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.HasConflict || plan.Items[0].ErrorCode != "destination_inside_source" {
+		t.Fatalf("plan = %+v", plan)
+	}
+}
+
 func testResolver(rootA, rootB string) roots.Resolver {
 	return roots.NewResolver([]roots.Root{
 		{ID: "a", Name: "A", Path: rootA},

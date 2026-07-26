@@ -76,7 +76,7 @@ func (p Planner) Plan(ctx context.Context, req Request) (Plan, error) {
 				item.Conflict = true
 				item.ErrorCode = errorCode(err)
 				item.ErrorText = err.Error()
-			} else if (req.Type == OpMove || req.Type == OpCopy) && info.IsDir() && pathInside(source.Abs, dest.Abs) {
+			} else if (req.Type == OpMove || req.Type == OpCopy) && info.IsDir() && pathInside(source.CanonicalAbs, dest.CanonicalAbs) {
 				item.Conflict = true
 				item.ErrorCode = "destination_inside_source"
 				item.ErrorText = "destination cannot be inside the source directory"

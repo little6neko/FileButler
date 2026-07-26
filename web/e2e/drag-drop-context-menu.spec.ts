@@ -9,7 +9,7 @@ type OpsPayload = {
 };
 
 test("previews same-pane and cross-pane drops with Windows-style defaults", async ({ page }) => {
-  const dryRuns = await installMockApi(page);
+  const { dryRuns } = await installMockApi(page);
   await page.goto("/");
   const left = page.getByRole("region", { name: "Left pane" });
   const right = page.getByRole("region", { name: "Right pane" });
@@ -100,6 +100,25 @@ test("uses row and whitespace context selection while keeping all actions visibl
   await page.screenshot({ path: "test-results/file-context-menu-1024x768.png", fullPage: true });
 });
 
+test("confirms a ready operation with Enter without opening Jobs", async ({ page }) => {
+  const { createdJobs } = await installMockApi(page);
+  await page.goto("/");
+  const left = page.getByRole("region", { name: "Left pane" });
+  await expect(entryRow(left, "source.txt")).toBeVisible();
+
+  await left.getByLabel("Select source.txt").click();
+  await page.getByRole("button", { name: "Copy to right pane" }).click();
+  const dialog = page.getByRole("dialog", { name: "copy preview" });
+  await expect(dialog.getByRole("button", { name: "Start copy" })).toBeEnabled();
+  await expect(dialog).toBeFocused();
+
+  await page.keyboard.press("Enter");
+
+  await expect.poll(() => createdJobs.length).toBe(1);
+  await expect(dialog).toBeHidden();
+  await expect(page.getByRole("dialog", { name: "Jobs" })).toHaveCount(0);
+});
+
 function entryRow(pane: Locator, name: string) {
   return pane.locator("tbody tr").filter({ hasText: name });
 }
@@ -131,6 +150,7 @@ async function openBlankContextMenu(fileList: Locator) {
 
 async function installMockApi(page: Page) {
   const dryRuns: OpsPayload[] = [];
+  const createdJobs: OpsPayload[] = [];
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "languages", { configurable: true, get: () => ["en-US"] });
   });
@@ -163,7 +183,10 @@ async function installMockApi(page: Page) {
         }],
       });
     }
-    if (url.pathname === "/api/ops/jobs") return respond(route, { id: "job-1" });
+    if (url.pathname === "/api/ops/jobs") {
+      createdJobs.push(request.postDataJSON() as OpsPayload);
+      return respond(route, { id: "job-1" });
+    }
     if (url.pathname === "/api/jobs" && request.method() === "GET") return respond(route, []);
     return route.fulfill({
       status: 404,
@@ -171,7 +194,7 @@ async function installMockApi(page: Page) {
       body: JSON.stringify({ error: { code: "not_mocked", message: url.pathname } }),
     });
   });
-  return dryRuns;
+  return { dryRuns, createdJobs };
 }
 
 async function respond(route: Route, data: unknown) {

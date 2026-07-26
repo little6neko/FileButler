@@ -182,6 +182,66 @@ it("keeps confirmation disabled when the operation preview fails", async () => {
   expect(screen.getByRole("button", { name: "Start copy" })).toBeDisabled();
 });
 
+it("switches a drag preview from move to copy and submits the selected request", async () => {
+  vi.mocked(api.opsDryRun).mockResolvedValue({
+    hasConflict: false,
+    items: [{ sourcePath: "a.txt", destPath: "target/a.txt", conflict: false }],
+  });
+  vi.mocked(api.opsCreateJob).mockResolvedValue({ id: "job-copy" });
+  const onJobCreated = vi.fn();
+  const moveRequest = { type: "move" as const, sourceRoot: "a", sources: ["a.txt"], destRoot: "a", destPath: "target" };
+
+  render(
+    <OperationPreview
+      request={moveRequest}
+      operationChoices={["move", "copy"]}
+      onJobCreated={onJobCreated}
+      onClose={vi.fn()}
+    />,
+  );
+
+  expect(await screen.findByRole("radio", { name: "move" })).toBeChecked();
+  await userEvent.click(screen.getByRole("radio", { name: "copy" }));
+  await waitFor(() => expect(api.opsDryRun).toHaveBeenLastCalledWith({ ...moveRequest, type: "copy" }));
+  const confirm = screen.getByRole("button", { name: "Start copy" });
+  await waitFor(() => expect(confirm).toBeEnabled());
+  await userEvent.click(confirm);
+
+  expect(api.opsCreateJob).toHaveBeenCalledWith({ ...moveRequest, type: "copy" });
+  expect(onJobCreated).toHaveBeenCalledWith("job-copy");
+});
+
+it("does not let an older dry run re-enable the wrong operation", async () => {
+  let resolveMove!: (value: { hasConflict: boolean; items: never[] }) => void;
+  vi.mocked(api.opsDryRun)
+    .mockReturnValueOnce(new Promise((resolve) => { resolveMove = resolve; }))
+    .mockResolvedValueOnce({ hasConflict: false, items: [] });
+  const moveRequest = { type: "move" as const, sourceRoot: "a", sources: ["a.txt"], destRoot: "a", destPath: "target" };
+
+  render(
+    <OperationPreview
+      request={moveRequest}
+      operationChoices={["move", "copy"]}
+      onJobCreated={vi.fn()}
+      onClose={vi.fn()}
+    />,
+  );
+
+  await userEvent.click(screen.getByRole("radio", { name: "copy" }));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Start copy" })).toBeEnabled());
+  resolveMove({ hasConflict: false, items: [] });
+  await waitFor(() => expect(screen.getByRole("button", { name: "Start copy" })).toBeEnabled());
+  expect(screen.queryByRole("button", { name: "Start move" })).not.toBeInTheDocument();
+});
+
+it("keeps toolbar previews fixed when operation choices are absent", async () => {
+  vi.mocked(api.opsDryRun).mockResolvedValue({ hasConflict: false, items: [] });
+  render(<OperationPreview request={request()} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  await waitFor(() => expect(api.opsDryRun).toHaveBeenCalled());
+  expect(screen.queryByRole("radiogroup", { name: "Operation" })).not.toBeInTheDocument();
+});
+
 function request() {
   return { type: "copy" as const, sourceRoot: "a", sources: ["a.txt"], destRoot: "b", destPath: "." };
 }

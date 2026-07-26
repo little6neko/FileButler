@@ -13,3 +13,8 @@ it("formats hidden path segment labels in both supported languages", () => {
   expect(strings.en.hiddenPathSegments(3)).toBe("Show 3 hidden folders");
   expect(strings["zh-CN"].hiddenPathSegments(3)).toBe("显示 3 个隐藏文件夹");
 });
+
+it("localizes the drag operation selector", () => {
+  expect(strings.en.operationMode).toBe("Operation");
+  expect(strings["zh-CN"].operationMode).toBe("操作方式");
+});

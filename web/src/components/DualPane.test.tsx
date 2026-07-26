@@ -265,7 +265,6 @@ it("keeps PowerRename settings only after a rename job is created", async () => 
   await userEvent.click(within(dialog).getByLabelText("Use regular expressions"));
   await userEvent.click(within(dialog).getByRole("button", { name: "Rename 1 item" }));
   await waitFor(() => expect(api.renameCreateJob).toHaveBeenCalled());
-  await closeJobsSheet();
 
   await userEvent.click(await within(leftPane).findByLabelText("Select file.txt"));
   await userEvent.click(screen.getByRole("button", { name: "PowerRename" }));
@@ -305,7 +304,6 @@ it("clears hidden selection after a rename job refreshes the pane", async () => 
   await userEvent.clear(within(dialog).getByRole("textbox"));
   await userEvent.type(within(dialog).getByRole("textbox"), "new.txt");
   await userEvent.click(within(dialog).getByRole("button", { name: "Rename" }));
-  await closeJobsSheet();
 
   expect(await within(leftPane).findByLabelText("Select new.txt")).not.toBeChecked();
   await waitFor(() => expect(screen.getByRole("button", { name: "Rename" })).toBeDisabled());
@@ -369,7 +367,7 @@ it("refreshes both panes after an operation job reaches a terminal status", asyn
   expect(toast.success).toHaveBeenCalledWith("Background job created");
   await waitFor(() => expect(api.job).toHaveBeenCalledWith("job-1"));
   await waitFor(() => expect(api.browse).toHaveBeenCalledTimes(2));
-  await closeJobsSheet();
+  expect(screen.queryByRole("dialog", { name: "Jobs" })).not.toBeInTheDocument();
   expect(within(leftPane).getByLabelText("Select source.txt")).not.toBeChecked();
   expect(screen.getByRole("button", { name: "Copy to right pane" })).toBeDisabled();
 });
@@ -455,10 +453,4 @@ function mockTwoEntries() {
     { name: "a.txt", relativePath: "a.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
     { name: "b.txt", relativePath: "b.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
   ]);
-}
-
-async function closeJobsSheet() {
-  const sheet = await screen.findByRole("dialog", { name: "Jobs" });
-  await userEvent.click(within(sheet).getByRole("button", { name: "Close" }));
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Jobs" })).not.toBeInTheDocument());
 }

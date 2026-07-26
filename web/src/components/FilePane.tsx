@@ -116,6 +116,8 @@ export function FilePane({
     fileListRef.current = node;
     setPaneDropNodeRef(node);
   }, [setPaneDropNodeRef]);
+  const paneFeedback = dropFeedback?.target.id === paneTarget.id ? dropFeedback : null;
+  const paneDropState = paneFeedback ? (paneFeedback.valid ? "valid" : "invalid") : undefined;
 
   useEffect(() => {
     setPathDraft(displayPath(currentPath));
@@ -319,19 +321,19 @@ export function FilePane({
         </div>
       </nav>
       <PaneContextMenu actions={actions} label={labels.fileActions}>
-        <div
-          className="file-list"
-          data-testid={`file-list-${paneKey}`}
-          ref={setFileListNode}
-          data-drop-state={dropFeedback?.target.id === paneTarget.id ? (dropFeedback.valid ? "valid" : "invalid") : undefined}
-          onMouseDown={startDragSelection}
-          onContextMenuCapture={(event) => {
-            onActivate();
-            const element = event.target instanceof Element ? event.target : null;
-            const row = element?.closest<HTMLTableRowElement>("tbody tr[data-entry-path]");
-            onContextTarget(row?.dataset.entryPath ?? null);
-          }}
-        >
+        <div className="file-list-frame" data-drop-state={paneDropState}>
+          <div
+            className="file-list"
+            data-testid={`file-list-${paneKey}`}
+            ref={setFileListNode}
+            onMouseDown={startDragSelection}
+            onContextMenuCapture={(event) => {
+              onActivate();
+              const element = event.target instanceof Element ? event.target : null;
+              const row = element?.closest<HTMLTableRowElement>("tbody tr[data-entry-path]");
+              onContextTarget(row?.dataset.entryPath ?? null);
+            }}
+          >
         {loading ? (
           <div data-testid="pane-loading" className="grid gap-1 p-2">
             {Array.from({ length: 8 }, (_, index) => <Skeleton key={index} className="h-7" />)}
@@ -395,7 +397,15 @@ export function FilePane({
           </tbody>
           </table>
         )}
-        {dragBox ? <div className="drag-selection-box" style={dragBox} /> : null}
+          {dragBox ? <div className="drag-selection-box" style={dragBox} /> : null}
+          </div>
+          {paneFeedback ? (
+            <div
+              className="file-list-drop-feedback"
+              data-drop-state={paneDropState}
+              aria-hidden="true"
+            />
+          ) : null}
         </div>
       </PaneContextMenu>
       <PaneStatusBar

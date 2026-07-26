@@ -312,6 +312,7 @@ export function DualPane({
               className="workspace"
               data-testid="workspace"
               data-active-pane={activePane}
+              data-file-drag-active={dragSource ? "true" : "false"}
               style={workspaceStyle(leftPanePercent)}
             >
               <FilePane title={labels.leftPane} labels={labels} {...paneProps("left", left)} />

@@ -224,8 +224,15 @@ body {
   background: var(--accent);
 }
 
+.file-list-frame {
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .file-list {
   position: relative;
+  height: 100%;
   min-height: 0;
   overflow: auto;
   background: var(--card);
@@ -237,6 +244,21 @@ body {
   pointer-events: none;
   border: 1px solid var(--primary);
   background: color-mix(in oklab, var(--primary) 16%, transparent);
+}
+
+.file-list-drop-feedback {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.file-list-drop-feedback[data-drop-state="valid"] {
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--primary) 70%, transparent);
+}
+
+.file-list-drop-feedback[data-drop-state="invalid"] {
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--destructive) 70%, transparent);
 }
 
 .path-segments {
@@ -465,18 +487,7 @@ body {
   flex: 0 1 auto;
   align-items: center;
   gap: 6px;
-}
-
-.file-table tbody tr[data-file-drag-source="true"],
-.file-table tbody tr[data-file-drag-source="true"] td:not(.select-cell),
-.file-table tbody tr[data-file-drag-source="true"] td:not(.select-cell) * {
-  cursor: grab;
-}
-
-.file-table tbody tr[data-file-drag-source="true"]:active,
-.file-table tbody tr[data-file-drag-source="true"]:active td:not(.select-cell),
-.file-table tbody tr[data-file-drag-source="true"]:active td:not(.select-cell) * {
-  cursor: grabbing;
+  cursor: default;
 }
 
 .file-table tbody tr[data-dragging="true"] {
@@ -484,28 +495,38 @@ body {
 }
 
 .file-table tbody tr[data-drop-state="valid"] {
-  background: color-mix(in oklab, var(--primary) 10%, var(--card));
-  box-shadow: inset 0 0 0 2px var(--primary);
+  --file-drop-color: var(--primary);
 }
 
 .file-table tbody tr[data-drop-state="invalid"] {
+  --file-drop-color: var(--destructive);
+}
+
+.file-table tbody tr[data-drop-state="valid"] > td {
+  background: color-mix(in oklab, var(--primary) 10%, var(--card));
+}
+
+.file-table tbody tr[data-drop-state="invalid"] > td {
   background: color-mix(in oklab, var(--destructive) 8%, var(--card));
-  box-shadow: inset 0 0 0 2px var(--destructive);
 }
 
-.file-table tbody tr[data-drop-state="invalid"],
-.file-table tbody tr[data-drop-state="invalid"] td:not(.select-cell),
-.file-table tbody tr[data-drop-state="invalid"] td:not(.select-cell) * {
-  cursor: not-allowed;
+.file-table tbody tr[data-drop-state] > td::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  box-sizing: border-box;
+  pointer-events: none;
+  border-top: 2px solid var(--file-drop-color);
+  border-bottom: 2px solid var(--file-drop-color);
 }
 
-.file-list[data-drop-state="valid"] {
-  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--primary) 70%, transparent);
+.file-table tbody tr[data-drop-state] > td:first-child::after {
+  border-left: 2px solid var(--file-drop-color);
 }
 
-.file-list[data-drop-state="invalid"] {
-  cursor: not-allowed;
-  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--destructive) 70%, transparent);
+.file-table tbody tr[data-drop-state] > td:last-child::after {
+  border-right: 2px solid var(--file-drop-color);
 }
 
 .file-drag-overlay {
@@ -540,6 +561,19 @@ body {
 
 .file-drag-overlay[data-drop-state="invalid"] {
   border-color: var(--destructive);
+  cursor: not-allowed;
+}
+
+.workspace[data-file-drag-active="true"] {
+  cursor: grabbing;
+}
+
+.workspace[data-file-drag-active="true"] * {
+  cursor: grabbing;
+}
+
+.workspace[data-file-drag-active="true"] [data-drop-state="invalid"],
+.workspace[data-file-drag-active="true"] [data-drop-state="invalid"] * {
   cursor: not-allowed;
 }
 
@@ -581,11 +615,6 @@ body {
 
 .file-table tbody tr:hover {
   background: var(--muted);
-}
-
-.file-table tbody tr.directory-row,
-.file-table tbody tr.directory-row * {
-  cursor: pointer;
 }
 
 @theme inline {

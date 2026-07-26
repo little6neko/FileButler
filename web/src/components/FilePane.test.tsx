@@ -413,6 +413,22 @@ it("renders browse failures inside the pane", () => {
   expect(screen.getByRole("alert")).toHaveTextContent("permission denied");
 });
 
+it("reports the right-clicked entry before opening its context menu", () => {
+  const onContextTarget = vi.fn();
+  renderPane({ onContextTarget });
+
+  fireEvent.contextMenu(screen.getByText("file.txt"), { clientX: 50, clientY: 50 });
+  expect(onContextTarget).toHaveBeenCalledWith("file.txt");
+});
+
+it("reports null when list whitespace is right-clicked", () => {
+  const onContextTarget = vi.fn();
+  renderPane({ onContextTarget });
+
+  fireEvent.contextMenu(screen.getByTestId("file-list-left"), { clientX: 500, clientY: 400 });
+  expect(onContextTarget).toHaveBeenCalledWith(null);
+});
+
 function entry(name: string, type: "file" | "directory" | "symlink" | "other" = "file", size = 1) {
   return {
     name,
@@ -438,6 +454,8 @@ function renderPane(overrides: Partial<Parameters<typeof FilePane>[0]> = {}) {
     onToggleSelection: vi.fn(),
     onSelectAll: vi.fn(),
     onSelectPaths: vi.fn(),
+    onContextTarget: vi.fn(),
+    actions: [],
     onRefresh: vi.fn(),
     onActivate: vi.fn(),
     ...overrides,

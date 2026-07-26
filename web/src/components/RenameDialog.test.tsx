@@ -58,6 +58,9 @@ it("disables run button when preview has conflicts", async () => {
 
   expect(await screen.findByText("exists")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Rename 1 item" })).toBeDisabled();
+  screen.getByLabelText("Search").focus();
+  await userEvent.keyboard("{Enter}");
+  expect(api.renameCreateJob).not.toHaveBeenCalled();
 });
 
 it("creates a rename job from selected files", async () => {
@@ -66,7 +69,9 @@ it("creates a rename job from selected files", async () => {
   const onJobCreated = vi.fn();
   render(<RenameDialog rootId="data" paths={["file.txt"]} onJobCreated={onJobCreated} onClose={vi.fn()} />);
 
-  await userEvent.click(screen.getByRole("button", { name: "Rename 1 item" }));
+  const renameButton = screen.getByRole("button", { name: "Rename 1 item" });
+  await waitFor(() => expect(renameButton).toBeEnabled());
+  await userEvent.click(renameButton);
   expect(onJobCreated).toHaveBeenCalledWith("job_1");
 });
 
@@ -199,9 +204,11 @@ it("supports keyboard preset selection and Escape dismissal", async () => {
 
   const replace = screen.getByLabelText("Replace");
   await userEvent.click(replace);
+  vi.mocked(api.renameCreateJob).mockClear();
   await userEvent.keyboard("{ArrowDown}{Enter}");
   expect(replace).toHaveValue("${start=1,padding=3}");
   expect(screen.queryByRole("option", { name: "${start=1,padding=3}" })).not.toBeInTheDocument();
+  expect(api.renameCreateJob).not.toHaveBeenCalled();
 
   await userEvent.clear(replace);
   expect(screen.getByRole("option", { name: "${start=1,padding=3}" })).toBeInTheDocument();
@@ -220,4 +227,35 @@ it("keeps the input label distinct from the preset list label", async () => {
 
   expect(screen.getByLabelText("Search")).toBe(search);
   expect(screen.getByRole("listbox", { name: "Search presets" })).toBeInTheDocument();
+});
+
+it("creates a PowerRename job with Enter from a text input", async () => {
+  vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
+  vi.mocked(api.renameCreateJob).mockResolvedValue({ id: "job-enter" });
+  const onJobCreated = vi.fn();
+  render(<RenameDialog rootId="data" paths={["file.txt"]} onJobCreated={onJobCreated} onClose={vi.fn()} />);
+
+  const search = screen.getByLabelText("Search");
+  await userEvent.type(search, "file");
+  await waitFor(() => expect(api.renamePreview).toHaveBeenLastCalledWith(
+    expect.objectContaining({ options: expect.objectContaining({ search: "file" }) }),
+  ));
+  await waitFor(() => expect(screen.getByRole("button", { name: "Rename 1 item" })).toBeEnabled());
+  await userEvent.keyboard("{Enter}");
+
+  expect(api.renameCreateJob).toHaveBeenCalledWith(
+    expect.objectContaining({ rootId: "data", paths: ["file.txt"] }),
+  );
+  expect(onJobCreated).toHaveBeenCalledWith("job-enter");
+});
+
+it("ignores Enter while the current PowerRename preview is loading", async () => {
+  vi.mocked(api.renamePreview).mockReturnValue(new Promise<never>(() => undefined));
+  render(<RenameDialog rootId="data" paths={["file.txt"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  const search = screen.getByLabelText("Search");
+  expect(screen.getByRole("button", { name: "Rename 1 item" })).toBeDisabled();
+  await userEvent.type(search, "file{Enter}");
+
+  expect(api.renameCreateJob).not.toHaveBeenCalled();
 });

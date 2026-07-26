@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/little6neko/filebutler/internal/roots"
 )
@@ -75,6 +76,10 @@ func (p Planner) Plan(ctx context.Context, req Request) (Plan, error) {
 				item.Conflict = true
 				item.ErrorCode = errorCode(err)
 				item.ErrorText = err.Error()
+			} else if (req.Type == OpMove || req.Type == OpCopy) && info.IsDir() && pathInside(source.Abs, dest.Abs) {
+				item.Conflict = true
+				item.ErrorCode = "destination_inside_source"
+				item.ErrorText = "destination cannot be inside the source directory"
 			} else if _, err := os.Lstat(dest.Abs); err == nil {
 				item.Conflict = true
 				item.ErrorCode = "target_exists"
@@ -110,6 +115,16 @@ func defaultPath(path string) string {
 		return "."
 	}
 	return path
+}
+
+func pathInside(parent, candidate string) bool {
+	parent = filepath.Clean(parent)
+	candidate = filepath.Clean(candidate)
+	relative, err := filepath.Rel(parent, candidate)
+	if err != nil {
+		return false
+	}
+	return relative == "." || (relative != ".." && !strings.HasPrefix(relative, ".."+string(os.PathSeparator)))
 }
 
 func errorCode(err error) string {

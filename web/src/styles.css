@@ -450,6 +450,23 @@ body {
   margin: 0 auto;
 }
 
+.file-name-content {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-drag-handle {
+  width: fit-content;
+  min-width: 0;
+  max-width: 100%;
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 6px;
+}
+
 .file-table tbody tr[data-file-drag-source="true"],
 .file-table tbody tr[data-file-drag-source="true"] td:not(.select-cell),
 .file-table tbody tr[data-file-drag-source="true"] td:not(.select-cell) * {

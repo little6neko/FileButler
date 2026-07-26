@@ -619,7 +619,7 @@ function columnStyle(widths: Record<ColumnKey, number>) {
 
 function isDragBlockedTarget(target: EventTarget) {
   return target instanceof Element && Boolean(
-    target.closest("button, input, select, textarea, a, thead, [data-entry-path], [role='checkbox'], [role='separator']"),
+    target.closest("button, input, select, textarea, a, thead, [data-file-drag-handle], [role='checkbox'], [role='separator']"),
   );
 }
 

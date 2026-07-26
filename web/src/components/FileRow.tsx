@@ -40,7 +40,7 @@ export function FileRow({
   const drag = useDraggable({
     id: fileDragId(paneKey, entry.relativePath),
     data: dragData,
-    attributes: { role: "row", tabIndex: -1 },
+    attributes: { role: "button", tabIndex: -1 },
   });
   const directoryTarget: FileDropData = {
     id: directoryDropId(paneKey, entry.relativePath),
@@ -66,8 +66,6 @@ export function FileRow({
   return (
     <tr
       ref={setNodeRef}
-      {...drag.attributes}
-      {...drag.listeners}
       role="row"
       data-entry-path={entry.relativePath}
       data-density="compact"
@@ -87,9 +85,17 @@ export function FileRow({
         />
       </td>
       <td>
-        <span className="flex min-w-0 items-center gap-1.5">
-          <FileIcon name={entry.name} type={entry.type} />
-          <span className="truncate font-medium text-slate-700">{entry.name}</span>
+        <span className="file-name-content">
+          <span
+            ref={drag.setActivatorNodeRef}
+            {...drag.attributes}
+            {...drag.listeners}
+            className="file-drag-handle"
+            data-file-drag-handle="true"
+          >
+            <FileIcon name={entry.name} type={entry.type} />
+            <span className="truncate font-medium text-slate-700">{entry.name}</span>
+          </span>
           {entry.isSymlink && entry.symlinkTarget ? (
             <small className="truncate text-slate-400">{" -> "}{entry.symlinkTarget}</small>
           ) : null}

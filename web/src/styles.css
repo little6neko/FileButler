@@ -376,6 +376,26 @@ body {
   opacity: 0.5;
 }
 
+.operation-type-switch {
+  width: fit-content;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--muted);
+}
+
+.operation-type-switch [role="radio"] {
+  min-width: 72px;
+}
+
+.operation-type-switch [role="radio"][data-active="true"] {
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 1px 3px color-mix(in oklab, var(--foreground) 12%, transparent);
+}
+
 .file-table {
   width: var(--file-table-width);
   height: auto;

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CircleAlert, LoaderCircle, TriangleAlert } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -7,18 +7,25 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "../api/client";
 import type { OpsRequest, PlanItem } from "../api/types";
+import type { DragOperation } from "../fileDrag";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
 import { ErrorBanner } from "./ErrorBanner";
 
 type Props = {
   request: OpsRequest;
+  operationChoices?: readonly DragOperation[];
   onJobCreated(id: string): void;
   onClose(): void;
   labels?: UIStrings;
 };
 
-export function OperationPreview({ request, onJobCreated, onClose, labels = strings.en }: Props) {
+export function OperationPreview({ request, operationChoices, onJobCreated, onClose, labels = strings.en }: Props) {
+  const [selectedType, setSelectedType] = useState<OpsRequest["type"]>(request.type);
+  const activeRequest = useMemo(
+    () => (selectedType === request.type ? request : { ...request, type: selectedType }),
+    [request, selectedType],
+  );
   const [items, setItems] = useState<PlanItem[]>([]);
   const [hasConflict, setHasConflict] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,18 +35,22 @@ export function OperationPreview({ request, onJobCreated, onClose, labels = stri
 
   useEffect(() => {
     let active = true;
+    setItems([]);
+    setHasConflict(false);
+    setError(null);
+    setLoading(true);
+    setPreviewedRequest(null);
+
     api
-      .opsDryRun(request)
+      .opsDryRun(activeRequest)
       .then((plan) => {
         if (!active) return;
         setItems(plan.items);
         setHasConflict(plan.hasConflict);
-        setError(null);
-        setPreviewedRequest(request);
+        setPreviewedRequest(activeRequest);
       })
       .catch((err) => {
         if (!active) return;
-        setPreviewedRequest(null);
         setError(err instanceof Error ? err.message : labels.previewFailed);
       })
       .finally(() => {
@@ -48,13 +59,13 @@ export function OperationPreview({ request, onJobCreated, onClose, labels = stri
     return () => {
       active = false;
     };
-  }, [labels.previewFailed, request]);
+  }, [activeRequest, labels.previewFailed]);
 
   async function confirm() {
     setSubmitting(true);
     setError(null);
     try {
-      const job = await api.opsCreateJob(request);
+      const job = await api.opsCreateJob(activeRequest);
       onJobCreated(job.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : labels.jobCreationFailed);
@@ -64,10 +75,10 @@ export function OperationPreview({ request, onJobCreated, onClose, labels = stri
   }
 
   const conflictCount = items.filter((item) => item.conflict).length;
-  const itemCount = request.type === "mkdir" ? 1 : request.sources.length;
-  const destructive = request.type === "delete";
-  const showSourceColumn = request.type !== "mkdir";
-  const showDestinationColumn = request.type !== "delete";
+  const itemCount = activeRequest.type === "mkdir" ? 1 : activeRequest.sources.length;
+  const destructive = activeRequest.type === "delete";
+  const showSourceColumn = activeRequest.type !== "mkdir";
+  const showDestinationColumn = activeRequest.type !== "delete";
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -76,9 +87,28 @@ export function OperationPreview({ request, onJobCreated, onClose, labels = stri
         showCloseButton={false}
       >
         <DialogHeader>
-          <DialogTitle>{labels.operationPreview(request.type)}</DialogTitle>
-          <DialogDescription>{labels.operationDescription(request.type, itemCount)}</DialogDescription>
+          <DialogTitle>{labels.operationPreview(activeRequest.type)}</DialogTitle>
+          <DialogDescription>{labels.operationDescription(activeRequest.type, itemCount)}</DialogDescription>
         </DialogHeader>
+        {operationChoices?.length ? (
+          <div className="operation-type-switch" role="radiogroup" aria-label={labels.operationMode}>
+            {operationChoices.map((type) => (
+              <Button
+                key={type}
+                type="button"
+                size="sm"
+                variant="ghost"
+                role="radio"
+                aria-checked={activeRequest.type === type}
+                data-active={activeRequest.type === type ? "true" : "false"}
+                onClick={() => setSelectedType(type)}
+                disabled={submitting}
+              >
+                {labels.operationType(type)}
+              </Button>
+            ))}
+          </div>
+        ) : null}
         <ErrorBanner message={error} />
         {destructive ? (
           <Alert variant="destructive">
@@ -109,8 +139,8 @@ export function OperationPreview({ request, onJobCreated, onClose, labels = stri
               <TableBody>
                 {items.map((item) => (
                   <TableRow key={`${item.sourcePath}-${item.destPath ?? item.targetPath ?? ""}`}>
-                    {showSourceColumn ? <TableCell>{displaySource(item, request)}</TableCell> : null}
-                    {showDestinationColumn ? <TableCell>{displayDestination(item, request)}</TableCell> : null}
+                    {showSourceColumn ? <TableCell>{displaySource(item, activeRequest)}</TableCell> : null}
+                    {showDestinationColumn ? <TableCell>{displayDestination(item, activeRequest)}</TableCell> : null}
                     <TableCell className={item.conflict ? "text-destructive" : "text-emerald-700"}>
                       {item.conflict ? item.errorText || item.errorCode : labels.ready}
                     </TableCell>
@@ -125,10 +155,10 @@ export function OperationPreview({ request, onJobCreated, onClose, labels = stri
           <Button
             variant={destructive ? "destructive" : "default"}
             onClick={confirm}
-            disabled={previewedRequest !== request || hasConflict || loading || submitting}
+            disabled={previewedRequest !== activeRequest || hasConflict || loading || submitting}
           >
             {submitting ? <LoaderCircle className="animate-spin" /> : null}
-            {labels.confirmOperation(request.type, itemCount)}
+            {labels.confirmOperation(activeRequest.type, itemCount)}
           </Button>
         </DialogFooter>
       </DialogContent>

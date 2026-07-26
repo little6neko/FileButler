@@ -150,6 +150,9 @@ export function DualPane({
 
   function paneProps(which: PaneKey, pane: PaneState) {
     return {
+      paneKey: which,
+      actions: actionsFor(which),
+      onContextTarget: (path: string | null) => selectContextTarget(which, path),
       roots,
       selectedRootId: pane.rootId,
       currentPath: pane.path,
@@ -190,6 +193,17 @@ export function DualPane({
       onActivate: () => setActivePane(which),
       isActive: activePane === which,
     };
+  }
+
+  function selectContextTarget(which: PaneKey, path: string | null) {
+    setActivePane(which);
+    updatePane(which, (current) => {
+      if (path === null) {
+        return current.selected.size ? { ...current, selected: new Set() } : current;
+      }
+      if (current.selected.has(path)) return current;
+      return { ...current, selected: new Set([path]) };
+    });
   }
 
   return (

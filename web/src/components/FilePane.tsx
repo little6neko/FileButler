@@ -7,16 +7,22 @@ import { Input } from "@/components/ui/input";
 import { MenuItem, MenuPopup, MenuPortal, MenuPositioner, MenuRoot, MenuTrigger } from "@/components/ui/menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Entry, Root } from "../api/types";
+import type { PaneKey } from "../fileDrag";
 import { formatBytes } from "../format";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
 import { buildPathSegments, displayPath, fitPathSegments, normalizeInput } from "../pathSegments";
 import type { FittedPathSegments, PathSegment } from "../pathSegments";
 import { ErrorBanner } from "./ErrorBanner";
+import type { FileAction } from "./fileActions";
 import { FileIcon } from "./FileIcon";
+import { PaneContextMenu } from "./PaneContextMenu";
 import { PaneStatusBar } from "./PaneStatusBar";
 
 type FilePaneProps = {
+  paneKey?: PaneKey;
+  actions?: FileAction[];
+  onContextTarget?(path: string | null): void;
   title: string;
   roots: Root[];
   selectedRootId: string;
@@ -39,6 +45,9 @@ type FilePaneProps = {
 };
 
 export function FilePane({
+  paneKey = "left",
+  actions = [],
+  onContextTarget = () => undefined,
   title,
   roots,
   selectedRootId,
@@ -289,7 +298,19 @@ export function FilePane({
           <span data-path-measure="ellipsis">…</span>
         </div>
       </nav>
-      <div className="file-list" ref={fileListRef} onMouseDown={startDragSelection}>
+      <PaneContextMenu actions={actions} label={labels.fileActions}>
+        <div
+          className="file-list"
+          data-testid={`file-list-${paneKey}`}
+          ref={fileListRef}
+          onMouseDown={startDragSelection}
+          onContextMenuCapture={(event) => {
+            onActivate();
+            const element = event.target instanceof Element ? event.target : null;
+            const row = element?.closest<HTMLTableRowElement>("tbody tr[data-entry-path]");
+            onContextTarget(row?.dataset.entryPath ?? null);
+          }}
+        >
         {loading ? (
           <div data-testid="pane-loading" className="grid gap-1 p-2">
             {Array.from({ length: 8 }, (_, index) => <Skeleton key={index} className="h-7" />)}
@@ -361,7 +382,8 @@ export function FilePane({
           </table>
         )}
         {dragBox ? <div className="drag-selection-box" style={dragBox} /> : null}
-      </div>
+        </div>
+      </PaneContextMenu>
       <PaneStatusBar
         selectedCount={selectedEntries.length}
         selectedBytes={selectedBytes}

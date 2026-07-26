@@ -376,6 +376,16 @@ body {
   opacity: 0.5;
 }
 
+.file-action-menu-item {
+  gap: 8px;
+}
+
+[data-slot="menu-separator"].file-action-menu-separator {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+
 .operation-type-switch {
   width: fit-content;
   display: inline-flex;

@@ -1,0 +1,90 @@
+import { describe, expect, it } from "vitest";
+import type { Entry } from "./api/types";
+import {
+  buildDragRequest,
+  buildFileDragSource,
+  defaultDragOperation,
+  validateFileDrop,
+  type FileDragData,
+  type FileDropData,
+} from "./fileDrag";
+
+describe("buildFileDragSource", () => {
+  it("keeps selected entries in visible order", () => {
+    const visibleEntries = [entry("a.txt"), entry("b.txt"), entry("folder", "directory")];
+    const source = buildFileDragSource(dragData(visibleEntries[1], visibleEntries, ["b.txt", "a.txt"]));
+    expect(source.entries.map((item) => item.relativePath)).toEqual(["a.txt", "b.txt"]);
+  });
+
+  it("uses only an unselected dragged entry", () => {
+    const visibleEntries = [entry("a.txt"), entry("b.txt")];
+    const source = buildFileDragSource(dragData(visibleEntries[1], visibleEntries, ["a.txt"]));
+    expect(source.entries.map((item) => item.relativePath)).toEqual(["b.txt"]);
+  });
+});
+
+it("defaults to move for equal roots and copy for different roots", () => {
+  const source = buildFileDragSource(dragData(entry("a.txt"), [entry("a.txt")], []));
+  expect(defaultDragOperation(source, drop("left", "root-a", "folder", "directory"))).toBe("move");
+  expect(defaultDragOperation(source, drop("right", "root-b", ".", "current-directory"))).toBe("copy");
+});
+
+it("rejects the existing parent, self, and descendants without prefix false positives", () => {
+  const fileSource = buildFileDragSource(dragData(entry("a.txt"), [entry("a.txt")], []));
+  expect(validateFileDrop(fileSource, drop("right", "root-a", ".", "current-directory"))).toEqual({
+    valid: false,
+    reason: "same-directory",
+  });
+
+  const directorySource = buildFileDragSource(
+    dragData(entry("folder", "directory"), [entry("folder", "directory")], []),
+  );
+  expect(validateFileDrop(directorySource, drop("right", "root-a", "folder", "directory"))).toEqual({
+    valid: false,
+    reason: "inside-source",
+  });
+  expect(validateFileDrop(directorySource, drop("right", "root-a", "folder/child", "directory"))).toEqual({
+    valid: false,
+    reason: "inside-source",
+  });
+  expect(validateFileDrop(directorySource, drop("right", "root-a", "folder-two", "directory"))).toEqual({ valid: true });
+});
+
+it("allows different roots and builds the existing OpsRequest shape", () => {
+  const source = buildFileDragSource(dragData(entry("a.txt"), [entry("a.txt")], []));
+  const target = drop("right", "root-b", "archive", "directory");
+  expect(validateFileDrop(source, target)).toEqual({ valid: true });
+  expect(buildDragRequest(source, target)).toEqual({
+    type: "copy",
+    sourceRoot: "root-a",
+    sources: ["a.txt"],
+    destRoot: "root-b",
+    destPath: "archive",
+  });
+});
+
+function dragData(clicked: Entry, visibleEntries: Entry[], selectedPaths: string[]): FileDragData {
+  return {
+    kind: "file-entry",
+    pane: "left",
+    rootId: "root-a",
+    parentPath: ".",
+    entry: clicked,
+    selectedPaths,
+    visibleEntries,
+  };
+}
+
+function drop(
+  pane: "left" | "right",
+  rootId: string,
+  path: string,
+  kind: FileDropData["kind"],
+): FileDropData {
+  return { id: `${pane}:${kind}:${path}`, kind, pane, rootId, path, label: path };
+}
+
+function entry(relativePath: string, type: Entry["type"] = "file"): Entry {
+  const name = relativePath.split("/").at(-1) ?? relativePath;
+  return { name, relativePath, type, size: 1, mode: "", modifiedUnix: 0, isSymlink: false };
+}

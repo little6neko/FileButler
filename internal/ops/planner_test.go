@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -71,6 +72,54 @@ func TestPlanMkdirDetectsExistingPath(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !plan.HasConflict || plan.Items[0].ErrorCode != "target_exists" {
+		t.Fatalf("plan = %+v", plan)
+	}
+}
+
+func TestPlanTransferRejectsDestinationInsideSource(t *testing.T) {
+	for _, operation := range []OperationType{OpMove, OpCopy} {
+		for _, destination := range []string{"folder", "folder/child"} {
+			t.Run(string(operation)+"/"+destination, func(t *testing.T) {
+				root := t.TempDir()
+				if err := os.MkdirAll(filepath.Join(root, "folder", "child"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				planner := Planner{Resolver: roots.NewResolver([]roots.Root{{ID: "root", Name: "Root", Path: root}})}
+
+				plan, err := planner.Plan(context.Background(), Request{
+					Type: operation, SourceRoot: "root", Sources: []string{"folder"},
+					DestRoot: "root", DestPath: destination,
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !plan.HasConflict || plan.Items[0].ErrorCode != "destination_inside_source" {
+					t.Fatalf("plan = %+v", plan)
+				}
+			})
+		}
+	}
+}
+
+func TestPlanCopyRejectsOverlappingRootInsideSource(t *testing.T) {
+	root := t.TempDir()
+	destinationRoot := filepath.Join(root, "folder", "mounted-root")
+	if err := os.MkdirAll(destinationRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	planner := Planner{Resolver: roots.NewResolver([]roots.Root{
+		{ID: "source", Name: "Source", Path: root},
+		{ID: "destination", Name: "Destination", Path: destinationRoot},
+	})}
+
+	plan, err := planner.Plan(context.Background(), Request{
+		Type: OpCopy, SourceRoot: "source", Sources: []string{"folder"},
+		DestRoot: "destination", DestPath: ".",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !plan.HasConflict || plan.Items[0].ErrorCode != "destination_inside_source" {
 		t.Fatalf("plan = %+v", plan)
 	}
 }

@@ -26,6 +26,7 @@ export type UIStrings = {
   initializationFailed: string;
   workspace: string;
   workspaceNavigation: string;
+  fileActions: string;
   files: string;
   activeJobs(count: number): string;
   copyToPane(pane: string): string;
@@ -153,6 +154,7 @@ export const strings: Record<Language, UIStrings> = {
     initializationFailed: "Initialization failed",
     workspace: "Dual-pane file workspace",
     workspaceNavigation: "Workspace navigation",
+    fileActions: "File actions",
     files: "Files",
     activeJobs: (count) => `${count} active ${count === 1 ? "job" : "jobs"}`,
     copyToPane: (pane) => `Copy to ${pane.toLowerCase()}`,
@@ -279,6 +281,7 @@ export const strings: Record<Language, UIStrings> = {
     initializationFailed: "初始化失败",
     workspace: "双栏文件工作台",
     workspaceNavigation: "工作区导航",
+    fileActions: "文件操作",
     files: "文件",
     activeJobs: (count) => `${count} 个任务运行中`,
     copyToPane: (pane) => `复制到${pane}`,

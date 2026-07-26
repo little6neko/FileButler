@@ -3,12 +3,14 @@ import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import { toast } from "sonner";
 import { api } from "../api/client";
 import type { Entry, OpsRequest, RenameOptions, Root } from "../api/types";
+import type { DragOperation, PaneKey } from "../fileDrag";
 import { strings } from "../i18n";
 import type { LanguageMode, UIStrings } from "../i18n";
 import { mediaKindForPath } from "../media";
 import type { MediaKind } from "../media";
 import { ActionToolbar } from "./ActionToolbar";
 import { AppShell } from "./AppShell";
+import { createFileActions } from "./fileActions";
 import { FilePane } from "./FilePane";
 import { JobsSheet } from "./JobsSheet";
 import { LanguageSelect } from "./LanguageSelect";
@@ -17,8 +19,6 @@ import { MkdirDialog } from "./MkdirDialog";
 import { OperationPreview } from "./OperationPreview";
 import { RenameDialog } from "./RenameDialog";
 import { SingleRenameDialog } from "./SingleRenameDialog";
-
-type PaneKey = "left" | "right";
 
 type PaneState = {
   rootId: string;
@@ -36,6 +36,11 @@ type MediaPreviewState = {
   kind: MediaKind;
 };
 
+type PreviewState = {
+  request: OpsRequest;
+  operationChoices?: readonly DragOperation[];
+};
+
 export function DualPane({
   labels = strings.en,
   languageMode = "auto",
@@ -47,7 +52,7 @@ export function DualPane({
 }) {
   const [roots, setRoots] = useState<Root[]>([]);
   const [activePane, setActivePane] = useState<PaneKey>("left");
-  const [previewRequest, setPreviewRequest] = useState<OpsRequest | null>(null);
+  const [previewState, setPreviewState] = useState<PreviewState | null>(null);
   const [mediaPreview, setMediaPreview] = useState<MediaPreviewState | null>(null);
   const [mkdirOpen, setMkdirOpen] = useState(false);
   const [singleRenameOpen, setSingleRenameOpen] = useState(false);
@@ -197,13 +202,9 @@ export function DualPane({
       >
         <div className="grid h-full min-h-0 grid-rows-[42px_minmax(0,1fr)] overflow-hidden">
           <ActionToolbar
-            activePane={activePane}
-            selectedCount={activeSelection().length}
+            actions={actionsFor(activePane)}
+            selectedCount={selectionFor(activePane).length}
             labels={labels}
-            onOperation={openOperation}
-            onMkdir={openMkdir}
-            onRename={() => setSingleRenameOpen(true)}
-            onPowerRename={() => setPowerRenameOpen(true)}
           />
           <section
             className="workspace"
@@ -223,13 +224,14 @@ export function DualPane({
           </section>
         </div>
       </AppShell>
-      {previewRequest ? (
+      {previewState ? (
         <OperationPreview
-          request={previewRequest}
+          request={previewState.request}
+          operationChoices={previewState.operationChoices}
           labels={labels}
-          onClose={() => setPreviewRequest(null)}
+          onClose={() => setPreviewState(null)}
           onJobCreated={(id) => {
-            setPreviewRequest(null);
+            setPreviewState(null);
             handleJobCreated(id);
           }}
         />
@@ -290,19 +292,50 @@ export function DualPane({
   );
 
   function activeState() {
-    return activePane === "left" ? left : right;
-  }
-
-  function oppositeState() {
-    return activePane === "left" ? right : left;
+    return stateFor(activePane);
   }
 
   function activeSelection() {
-    const state = activeState();
+    return selectionFor(activePane);
+  }
+
+  function stateFor(which: PaneKey) {
+    return which === "left" ? left : right;
+  }
+
+  function oppositePane(which: PaneKey): PaneKey {
+    return which === "left" ? "right" : "left";
+  }
+
+  function selectionFor(which: PaneKey) {
+    const state = stateFor(which);
     const ordered = state.visibleOrder.filter((path) => state.selected.has(path));
     const visible = new Set(state.visibleOrder);
-    const remaining = Array.from(state.selected).filter((path) => !visible.has(path));
-    return [...ordered, ...remaining];
+    return [...ordered, ...Array.from(state.selected).filter((path) => !visible.has(path))];
+  }
+
+  function actionsFor(which: PaneKey) {
+    const destinationPane = oppositePane(which);
+    return createFileActions({
+      destination: destinationPane === "left" ? labels.leftPane : labels.rightPane,
+      selectedCount: selectionFor(which).length,
+      labels,
+      commands: {
+        onOperation: (type) => openOperationFrom(which, type),
+        onMkdir: () => {
+          setActivePane(which);
+          setMkdirOpen(true);
+        },
+        onRename: () => {
+          setActivePane(which);
+          setSingleRenameOpen(true);
+        },
+        onPowerRename: () => {
+          setActivePane(which);
+          setPowerRenameOpen(true);
+        },
+      },
+    });
   }
 
   function basename(path: string) {
@@ -320,31 +353,32 @@ export function DualPane({
     });
   }
 
-  function openOperation(type: OpsRequest["type"]) {
-    const source = activeState();
-    const dest = oppositeState();
-    setPreviewRequest({
-      type,
-      sourceRoot: source.rootId,
-      sources: activeSelection(),
-      destRoot: type === "delete" ? undefined : dest.rootId,
-      destPath: type === "delete" ? undefined : dest.path,
+  function openOperationFrom(which: PaneKey, type: OpsRequest["type"]) {
+    const source = stateFor(which);
+    const dest = stateFor(oppositePane(which));
+    setActivePane(which);
+    setPreviewState({
+      request: {
+        type,
+        sourceRoot: source.rootId,
+        sources: selectionFor(which),
+        destRoot: type === "delete" ? undefined : dest.rootId,
+        destPath: type === "delete" ? undefined : dest.path,
+      },
     });
-  }
-
-  function openMkdir() {
-    setMkdirOpen(true);
   }
 
   function createMkdirPreview(name: string) {
     const source = activeState();
-    setPreviewRequest({
-      type: "mkdir",
-      sourceRoot: source.rootId,
-      sources: [],
-      destRoot: source.rootId,
-      destPath: source.path,
-      newName: name,
+    setPreviewState({
+      request: {
+        type: "mkdir",
+        sourceRoot: source.rootId,
+        sources: [],
+        destRoot: source.rootId,
+        destPath: source.path,
+        newName: name,
+      },
     });
   }
 

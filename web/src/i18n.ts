@@ -126,6 +126,13 @@ export type UIStrings = {
   conflictsFound(count: number): string;
   jobCreated: string;
   operationType(type: string): string;
+  dragSummary(name: string, count: number): string;
+  dragDestination(type: string, target: string): string;
+  dragStarted(name: string, count: number): string;
+  dragOver(target: string): string;
+  dragDropped(target: string): string;
+  dragCanceled: string;
+  invalidDrop(reason: string): string;
   jobStatus(status: string): string;
 };
 
@@ -256,6 +263,15 @@ export const strings: Record<Language, UIStrings> = {
     conflictsFound: (count) => `${count} ${count === 1 ? "conflict" : "conflicts"} must be resolved before continuing.`,
     jobCreated: "Background job created",
     operationType: (type) => type,
+    dragSummary: (name, count) => count === 1 ? name : `${name} and ${count - 1} more`,
+    dragDestination: (type, target) => `${strings.en.operationType(type)} to ${target}`,
+    dragStarted: (name, count) => count === 1 ? `Started dragging ${name}` : `Started dragging ${name} and ${count - 1} more`,
+    dragOver: (target) => `Over ${target}`,
+    dragDropped: (target) => `Dropped on ${target}`,
+    dragCanceled: "Drag canceled",
+    invalidDrop: (reason) => reason === "same-directory"
+      ? "The selected items are already in this directory"
+      : "A folder cannot be placed inside itself or one of its subfolders",
     jobStatus: (status) => status,
   },
   "zh-CN": {
@@ -392,6 +408,15 @@ export const strings: Record<Language, UIStrings> = {
         delete: "删除",
         mkdir: "新建文件夹",
       })[type] ?? type,
+    dragSummary: (name, count) => count === 1 ? name : `${name} 等 ${count} 项`,
+    dragDestination: (type, target) => `${strings["zh-CN"].operationType(type)}到${target}`,
+    dragStarted: (name, count) => count === 1 ? `开始拖动 ${name}` : `开始拖动 ${name} 等 ${count} 项`,
+    dragOver: (target) => `位于${target}上方`,
+    dragDropped: (target) => `已放入${target}`,
+    dragCanceled: "已取消拖动",
+    invalidDrop: (reason) => reason === "same-directory"
+      ? "所选项目已在当前文件夹中"
+      : "不能将文件夹放入自身或其子文件夹",
     jobStatus: (status) =>
       ({
         pending: "等待中",

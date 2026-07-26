@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { api } from "../api/client";
 import { DualPane } from "./DualPane";
 
-vi.mock("sonner", () => ({ toast: { success: vi.fn() } }));
+vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 vi.mock("../api/client", () => ({
   api: {
@@ -25,6 +25,7 @@ vi.mock("../api/client", () => ({
 
 beforeEach(() => {
   vi.mocked(toast.success).mockClear();
+  vi.mocked(toast.error).mockClear();
   vi.mocked(api.roots).mockReset();
   vi.mocked(api.browse).mockReset();
   vi.mocked(api.mediaUrl).mockClear();

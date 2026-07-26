@@ -1,9 +1,31 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  pointerWithin,
+  useSensor,
+  useSensors,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragOverEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
 import { toast } from "sonner";
 import { api } from "../api/client";
 import type { Entry, OpsRequest, RenameOptions, Root } from "../api/types";
-import type { DragOperation, PaneKey } from "../fileDrag";
+import {
+  buildDragRequest,
+  buildFileDragSource,
+  buildFileDropFeedback,
+  isFileDragData,
+  isFileDropData,
+  type DragOperation,
+  type FileDragSource,
+  type FileDropFeedback,
+  type PaneKey,
+} from "../fileDrag";
 import { strings } from "../i18n";
 import type { LanguageMode, UIStrings } from "../i18n";
 import { mediaKindForPath } from "../media";
@@ -11,6 +33,7 @@ import type { MediaKind } from "../media";
 import { ActionToolbar } from "./ActionToolbar";
 import { AppShell } from "./AppShell";
 import { createFileActions } from "./fileActions";
+import { createFileDragAnnouncements, FileDragOverlay } from "./FileDragOverlay";
 import { FilePane } from "./FilePane";
 import { JobsSheet } from "./JobsSheet";
 import { LanguageSelect } from "./LanguageSelect";
@@ -63,6 +86,10 @@ export function DualPane({
   const [leftPanePercent, setLeftPanePercent] = useState(50);
   const [left, setLeft] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), visibleOrder: [], loading: false, error: null });
   const [right, setRight] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), visibleOrder: [], loading: false, error: null });
+  const [dragSource, setDragSource] = useState<FileDragSource | null>(null);
+  const [dropFeedback, setDropFeedback] = useState<FileDropFeedback | null>(null);
+  const dragSourceRef = useRef<FileDragSource | null>(null);
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
 
   const updatePane = useCallback((which: PaneKey, update: (pane: PaneState) => PaneState) => {
     if (which === "left") setLeft(update);
@@ -153,6 +180,7 @@ export function DualPane({
       paneKey: which,
       actions: actionsFor(which),
       onContextTarget: (path: string | null) => selectContextTarget(which, path),
+      dropFeedback,
       roots,
       selectedRootId: pane.rootId,
       currentPath: pane.path,
@@ -160,10 +188,14 @@ export function DualPane({
       selectedPaths: pane.selected,
       loading: pane.loading,
       error: pane.error,
-      onRootChange: (rootId: string) =>
-        updatePane(which, (current) => ({ ...current, rootId, path: ".", selected: new Set(), visibleOrder: [] })),
-      onPathChange: (path: string) =>
-        updatePane(which, (current) => ({ ...current, path, selected: new Set(), visibleOrder: [] })),
+      onRootChange: (rootId: string) => {
+        clearFileDrag();
+        updatePane(which, (current) => ({ ...current, rootId, path: ".", selected: new Set(), visibleOrder: [] }));
+      },
+      onPathChange: (path: string) => {
+        clearFileDrag();
+        updatePane(which, (current) => ({ ...current, path, selected: new Set(), visibleOrder: [] }));
+      },
       onToggleSelection: (path: string) =>
         updatePane(which, (current) => {
           const selected = new Set(current.selected);
@@ -206,38 +238,98 @@ export function DualPane({
     });
   }
 
+  function handleFileDragStart(event: DragStartEvent) {
+    const data = event.active.data.current;
+    if (!isFileDragData(data)) return;
+    const source = buildFileDragSource(data);
+    dragSourceRef.current = source;
+    setDragSource(source);
+    setDropFeedback(null);
+    setActivePane(source.pane);
+
+    if (!data.selectedPaths.includes(data.entry.relativePath)) {
+      updatePane(source.pane, (pane) => ({
+        ...pane,
+        selected: new Set(source.entries.map((entry) => entry.relativePath)),
+      }));
+    }
+  }
+
+  function handleFileDragOver(event: DragOverEvent) {
+    const source = dragSourceRef.current;
+    const target = event.over?.data.current;
+    setDropFeedback(source && isFileDropData(target) ? buildFileDropFeedback(source, target) : null);
+  }
+
+  function clearFileDrag() {
+    dragSourceRef.current = null;
+    setDragSource(null);
+    setDropFeedback(null);
+  }
+
+  function handleFileDragEnd(event: DragEndEvent) {
+    const source = dragSourceRef.current;
+    const target = event.over?.data.current;
+    clearFileDrag();
+    if (!source || !isFileDropData(target)) return;
+
+    const feedback = buildFileDropFeedback(source, target);
+    if (!feedback.valid) {
+      toast.error(labels.invalidDrop(feedback.reason ?? "inside-source"));
+      return;
+    }
+
+    setPreviewState({
+      request: buildDragRequest(source, target),
+      operationChoices: ["move", "copy"],
+    });
+  }
+
   return (
     <>
-      <AppShell
-        labels={labels}
-        activeJobCount={activeJobCount}
-        onJobsOpen={() => setJobsOpen(true)}
-        languageControl={<LanguageSelect value={languageMode} onChange={onLanguageModeChange} labels={labels} />}
+      <DndContext
+        sensors={sensors}
+        collisionDetection={fileCollisionDetection}
+        onDragStart={handleFileDragStart}
+        onDragOver={handleFileDragOver}
+        onDragEnd={handleFileDragEnd}
+        onDragCancel={clearFileDrag}
+        accessibility={{ announcements: createFileDragAnnouncements(labels) }}
       >
-        <div className="grid h-full min-h-0 grid-rows-[42px_minmax(0,1fr)] overflow-hidden">
-          <ActionToolbar
-            actions={actionsFor(activePane)}
-            selectedCount={selectionFor(activePane).length}
-            labels={labels}
-          />
-          <section
-            className="workspace"
-            data-testid="workspace"
-            data-active-pane={activePane}
-            style={workspaceStyle(leftPanePercent)}
-          >
-            <FilePane title={labels.leftPane} labels={labels} {...paneProps("left", left)} />
-            <div
-              className="pane-divider"
-              role="separator"
-              aria-label={labels.resizePanes}
-              aria-orientation="vertical"
-              onMouseDown={startPaneResize}
+        <AppShell
+          labels={labels}
+          activeJobCount={activeJobCount}
+          onJobsOpen={() => setJobsOpen(true)}
+          languageControl={<LanguageSelect value={languageMode} onChange={onLanguageModeChange} labels={labels} />}
+        >
+          <div className="grid h-full min-h-0 grid-rows-[42px_minmax(0,1fr)] overflow-hidden">
+            <ActionToolbar
+              actions={actionsFor(activePane)}
+              selectedCount={selectionFor(activePane).length}
+              labels={labels}
             />
-            <FilePane title={labels.rightPane} labels={labels} {...paneProps("right", right)} />
-          </section>
-        </div>
-      </AppShell>
+            <section
+              className="workspace"
+              data-testid="workspace"
+              data-active-pane={activePane}
+              style={workspaceStyle(leftPanePercent)}
+            >
+              <FilePane title={labels.leftPane} labels={labels} {...paneProps("left", left)} />
+              <div
+                className="pane-divider"
+                role="separator"
+                aria-label={labels.resizePanes}
+                aria-orientation="vertical"
+                onMouseDown={startPaneResize}
+              />
+              <FilePane title={labels.rightPane} labels={labels} {...paneProps("right", right)} />
+            </section>
+          </div>
+        </AppShell>
+        <DragOverlay dropAnimation={null}>
+          {dragSource ? <FileDragOverlay source={dragSource} feedback={dropFeedback} labels={labels} /> : null}
+        </DragOverlay>
+      </DndContext>
       {previewState ? (
         <OperationPreview
           request={previewState.request}
@@ -413,6 +505,18 @@ export function DualPane({
     document.addEventListener("mouseup", onMouseUp);
   }
 }
+
+const fileCollisionDetection: CollisionDetection = (args) => {
+  const collisions = pointerWithin(args);
+  const directory = collisions.find((collision) =>
+    collision.data?.droppableContainer.data.current?.kind === "directory",
+  );
+  if (directory) return [directory];
+  const pane = collisions.find((collision) =>
+    collision.data?.droppableContainer.data.current?.kind === "current-directory",
+  );
+  return pane ? [pane] : [];
+};
 
 function sameStringArray(left: string[], right: string[]) {
   return left.length === right.length && left.every((value, index) => value === right[index]);

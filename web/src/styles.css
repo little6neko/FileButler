@@ -491,6 +491,41 @@ body {
   box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--destructive) 70%, transparent);
 }
 
+.file-drag-overlay {
+  max-width: 260px;
+  min-height: 38px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid color-mix(in oklab, var(--primary) 55%, var(--border));
+  border-radius: 6px;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 10px 24px color-mix(in oklab, var(--foreground) 18%, transparent);
+  cursor: grabbing;
+}
+
+.file-drag-overlay strong,
+.file-drag-overlay small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.file-drag-overlay small {
+  margin-top: 2px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+.file-drag-overlay[data-drop-state="invalid"] {
+  border-color: var(--destructive);
+  cursor: not-allowed;
+}
+
 .file-header-cell {
   display: flex;
   align-items: center;

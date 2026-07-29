@@ -31,6 +31,71 @@ it("supports selecting file entries", async () => {
   expect(onToggleSelection).toHaveBeenCalledWith("file.txt");
 });
 
+it("treats a row gesture below the marquee threshold as a selection click", () => {
+  const onSelectEntry = vi.fn();
+  const { container } = renderPane({
+    entries: [entry("a.txt"), entry("b.txt")],
+    onSelectEntry,
+  });
+  const fileList = container.querySelector(".file-list") as HTMLDivElement;
+  const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
+  const typeCell = within(rows[0]).getAllByRole("cell")[2];
+  mockRect(fileList, { left: 0, top: 0, right: 400, bottom: 160, width: 400, height: 160 });
+  rows.forEach((row, index) => {
+    mockRect(row, { left: 0, top: 32 + index * 32, right: 376, bottom: 64 + index * 32, width: 376, height: 32 });
+  });
+
+  fireEvent.mouseDown(typeCell, { button: 0, clientX: 250, clientY: 40 });
+  fireEvent.mouseMove(document, { clientX: 252, clientY: 41 });
+  fireEvent.mouseUp(document, { clientX: 252, clientY: 41, ctrlKey: true });
+
+  expect(onSelectEntry).toHaveBeenCalledWith("a.txt", { ctrlKey: true, shiftKey: false });
+  expect(container.querySelector(".drag-selection-box")).not.toBeInTheDocument();
+});
+
+it("turns a moved row gesture into marquee selection without emitting a row click", () => {
+  const onSelectEntry = vi.fn();
+  const onSelectPaths = vi.fn();
+  const { container } = renderPane({ entries: [entry("a.txt"), entry("b.txt")], onSelectEntry, onSelectPaths });
+  const fileList = container.querySelector(".file-list") as HTMLDivElement;
+  const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
+  const sizeCell = within(rows[0]).getAllByRole("cell")[3];
+  mockRect(fileList, { left: 0, top: 0, right: 400, bottom: 160, width: 400, height: 160 });
+  rows.forEach((row, index) => {
+    mockRect(row, { left: 0, top: 32 + index * 32, right: 376, bottom: 64 + index * 32, width: 376, height: 32 });
+  });
+
+  fireEvent.mouseDown(sizeCell, { button: 0, clientX: 280, clientY: 40 });
+  fireEvent.mouseMove(document, { clientX: 288, clientY: 94 });
+  fireEvent.mouseUp(document, { clientX: 288, clientY: 94 });
+
+  expect(onSelectPaths).toHaveBeenCalledWith(["a.txt", "b.txt"]);
+  expect(onSelectEntry).not.toHaveBeenCalled();
+});
+
+it("selects from a short icon-and-name click with its modifier state", () => {
+  const onSelectEntry = vi.fn();
+  renderPane({ onSelectEntry });
+  const handle = screen.getByText("file.txt").closest("[data-file-drag-handle]");
+  if (!handle) throw new Error("file drag handle was not rendered");
+
+  fireEvent.click(handle, { ctrlKey: true, shiftKey: true });
+
+  expect(onSelectEntry).toHaveBeenCalledWith("file.txt", { ctrlKey: true, shiftKey: true });
+});
+
+it("exposes row selection state without changing checkbox behavior", async () => {
+  const onSelectEntry = vi.fn();
+  const onToggleSelection = vi.fn();
+  renderPane({ selectedPaths: new Set(["file.txt"]), onSelectEntry, onToggleSelection });
+  const row = screen.getByText("file.txt").closest("tr");
+
+  expect(row).toHaveAttribute("aria-selected", "true");
+  await userEvent.click(screen.getByLabelText("Select file.txt"));
+  expect(onToggleSelection).toHaveBeenCalledWith("file.txt");
+  expect(onSelectEntry).not.toHaveBeenCalled();
+});
+
 it("selects all visible entries from the header checkbox", async () => {
   const onSelectAll = vi.fn();
   renderPane({

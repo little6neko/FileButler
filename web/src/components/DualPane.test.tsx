@@ -447,10 +447,75 @@ it("clears selection on whitespace but keeps every action visible", async () => 
   expect(items.filter((item) => item.dataset.actionId !== "mkdir").every((item) => item.getAttribute("aria-disabled") === "true")).toBe(true);
 });
 
+it("uses plain and Ctrl row clicks for single and toggle selection", async () => {
+  mockFourEntries();
+  render(<DualPane />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+
+  fireEvent.click(await within(leftPane).findByText("a.txt"));
+  expect(within(leftPane).getByLabelText("Select a.txt")).toBeChecked();
+  expect(within(leftPane).getByLabelText("Select b.txt")).not.toBeChecked();
+
+  fireEvent.click(within(leftPane).getByText("c.txt"), { ctrlKey: true });
+  expect(within(leftPane).getByLabelText("Select a.txt")).toBeChecked();
+  expect(within(leftPane).getByLabelText("Select c.txt")).toBeChecked();
+
+  fireEvent.click(within(leftPane).getByText("a.txt"), { ctrlKey: true });
+  expect(within(leftPane).getByLabelText("Select a.txt")).not.toBeChecked();
+  expect(within(leftPane).getByLabelText("Select c.txt")).toBeChecked();
+});
+
+it("uses the first Shift click as an anchor and keeps the range until a plain click", async () => {
+  mockFourEntries();
+  render(<DualPane />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+
+  fireEvent.click(await within(leftPane).findByText("b.txt"), { shiftKey: true });
+  expect(within(leftPane).getByLabelText("Select b.txt")).toBeChecked();
+  expect(within(leftPane).getByLabelText("Select a.txt")).not.toBeChecked();
+
+  fireEvent.click(within(leftPane).getByText("d.txt"), { shiftKey: true });
+  expect(within(leftPane).getByLabelText("Select a.txt")).not.toBeChecked();
+  expect(within(leftPane).getByLabelText("Select b.txt")).toBeChecked();
+  expect(within(leftPane).getByLabelText("Select c.txt")).toBeChecked();
+  expect(within(leftPane).getByLabelText("Select d.txt")).toBeChecked();
+
+  fireEvent.click(within(leftPane).getByText("a.txt"));
+  expect(within(leftPane).getByLabelText("Select a.txt")).toBeChecked();
+  expect(within(leftPane).getByLabelText("Select b.txt")).not.toBeChecked();
+  expect(within(leftPane).getByLabelText("Select c.txt")).not.toBeChecked();
+  expect(within(leftPane).getByLabelText("Select d.txt")).not.toBeChecked();
+});
+
+it("gives Shift range selection precedence over Ctrl toggle", async () => {
+  mockFourEntries();
+  render(<DualPane />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+
+  fireEvent.click(await within(leftPane).findByText("d.txt"));
+  fireEvent.click(within(leftPane).getByText("a.txt"), { ctrlKey: true });
+  fireEvent.click(within(leftPane).getByText("c.txt"), { ctrlKey: true, shiftKey: true });
+
+  expect(within(leftPane).getByLabelText("Select a.txt")).toBeChecked();
+  expect(within(leftPane).getByLabelText("Select b.txt")).toBeChecked();
+  expect(within(leftPane).getByLabelText("Select c.txt")).toBeChecked();
+  expect(within(leftPane).getByLabelText("Select d.txt")).not.toBeChecked();
+});
+
 function mockTwoEntries() {
   vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
   vi.mocked(api.browse).mockResolvedValue([
     { name: "a.txt", relativePath: "a.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
     { name: "b.txt", relativePath: "b.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+  ]);
+}
+
+function mockFourEntries() {
+  vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
+  vi.mocked(api.browse).mockResolvedValue([
+    { name: "a.txt", relativePath: "a.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+    { name: "b.txt", relativePath: "b.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+    { name: "c.txt", relativePath: "c.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+    { name: "d.txt", relativePath: "d.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
   ]);
 }

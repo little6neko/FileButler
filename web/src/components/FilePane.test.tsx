@@ -409,6 +409,92 @@ it("replaces selection with rows intersecting a drag marquee", () => {
   expect(onSelectPaths).toHaveBeenCalledWith(["a.txt", "b.txt"]);
 });
 
+it("updates marquee selection while dragging without emitting duplicate path lists", () => {
+  const onSelectPaths = vi.fn();
+  const { container } = renderPane({
+    entries: [entry("a.txt"), entry("b.txt"), entry("c.txt")],
+    onSelectPaths,
+  });
+  const fileList = container.querySelector(".file-list") as HTMLDivElement;
+  const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
+  mockRect(fileList, { left: 0, top: 0, right: 400, bottom: 160, width: 400, height: 160 });
+  rows.forEach((row, index) => {
+    mockRect(row, { left: 0, top: 32 + index * 32, right: 376, bottom: 64 + index * 32, width: 376, height: 32 });
+  });
+
+  const typeCell = within(rows[0]).getAllByRole("cell")[2];
+  fireEvent.mouseDown(typeCell, { button: 0, clientX: 250, clientY: 40 });
+  fireEvent.mouseMove(document, { clientX: 260, clientY: 94 });
+
+  expect(onSelectPaths).toHaveBeenLastCalledWith(["a.txt", "b.txt"]);
+  const callCount = onSelectPaths.mock.calls.length;
+  fireEvent.mouseMove(document, { clientX: 260, clientY: 94 });
+  expect(onSelectPaths).toHaveBeenCalledTimes(callCount);
+
+  fireEvent.mouseUp(document, { clientX: 260, clientY: 94 });
+});
+
+it("auto-scrolls a bottom-edge marquee to select rows below the initial viewport", () => {
+  const frames = mockAnimationFrames();
+  try {
+    const onSelectPaths = vi.fn();
+    const { container } = renderPane({
+      entries: [entry("a.txt"), entry("b.txt"), entry("c.txt"), entry("d.txt"), entry("e.txt")],
+      onSelectPaths,
+    });
+    const fileList = container.querySelector(".file-list") as HTMLDivElement;
+    const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
+    mockScrollableList(fileList, { top: 0, height: 100, scrollHeight: 220, scrollTop: 0 });
+    rows.forEach((row, index) => mockScrollingRow(row, fileList, 30 + index * 28, 28));
+
+    const typeCell = within(rows[0]).getAllByRole("cell")[2];
+    fireEvent.mouseDown(typeCell, { button: 0, clientX: 250, clientY: 40 });
+    fireEvent.mouseMove(document, { clientX: 260, clientY: 98 });
+
+    expect(frames.pending()).toBe(1);
+    frames.runNext();
+    frames.runNext();
+
+    expect(fileList.scrollTop).toBeGreaterThan(0);
+    expect(onSelectPaths).toHaveBeenLastCalledWith(expect.arrayContaining(["d.txt"]));
+
+    fireEvent.mouseUp(document, { clientX: 260, clientY: 98 });
+    expect(frames.pending()).toBe(0);
+    expect(container.querySelector(".drag-selection-box")).not.toBeInTheDocument();
+  } finally {
+    frames.restore();
+  }
+});
+
+it("auto-scrolls upward and cancels an active marquee when the window loses focus", () => {
+  const frames = mockAnimationFrames();
+  try {
+    const onSelectPaths = vi.fn();
+    const { container } = renderPane({
+      entries: [entry("a.txt"), entry("b.txt"), entry("c.txt"), entry("d.txt"), entry("e.txt")],
+      onSelectPaths,
+    });
+    const fileList = container.querySelector(".file-list") as HTMLDivElement;
+    const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
+    mockScrollableList(fileList, { top: 0, height: 100, scrollHeight: 220, scrollTop: 60 });
+    rows.forEach((row, index) => mockScrollingRow(row, fileList, 30 + index * 28, 28));
+
+    const sizeCell = within(rows[4]).getAllByRole("cell")[3];
+    fireEvent.mouseDown(sizeCell, { button: 0, clientX: 280, clientY: 88 });
+    fireEvent.mouseMove(document, { clientX: 270, clientY: 2 });
+    expect(frames.pending()).toBe(1);
+
+    frames.runNext();
+    expect(fileList.scrollTop).toBeLessThan(60);
+
+    fireEvent.blur(window);
+    expect(frames.pending()).toBe(0);
+    expect(container.querySelector(".drag-selection-box")).not.toBeInTheDocument();
+  } finally {
+    frames.restore();
+  }
+});
+
 it("excludes a row that only touches the drag marquee edge", () => {
   const onSelectPaths = vi.fn();
   const { container } = renderPane({
@@ -660,6 +746,57 @@ function visibleEntryNames() {
 function mockRect(element: Element, rect: Omit<DOMRect, "toJSON" | "x" | "y"> & Partial<Pick<DOMRect, "x" | "y">>) {
   const browserRect = new DOMRect(rect.x ?? rect.left, rect.y ?? rect.top, rect.width, rect.height);
   element.getBoundingClientRect = vi.fn(() => browserRect);
+}
+
+function mockScrollableList(
+  element: HTMLDivElement,
+  options: { top: number; height: number; scrollHeight: number; scrollTop: number },
+) {
+  mockRect(element, {
+    left: 0,
+    top: options.top,
+    right: 400,
+    bottom: options.top + options.height,
+    width: 400,
+    height: options.height,
+  });
+  Object.defineProperty(element, "clientHeight", { configurable: true, value: options.height });
+  Object.defineProperty(element, "scrollHeight", { configurable: true, value: options.scrollHeight });
+  element.scrollTop = options.scrollTop;
+}
+
+function mockScrollingRow(element: HTMLElement, list: HTMLDivElement, contentTop: number, height: number) {
+  element.getBoundingClientRect = vi.fn(() => new DOMRect(0, contentTop - list.scrollTop, 376, height));
+}
+
+function mockAnimationFrames() {
+  const originalRequest = window.requestAnimationFrame;
+  const originalCancel = window.cancelAnimationFrame;
+  const callbacks = new Map<number, FrameRequestCallback>();
+  let nextID = 1;
+  const request = vi.fn((callback: FrameRequestCallback) => {
+    const id = nextID;
+    nextID += 1;
+    callbacks.set(id, callback);
+    return id;
+  });
+  const cancel = vi.fn((id: number) => callbacks.delete(id));
+  window.requestAnimationFrame = request;
+  window.cancelAnimationFrame = cancel;
+
+  return {
+    pending: () => callbacks.size,
+    runNext() {
+      const next = callbacks.entries().next().value as [number, FrameRequestCallback] | undefined;
+      if (!next) throw new Error("expected a pending animation frame");
+      callbacks.delete(next[0]);
+      act(() => next[1](performance.now()));
+    },
+    restore() {
+      window.requestAnimationFrame = originalRequest;
+      window.cancelAnimationFrame = originalCancel;
+    },
+  };
 }
 
 function mockBreadcrumbMeasurements(availableWidth: number) {

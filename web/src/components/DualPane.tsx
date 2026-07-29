@@ -26,6 +26,7 @@ import {
   type FileDropFeedback,
   type PaneKey,
 } from "../fileDrag";
+import { applyFileSelection } from "../fileSelection";
 import { strings } from "../i18n";
 import type { LanguageMode, UIStrings } from "../i18n";
 import { mediaKindForPath } from "../media";
@@ -49,6 +50,7 @@ type PaneState = {
   path: string;
   entries: Entry[];
   selected: Set<string>;
+  selectionAnchor: string | null;
   visibleOrder: string[];
   loading: boolean;
   error: string | null;
@@ -85,8 +87,8 @@ export function DualPane({
   const [jobsOpen, setJobsOpen] = useState(false);
   const [activeJobCount, setActiveJobCount] = useState(0);
   const [leftPanePercent, setLeftPanePercent] = useState(50);
-  const [left, setLeft] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), visibleOrder: [], loading: false, error: null });
-  const [right, setRight] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), visibleOrder: [], loading: false, error: null });
+  const [left, setLeft] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), selectionAnchor: null, visibleOrder: [], loading: false, error: null });
+  const [right, setRight] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), selectionAnchor: null, visibleOrder: [], loading: false, error: null });
   const [dragSource, setDragSource] = useState<FileDragSource | null>(null);
   const [dropFeedback, setDropFeedback] = useState<FileDropFeedback | null>(null);
   const dragSourceRef = useRef<FileDragSource | null>(null);
@@ -105,6 +107,7 @@ export function DualPane({
         ...pane,
         entries,
         selected: visibleSelection(pane.selected, entries),
+        selectionAnchor: visibleAnchor(pane.selectionAnchor, entries),
         visibleOrder: entries.map((entry) => entry.relativePath),
         loading: false,
         error: null,
@@ -114,6 +117,7 @@ export function DualPane({
         ...pane,
         entries: [],
         selected: new Set(),
+        selectionAnchor: null,
         visibleOrder: [],
         loading: false,
         error: err instanceof Error ? err.message : labels.browseFailed,
@@ -171,8 +175,8 @@ export function DualPane({
   }
 
   function clearSelections() {
-    setLeft((pane) => (pane.selected.size ? { ...pane, selected: new Set() } : pane));
-    setRight((pane) => (pane.selected.size ? { ...pane, selected: new Set() } : pane));
+    setLeft((pane) => (pane.selected.size || pane.selectionAnchor ? { ...pane, selected: new Set(), selectionAnchor: null } : pane));
+    setRight((pane) => (pane.selected.size || pane.selectionAnchor ? { ...pane, selected: new Set(), selectionAnchor: null } : pane));
   }
 
   function paneProps(which: PaneKey, pane: PaneState) {
@@ -190,28 +194,28 @@ export function DualPane({
       error: pane.error,
       onRootChange: (rootId: string) => {
         clearFileDrag();
-        updatePane(which, (current) => ({ ...current, rootId, path: ".", selected: new Set(), visibleOrder: [] }));
+        updatePane(which, (current) => ({ ...current, rootId, path: ".", selected: new Set(), selectionAnchor: null, visibleOrder: [] }));
       },
       onPathChange: (path: string) => {
         clearFileDrag();
-        updatePane(which, (current) => ({ ...current, path, selected: new Set(), visibleOrder: [] }));
+        updatePane(which, (current) => ({ ...current, path, selected: new Set(), selectionAnchor: null, visibleOrder: [] }));
       },
       onToggleSelection: (path: string) =>
         updatePane(which, (current) => {
-          const selected = new Set(current.selected);
-          if (selected.has(path)) selected.delete(path);
-          else selected.add(path);
-          return { ...current, selected };
+          const next = applyFileSelection(current.selected, current.selectionAnchor, current.visibleOrder, path, "toggle");
+          return { ...current, selected: next.selected, selectionAnchor: next.anchor };
         }),
       onSelectAll: (checked: boolean) =>
         updatePane(which, (current) => ({
           ...current,
           selected: checked ? new Set(current.entries.map((entry) => entry.relativePath)) : new Set(),
+          selectionAnchor: null,
         })),
       onSelectPaths: (paths: string[]) =>
         updatePane(which, (current) => ({
           ...current,
           selected: new Set(paths),
+          selectionAnchor: null,
         })),
       onVisibleOrderChange: (visibleOrder: string[]) =>
         updatePane(which, (current) => {
@@ -231,10 +235,14 @@ export function DualPane({
     setActivePane(which);
     updatePane(which, (current) => {
       if (path === null) {
-        return current.selected.size ? { ...current, selected: new Set() } : current;
+        return current.selected.size || current.selectionAnchor
+          ? { ...current, selected: new Set(), selectionAnchor: null }
+          : current;
       }
-      if (current.selected.has(path)) return current;
-      return { ...current, selected: new Set([path]) };
+      if (current.selected.has(path)) {
+        return current.selectionAnchor === path ? current : { ...current, selectionAnchor: path };
+      }
+      return { ...current, selected: new Set([path]), selectionAnchor: path };
     });
   }
 
@@ -251,6 +259,7 @@ export function DualPane({
       updatePane(source.pane, (pane) => ({
         ...pane,
         selected: new Set(source.entries.map((entry) => entry.relativePath)),
+        selectionAnchor: data.entry.relativePath,
       }));
     }
   }
@@ -528,6 +537,10 @@ function visibleSelection(selected: Set<string>, entries: Entry[]) {
   const visiblePaths = new Set(entries.map((entry) => entry.relativePath));
   const next = new Set(Array.from(selected).filter((path) => visiblePaths.has(path)));
   return next.size === selected.size ? selected : next;
+}
+
+function visibleAnchor(anchor: string | null, entries: Entry[]) {
+  return anchor !== null && entries.some((entry) => entry.relativePath === anchor) ? anchor : null;
 }
 
 const terminalJobStatuses = new Set(["completed", "completed_with_errors", "failed", "canceled"]);

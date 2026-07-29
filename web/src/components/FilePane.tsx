@@ -83,6 +83,7 @@ export function FilePane({
     hidden: [],
   }));
   const fileListRef = useRef<HTMLDivElement>(null);
+  const dragSelectionCleanupRef = useRef<((clearVisual?: boolean) => void) | null>(null);
   const pathSegmentsContentRef = useRef<HTMLDivElement>(null);
   const pathSegmentsMeasureRef = useRef<HTMLDivElement>(null);
   const columnsResizedRef = useRef(false);
@@ -178,6 +179,12 @@ export function FilePane({
   useEffect(() => {
     onVisibleOrderChange?.(visibleEntries.map((entry) => entry.relativePath));
   }, [onVisibleOrderChange, visibleEntries]);
+
+  useEffect(() => {
+    dragSelectionCleanupRef.current?.();
+  }, [currentPath, selectedRootId]);
+
+  useEffect(() => () => dragSelectionCleanupRef.current?.(false), []);
 
   useEffect(() => {
     function fitDefaultNameColumn() {
@@ -490,66 +497,126 @@ export function FilePane({
     if (!fileListElement) return;
     const listElement: HTMLDivElement = fileListElement;
 
+    dragSelectionCleanupRef.current?.();
+
     const startX = event.clientX;
     const startY = event.clientY;
+    const startPoint = listContentPoint(listElement, startX, startY);
     const targetElement = event.target instanceof Element ? event.target : null;
     const clickedPath = targetElement?.closest<HTMLTableRowElement>("tbody tr[data-entry-path]")?.dataset.entryPath;
     let lastX = startX;
     let lastY = startY;
     let moved = false;
+    let active = true;
+    let animationFrame: number | null = null;
+    let lastSelectedPaths: string[] | null = null;
 
-    function updateBox(clientX: number, clientY: number) {
-      const listRect = listElement.getBoundingClientRect();
-      const left = Math.min(startX, clientX);
-      const top = Math.min(startY, clientY);
-      const right = Math.max(startX, clientX);
-      const bottom = Math.max(startY, clientY);
+    function updateSelection() {
+      const currentPoint = listContentPoint(listElement, lastX, lastY);
+      const left = Math.min(startPoint.x, currentPoint.x);
+      const top = Math.min(startPoint.y, currentPoint.y);
+      const right = Math.max(startPoint.x, currentPoint.x);
+      const bottom = Math.max(startPoint.y, currentPoint.y);
       setDragBox({
-        left: left - listRect.left + listElement.scrollLeft,
-        top: top - listRect.top + listElement.scrollTop,
+        left,
+        top,
         width: right - left,
         height: bottom - top,
       });
+
+      const paths = pathsInsideSelection(listElement, startPoint.x, startPoint.y, currentPoint.x, currentPoint.y);
+      if (!samePathList(lastSelectedPaths, paths)) {
+        lastSelectedPaths = paths;
+        onSelectPaths?.(paths);
+      }
+    }
+
+    function cancelAutoScroll() {
+      if (animationFrame === null) return;
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = null;
+    }
+
+    function scheduleAutoScroll() {
+      const velocity = marqueeScrollVelocity(lastY, listElement.getBoundingClientRect());
+      const maxScrollTop = Math.max(0, listElement.scrollHeight - listElement.clientHeight);
+      const canScroll = velocity < 0 ? listElement.scrollTop > 0 : velocity > 0 && listElement.scrollTop < maxScrollTop;
+      if (!active || !moved || velocity === 0 || !canScroll) {
+        cancelAutoScroll();
+        return;
+      }
+      if (animationFrame === null) animationFrame = window.requestAnimationFrame(runAutoScroll);
+    }
+
+    function runAutoScroll() {
+      animationFrame = null;
+      if (!active || !moved) return;
+
+      const velocity = marqueeScrollVelocity(lastY, listElement.getBoundingClientRect());
+      const maxScrollTop = Math.max(0, listElement.scrollHeight - listElement.clientHeight);
+      const previousScrollTop = listElement.scrollTop;
+      const nextScrollTop = clamp(previousScrollTop + velocity, 0, maxScrollTop);
+      if (nextScrollTop === previousScrollTop) return;
+
+      listElement.scrollTop = nextScrollTop;
+      updateSelection();
+      scheduleAutoScroll();
     }
 
     function onMouseMove(moveEvent: MouseEvent) {
+      lastX = moveEvent.clientX;
+      lastY = moveEvent.clientY;
       const distance = Math.abs(moveEvent.clientX - startX) + Math.abs(moveEvent.clientY - startY);
       if (distance < 4) return;
       moved = true;
-      lastX = moveEvent.clientX;
-      lastY = moveEvent.clientY;
-      updateBox(moveEvent.clientX, moveEvent.clientY);
+      updateSelection();
+      scheduleAutoScroll();
     }
 
     function onMouseUp(upEvent: MouseEvent) {
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-      setDragBox(null);
-      if (!moved) {
+      const wasMoved = moved;
+      cleanup();
+      if (!wasMoved) {
         if (clickedPath) {
           onSelectEntry(clickedPath, { ctrlKey: upEvent.ctrlKey, shiftKey: upEvent.shiftKey });
         }
         return;
       }
-      onSelectPaths?.(pathsInsideSelection(startX, startY, lastX, lastY));
+    }
+
+    function cleanup(clearVisual = true) {
+      if (!active) return;
+      active = false;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      window.removeEventListener("blur", onWindowBlur);
+      cancelAutoScroll();
+      if (clearVisual) setDragBox(null);
+      if (dragSelectionCleanupRef.current === cleanup) dragSelectionCleanupRef.current = null;
+    }
+
+    function onWindowBlur() {
+      cleanup();
     }
 
     document.addEventListener("mousemove", onMouseMove);
     document.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("blur", onWindowBlur);
+    dragSelectionCleanupRef.current = cleanup;
   }
 
-  function pathsInsideSelection(startX: number, startY: number, endX: number, endY: number) {
+  function pathsInsideSelection(listElement: HTMLDivElement, startX: number, startY: number, endX: number, endY: number) {
     const selectionRect = normalizeRect(startX, startY, endX, endY);
-    const listRect = fileListRef.current?.getBoundingClientRect();
-    const rows = fileListRef.current?.querySelectorAll<HTMLTableRowElement>("tbody tr[data-entry-path]") ?? [];
+    const listRect = listElement.getBoundingClientRect();
+    const rows = listElement.querySelectorAll<HTMLTableRowElement>("tbody tr[data-entry-path]");
     return Array.from(rows)
       .filter((row) => {
         const rowRect = row.getBoundingClientRect();
         return rectsIntersect(selectionRect, {
-          left: listRect?.left ?? rowRect.left,
-          top: rowRect.top,
-          right: listRect?.right ?? rowRect.right,
-          bottom: rowRect.bottom,
+          left: listElement.scrollLeft,
+          top: rowRect.top - listRect.top + listElement.scrollTop,
+          right: listElement.scrollLeft + listRect.width,
+          bottom: rowRect.bottom - listRect.top + listElement.scrollTop,
         });
       })
       .map((row) => row.dataset.entryPath)
@@ -589,6 +656,8 @@ const defaultColumnWidths: Record<ColumnKey, number> = {
 };
 const defaultTableWidth = Object.values(defaultColumnWidths).reduce((sum, width) => sum + width, 0);
 const rightSelectionGutter = 24;
+const marqueeEdgeSize = 32;
+const marqueeMaxScrollSpeed = 18;
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
@@ -651,6 +720,35 @@ function normalizeRect(startX: number, startY: number, endX: number, endY: numbe
     right: Math.max(startX, endX),
     bottom: Math.max(startY, endY),
   };
+}
+
+function listContentPoint(list: HTMLDivElement, clientX: number, clientY: number) {
+  const rect = list.getBoundingClientRect();
+  return {
+    x: clientX - rect.left + list.scrollLeft,
+    y: clientY - rect.top + list.scrollTop,
+  };
+}
+
+function marqueeScrollVelocity(pointerY: number, listRect: DOMRect) {
+  const topDistance = listRect.top + marqueeEdgeSize - pointerY;
+  if (topDistance > 0) {
+    return -Math.ceil(marqueeMaxScrollSpeed * clamp(topDistance / marqueeEdgeSize, 0, 1));
+  }
+
+  const bottomDistance = pointerY - (listRect.bottom - marqueeEdgeSize);
+  if (bottomDistance > 0) {
+    return Math.ceil(marqueeMaxScrollSpeed * clamp(bottomDistance / marqueeEdgeSize, 0, 1));
+  }
+  return 0;
+}
+
+function samePathList(left: string[] | null, right: string[]) {
+  return left !== null && left.length === right.length && left.every((path, index) => path === right[index]);
+}
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function rectsIntersect(

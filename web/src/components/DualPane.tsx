@@ -26,7 +26,8 @@ import {
   type FileDropFeedback,
   type PaneKey,
 } from "../fileDrag";
-import { applyFileSelection } from "../fileSelection";
+import { applyFileSelection, fileSelectionMode } from "../fileSelection";
+import type { FileSelectionModifiers } from "../fileSelection";
 import { strings } from "../i18n";
 import type { LanguageMode, UIStrings } from "../i18n";
 import { mediaKindForPath } from "../media";
@@ -203,6 +204,12 @@ export function DualPane({
       onToggleSelection: (path: string) =>
         updatePane(which, (current) => {
           const next = applyFileSelection(current.selected, current.selectionAnchor, current.visibleOrder, path, "toggle");
+          return { ...current, selected: next.selected, selectionAnchor: next.anchor };
+        }),
+      onSelectEntry: (path: string, modifiers: FileSelectionModifiers) =>
+        updatePane(which, (current) => {
+          const mode = fileSelectionMode(modifiers);
+          const next = applyFileSelection(current.selected, current.selectionAnchor, current.visibleOrder, path, mode);
           return { ...current, selected: next.selected, selectionAnchor: next.anchor };
         }),
       onSelectAll: (checked: boolean) =>

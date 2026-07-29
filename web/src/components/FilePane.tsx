@@ -9,6 +9,7 @@ import { MenuItem, MenuPopup, MenuPortal, MenuPositioner, MenuRoot, MenuTrigger 
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Entry, Root } from "../api/types";
 import { paneDropId, type FileDropData, type FileDropFeedback, type PaneKey } from "../fileDrag";
+import type { FileSelectionModifiers } from "../fileSelection";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
 import { buildPathSegments, displayPath, fitPathSegments, normalizeInput } from "../pathSegments";
@@ -33,6 +34,7 @@ type FilePaneProps = {
   onRootChange(rootId: string): void;
   onPathChange(path: string): void;
   onToggleSelection(path: string): void;
+  onSelectEntry?(path: string, modifiers: FileSelectionModifiers): void;
   onSelectAll(checked: boolean): void;
   onSelectPaths?(paths: string[]): void;
   onVisibleOrderChange?(paths: string[]): void;
@@ -59,6 +61,7 @@ export function FilePane({
   onRootChange,
   onPathChange,
   onToggleSelection,
+  onSelectEntry = () => undefined,
   onSelectAll,
   onSelectPaths,
   onVisibleOrderChange,
@@ -388,6 +391,7 @@ export function FilePane({
                 dropFeedback={dropFeedback}
                 labels={labels}
                 onToggleSelection={onToggleSelection}
+                onSelect={onSelectEntry}
                 onOpen={(item) => {
                   if (item.type === "directory") onPathChange(item.relativePath);
                   else onOpenFile?.(item);
@@ -488,6 +492,8 @@ export function FilePane({
 
     const startX = event.clientX;
     const startY = event.clientY;
+    const targetElement = event.target instanceof Element ? event.target : null;
+    const clickedPath = targetElement?.closest<HTMLTableRowElement>("tbody tr[data-entry-path]")?.dataset.entryPath;
     let lastX = startX;
     let lastY = startY;
     let moved = false;
@@ -515,11 +521,16 @@ export function FilePane({
       updateBox(moveEvent.clientX, moveEvent.clientY);
     }
 
-    function onMouseUp() {
+    function onMouseUp(upEvent: MouseEvent) {
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
       setDragBox(null);
-      if (!moved) return;
+      if (!moved) {
+        if (clickedPath) {
+          onSelectEntry(clickedPath, { ctrlKey: upEvent.ctrlKey, shiftKey: upEvent.shiftKey });
+        }
+        return;
+      }
       onSelectPaths?.(pathsInsideSelection(startX, startY, lastX, lastY));
     }
 

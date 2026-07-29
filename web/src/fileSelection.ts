@@ -1,5 +1,10 @@
 export type FileSelectionMode = "single" | "toggle" | "range";
 
+export type FileSelectionModifiers = {
+  ctrlKey: boolean;
+  shiftKey: boolean;
+};
+
 export type FileSelectionResult = {
   selected: Set<string>;
   anchor: string | null;
@@ -31,6 +36,12 @@ export function applyFileSelection(
     selected: new Set(visibleOrder.slice(start, end + 1)),
     anchor: currentAnchor,
   };
+}
+
+export function fileSelectionMode(modifiers: FileSelectionModifiers): FileSelectionMode {
+  if (modifiers.shiftKey) return "range";
+  if (modifiers.ctrlKey) return "toggle";
+  return "single";
 }
 
 function singleSelection(target: string): FileSelectionResult {

@@ -1,7 +1,8 @@
-import { useCallback } from "react";
+import { useCallback, useLayoutEffect, useRef } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Entry } from "../api/types";
+import type { FileSelectionModifiers } from "../fileSelection";
 import { formatBytes } from "../format";
 import type { UIStrings } from "../i18n";
 import {
@@ -23,6 +24,7 @@ type Props = {
   dropFeedback: FileDropFeedback | null;
   labels: UIStrings;
   onToggleSelection(path: string): void;
+  onSelect(path: string, modifiers: FileSelectionModifiers): void;
   onOpen(entry: Entry): void;
 };
 
@@ -35,8 +37,10 @@ export function FileRow({
   dropFeedback,
   labels,
   onToggleSelection,
+  onSelect,
   onOpen,
 }: Props) {
+  const suppressSelectionClickRef = useRef(false);
   const {
     attributes: dragAttributes,
     isDragging,
@@ -68,6 +72,18 @@ export function FileRow({
   }, [setDragNodeRef, setDropNodeRef]);
   const feedback = dropFeedback?.target.id === directoryTarget.id ? dropFeedback : null;
 
+  useLayoutEffect(() => {
+    if (isDragging) {
+      suppressSelectionClickRef.current = true;
+      return;
+    }
+    if (!suppressSelectionClickRef.current) return;
+    const timeout = window.setTimeout(() => {
+      suppressSelectionClickRef.current = false;
+    }, 0);
+    return () => window.clearTimeout(timeout);
+  }, [isDragging]);
+
   return (
     <tr
       ref={setNodeRef}
@@ -78,6 +94,7 @@ export function FileRow({
       data-dragging={isDragging ? "true" : "false"}
       data-drop-kind={entry.type === "directory" ? "directory" : undefined}
       data-drop-state={feedback ? (feedback.valid ? "valid" : "invalid") : undefined}
+      aria-selected={selected}
       className={entry.type === "directory" ? "directory-row" : undefined}
       onDoubleClick={() => onOpen(entry)}
     >
@@ -97,6 +114,15 @@ export function FileRow({
             {...dragListeners}
             className="file-drag-handle"
             data-file-drag-handle="true"
+            onClick={(event) => {
+              if (suppressSelectionClickRef.current) {
+                suppressSelectionClickRef.current = false;
+                event.preventDefault();
+                event.stopPropagation();
+                return;
+              }
+              onSelect(entry.relativePath, { ctrlKey: event.ctrlKey, shiftKey: event.shiftKey });
+            }}
           >
             <FileIcon name={entry.name} type={entry.type} />
             <span className="truncate font-medium text-slate-700">{entry.name}</span>

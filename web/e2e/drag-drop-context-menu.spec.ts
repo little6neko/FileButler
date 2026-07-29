@@ -121,6 +121,61 @@ test("limits dragging to names and keeps feedback above table chrome", async ({ 
   await expect(page.getByRole("dialog", { name: /preview/ })).toHaveCount(0);
 });
 
+test("supports desktop row selection and auto-scrolls a long marquee", async ({ page }) => {
+  await installMockApi(page);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await page.goto("/");
+  const left = page.getByRole("region", { name: "Left pane" });
+  await left.getByRole("combobox", { name: "Left pane root" }).selectOption("long");
+  await expect(entryRow(left, "item-01.txt")).toBeVisible();
+
+  await entryRow(left, "item-02.txt").getByRole("cell").nth(2).click();
+  await expect(left.getByLabel("Select item-02.txt")).toBeChecked();
+  await expect(left.getByLabel("Select item-01.txt")).not.toBeChecked();
+
+  await entryRow(left, "item-04.txt").getByRole("cell").nth(3).click({ modifiers: ["Control"] });
+  await expect(left.getByLabel("Select item-02.txt")).toBeChecked();
+  await expect(left.getByLabel("Select item-04.txt")).toBeChecked();
+
+  await left.getByRole("combobox", { name: "Left pane root" }).selectOption("data");
+  await expect(entryRow(left, "source.txt")).toBeVisible();
+  await left.getByRole("combobox", { name: "Left pane root" }).selectOption("long");
+  await expect(entryRow(left, "item-01.txt")).toBeVisible();
+
+  await page.keyboard.down("Shift");
+  await entryRow(left, "item-03.txt").getByRole("cell").nth(2).click();
+  await entryRow(left, "item-06.txt").getByRole("cell").nth(2).click();
+  await page.keyboard.up("Shift");
+  await expect(left.getByLabel("Select item-02.txt")).not.toBeChecked();
+  for (const index of [3, 4, 5, 6]) {
+    await expect(left.getByLabel(`Select item-${String(index).padStart(2, "0")}.txt`)).toBeChecked();
+  }
+
+  await entryRow(left, "item-09.txt").getByRole("cell").nth(4).click();
+  await expect(left.getByLabel("Select item-09.txt")).toBeChecked();
+  await expect(left.getByLabel("Select item-03.txt")).not.toBeChecked();
+  await expect(left.getByLabel("Select item-06.txt")).not.toBeChecked();
+
+  const fileList = left.getByTestId("file-list-left");
+  await fileList.evaluate((element) => {
+    element.scrollTop = 0;
+  });
+  const startCell = entryRow(left, "item-01.txt").getByRole("cell").nth(2);
+  const [startBox, listBox] = await Promise.all([startCell.boundingBox(), fileList.boundingBox()]);
+  if (!startBox || !listBox) throw new Error("long-list marquee geometry is unavailable");
+  const startX = startBox.x + startBox.width / 2;
+  const startY = startBox.y + startBox.height / 2;
+  const edgeX = Math.min(listBox.x + listBox.width - 4, startX + 12);
+  const edgeY = listBox.y + listBox.height - 2;
+
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(edgeX, edgeY, { steps: 8 });
+  await expect.poll(() => fileList.evaluate((element) => element.scrollTop)).toBeGreaterThan(80);
+  await expect(left.getByLabel("Select item-24.txt")).toBeChecked();
+  await page.mouse.up();
+});
+
 test("uses row and whitespace context selection while keeping all actions visible", async ({ page }) => {
   await installMockApi(page);
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -237,10 +292,15 @@ async function installMockApi(page: Page) {
     if (url.pathname === "/api/init/status") return respond(route, { needsInitialization: false });
     if (url.pathname === "/api/auth/me") return respond(route, { id: 1, username: "admin" });
     if (url.pathname === "/api/roots") {
-      return respond(route, [{ id: "data", name: "Data" }, { id: "archive", name: "Archive" }]);
+      return respond(route, [
+        { id: "data", name: "Data" },
+        { id: "archive", name: "Archive" },
+        { id: "long", name: "Long list" },
+      ]);
     }
     if (url.pathname === "/api/browse") {
-      return respond(route, url.searchParams.get("rootId") === "archive" ? archiveEntries : dataEntries);
+      const rootID = url.searchParams.get("rootId");
+      return respond(route, rootID === "archive" ? archiveEntries : rootID === "long" ? longEntries : dataEntries);
     }
     if (url.pathname === "/api/ops/dry-run") {
       const payload = request.postDataJSON() as OpsPayload;
@@ -291,3 +351,8 @@ const archiveEntries = [
   { name: "archive-folder", relativePath: "archive-folder", type: "directory", size: 0, mode: "", modifiedUnix: 0, isSymlink: false },
   { name: "archive.txt", relativePath: "archive.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
 ];
+
+const longEntries = Array.from({ length: 30 }, (_, index) => {
+  const name = `item-${String(index + 1).padStart(2, "0")}.txt`;
+  return { name, relativePath: name, type: "file", size: index + 1, mode: "", modifiedUnix: index, isSymlink: false };
+});

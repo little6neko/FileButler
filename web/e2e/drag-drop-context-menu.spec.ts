@@ -8,6 +8,13 @@ type OpsPayload = {
   destPath: string;
 };
 
+type CheckboxMutationCounts = { name: number; type: number };
+type CheckboxMutationProbe = {
+  left: CheckboxMutationCounts;
+  right: CheckboxMutationCounts;
+  observers: MutationObserver[];
+};
+
 test("previews same-pane and cross-pane drops with Windows-style defaults", async ({ page }) => {
   const { dryRuns } = await installMockApi(page);
   await page.goto("/");
@@ -31,11 +38,14 @@ test("previews same-pane and cross-pane drops with Windows-style defaults", asyn
   await expect(dialog.getByRole("radio", { name: "move" })).toBeChecked();
   await dialog.getByRole("button", { name: "Cancel" }).click();
 
+  await left.getByLabel("Select peer.txt").click();
+  await expect(left.getByLabel("Select source.txt")).toBeChecked();
+  await expect(left.getByLabel("Select peer.txt")).toBeChecked();
   const sameRootDryRunCount = dryRuns.length;
   await dragFileTo(page, entryRow(left, "source.txt"), entryRow(right, "folder"));
   await expect.poll(() => dryRuns.length).toBeGreaterThan(sameRootDryRunCount);
   await expect.poll(() => dryRuns.at(-1)).toMatchObject({
-    type: "move", sourceRoot: "data", destRoot: "data", destPath: "folder",
+    type: "move", sourceRoot: "data", sources: ["peer.txt", "source.txt"], destRoot: "data", destPath: "folder",
   });
   dialog = page.getByRole("dialog", { name: "move preview" });
   await dialog.getByRole("button", { name: "Cancel" }).click();
@@ -163,6 +173,19 @@ test("supports desktop row selection and auto-scrolls a long marquee", async ({ 
   const startCell = entryRow(left, "item-01.txt").getByRole("cell").nth(2);
   const [startBox, listBox] = await Promise.all([startCell.boundingBox(), fileList.boundingBox()]);
   if (!startBox || !listBox) throw new Error("long-list marquee geometry is unavailable");
+  const rows = left.locator("tbody tr");
+  const rowCount = await rows.count();
+  await rows.evaluateAll((elements) => {
+    const state = window as Window & { __marqueeRowRectReads: number };
+    state.__marqueeRowRectReads = 0;
+    elements.forEach((element) => {
+      const original = element.getBoundingClientRect.bind(element);
+      element.getBoundingClientRect = () => {
+        state.__marqueeRowRectReads += 1;
+        return original();
+      };
+    });
+  });
   const startX = startBox.x + startBox.width / 2;
   const startY = startBox.y + startBox.height / 2;
   const edgeX = Math.min(listBox.x + listBox.width - 4, startX + 12);
@@ -173,7 +196,55 @@ test("supports desktop row selection and auto-scrolls a long marquee", async ({ 
   await page.mouse.move(edgeX, edgeY, { steps: 8 });
   await expect.poll(() => fileList.evaluate((element) => element.scrollTop)).toBeGreaterThan(80);
   await expect(left.getByLabel("Select item-24.txt")).toBeChecked();
+  await expect.poll(() => page.evaluate(
+    () => (window as Window & { __marqueeRowRectReads: number }).__marqueeRowRectReads,
+  )).toBe(rowCount);
   await page.mouse.up();
+});
+
+test("updates only the changed row checkbox when selection changes", async ({ page }) => {
+  await installMockApi(page);
+  await page.goto("/");
+  const left = page.getByRole("region", { name: "Left pane" });
+  const right = page.getByRole("region", { name: "Right pane" });
+  await left.getByRole("combobox", { name: "Left pane root" }).selectOption("long");
+  await expect(entryRow(left, "item-01.txt")).toBeVisible();
+  await expect(entryRow(right, "source.txt")).toBeVisible();
+
+  await page.evaluate(() => {
+    const probe: CheckboxMutationProbe = {
+      left: { name: 0, type: 0 },
+      right: { name: 0, type: 0 },
+      observers: [],
+    };
+    for (const pane of ["left", "right"] as const) {
+      const root = document.querySelector(`[data-testid="file-list-${pane}"]`);
+      if (!root) throw new Error(`missing ${pane} file list`);
+      const observer = new MutationObserver((records) => {
+        for (const record of records) {
+          if (record.attributeName === "name" || record.attributeName === "type") {
+            probe[pane][record.attributeName] += 1;
+          }
+        }
+      });
+      observer.observe(root, { attributes: true, attributeFilter: ["name", "type"], subtree: true });
+      probe.observers.push(observer);
+    }
+    (window as Window & { __checkboxMutationProbe?: CheckboxMutationProbe }).__checkboxMutationProbe = probe;
+  });
+
+  await entryRow(left, "item-01.txt").getByRole("cell").nth(2).click();
+  await expect(left.getByLabel("Select item-01.txt")).toBeChecked();
+  const mutations = await page.evaluate(() => {
+    const probe = (window as Window & { __checkboxMutationProbe?: CheckboxMutationProbe }).__checkboxMutationProbe;
+    if (!probe) throw new Error("checkbox mutation probe is unavailable");
+    probe.observers.forEach((observer) => observer.disconnect());
+    return { left: probe.left, right: probe.right };
+  });
+
+  expect(mutations.left.name).toBeLessThanOrEqual(2);
+  expect(mutations.left.type).toBeLessThanOrEqual(1);
+  expect(mutations.right).toEqual({ name: 0, type: 0 });
 });
 
 test("uses row and whitespace context selection while keeping all actions visible", async ({ page }) => {
@@ -352,7 +423,7 @@ const archiveEntries = [
   { name: "archive.txt", relativePath: "archive.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
 ];
 
-const longEntries = Array.from({ length: 30 }, (_, index) => {
+const longEntries = Array.from({ length: 260 }, (_, index) => {
   const name = `item-${String(index + 1).padStart(2, "0")}.txt`;
   return { name, relativePath: name, type: "file", size: index + 1, mode: "", modifiedUnix: index, isSymlink: false };
 });

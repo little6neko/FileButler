@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import {
   DndContext,
@@ -22,12 +22,14 @@ import {
   isFileDragData,
   isFileDropData,
   type DragOperation,
+  type FileDragData,
   type FileDragSource,
   type FileDropFeedback,
   type PaneKey,
 } from "../fileDrag";
-import { applyFileSelection, fileSelectionMode } from "../fileSelection";
+import { fileSelectionMode } from "../fileSelection";
 import type { FileSelectionModifiers } from "../fileSelection";
+import { createFileSelectionStore, type FileSelectionStore } from "../fileSelectionStore";
 import { strings } from "../i18n";
 import type { LanguageMode, UIStrings } from "../i18n";
 import { mediaKindForPath } from "../media";
@@ -35,6 +37,7 @@ import type { MediaKind } from "../media";
 import { ActionToolbar } from "./ActionToolbar";
 import { AppShell } from "./AppShell";
 import { createFileActions } from "./fileActions";
+import type { FileAction } from "./fileActions";
 import { createFileDragAnnouncements } from "./fileDragAnnouncements";
 import { FileDragOverlay } from "./FileDragOverlay";
 import { FilePane } from "./FilePane";
@@ -50,9 +53,6 @@ type PaneState = {
   rootId: string;
   path: string;
   entries: Entry[];
-  selected: Set<string>;
-  selectionAnchor: string | null;
-  visibleOrder: string[];
   loading: boolean;
   error: string | null;
 };
@@ -88,12 +88,21 @@ export function DualPane({
   const [jobsOpen, setJobsOpen] = useState(false);
   const [activeJobCount, setActiveJobCount] = useState(0);
   const [leftPanePercent, setLeftPanePercent] = useState(50);
-  const [left, setLeft] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), selectionAnchor: null, visibleOrder: [], loading: false, error: null });
-  const [right, setRight] = useState<PaneState>({ rootId: "", path: ".", entries: [], selected: new Set(), selectionAnchor: null, visibleOrder: [], loading: false, error: null });
+  const [left, setLeft] = useState<PaneState>({ rootId: "", path: ".", entries: [], loading: false, error: null });
+  const [right, setRight] = useState<PaneState>({ rootId: "", path: ".", entries: [], loading: false, error: null });
+  const [selectionStores] = useState(() => ({
+    left: createFileSelectionStore(),
+    right: createFileSelectionStore(),
+  }));
   const [dragSource, setDragSource] = useState<FileDragSource | null>(null);
   const [dropFeedback, setDropFeedback] = useState<FileDropFeedback | null>(null);
   const dragSourceRef = useRef<FileDragSource | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 6 } }));
+  const paneStatesRef = useRef({ left, right });
+  const sensors = useSensors(useSensor(PointerSensor, pointerSensorOptions));
+
+  useLayoutEffect(() => {
+    paneStatesRef.current = { left, right };
+  }, [left, right]);
 
   const updatePane = useCallback((which: PaneKey, update: (pane: PaneState) => PaneState) => {
     if (which === "left") setLeft(update);
@@ -107,9 +116,6 @@ export function DualPane({
       updatePane(which, (pane) => ({
         ...pane,
         entries,
-        selected: visibleSelection(pane.selected, entries),
-        selectionAnchor: visibleAnchor(pane.selectionAnchor, entries),
-        visibleOrder: entries.map((entry) => entry.relativePath),
         loading: false,
         error: null,
       }));
@@ -117,9 +123,6 @@ export function DualPane({
       updatePane(which, (pane) => ({
         ...pane,
         entries: [],
-        selected: new Set(),
-        selectionAnchor: null,
-        visibleOrder: [],
         loading: false,
         error: err instanceof Error ? err.message : labels.browseFailed,
       }));
@@ -176,59 +179,42 @@ export function DualPane({
   }
 
   function clearSelections() {
-    setLeft((pane) => (pane.selected.size || pane.selectionAnchor ? { ...pane, selected: new Set(), selectionAnchor: null } : pane));
-    setRight((pane) => (pane.selected.size || pane.selectionAnchor ? { ...pane, selected: new Set(), selectionAnchor: null } : pane));
+    selectionStores.left.clear();
+    selectionStores.right.clear();
   }
 
   function paneProps(which: PaneKey, pane: PaneState) {
     return {
       paneKey: which,
-      actions: actionsFor(which),
+      actionsForSelection: (selectedCount: number) => actionsFor(which, selectedCount),
       onContextTarget: (path: string | null) => selectContextTarget(which, path),
       dropFeedback,
       roots,
       selectedRootId: pane.rootId,
       currentPath: pane.path,
       entries: pane.entries,
-      selectedPaths: pane.selected,
+      selectionStore: selectionStoreFor(which),
       loading: pane.loading,
       error: pane.error,
       onRootChange: (rootId: string) => {
         clearFileDrag();
-        updatePane(which, (current) => ({ ...current, rootId, path: ".", selected: new Set(), selectionAnchor: null, visibleOrder: [] }));
+        const selection = selectionStoreFor(which);
+        selection.clear();
+        selection.setVisibleOrder([]);
+        updatePane(which, (current) => ({ ...current, rootId, path: "." }));
       },
       onPathChange: (path: string) => {
         clearFileDrag();
-        updatePane(which, (current) => ({ ...current, path, selected: new Set(), selectionAnchor: null, visibleOrder: [] }));
+        const selection = selectionStoreFor(which);
+        selection.clear();
+        selection.setVisibleOrder([]);
+        updatePane(which, (current) => ({ ...current, path }));
       },
-      onToggleSelection: (path: string) =>
-        updatePane(which, (current) => {
-          const next = applyFileSelection(current.selected, current.selectionAnchor, current.visibleOrder, path, "toggle");
-          return { ...current, selected: next.selected, selectionAnchor: next.anchor };
-        }),
+      onToggleSelection: (path: string) => selectionStoreFor(which).toggle(path),
       onSelectEntry: (path: string, modifiers: FileSelectionModifiers) =>
-        updatePane(which, (current) => {
-          const mode = fileSelectionMode(modifiers);
-          const next = applyFileSelection(current.selected, current.selectionAnchor, current.visibleOrder, path, mode);
-          return { ...current, selected: next.selected, selectionAnchor: next.anchor };
-        }),
-      onSelectAll: (checked: boolean) =>
-        updatePane(which, (current) => ({
-          ...current,
-          selected: checked ? new Set(current.entries.map((entry) => entry.relativePath)) : new Set(),
-          selectionAnchor: null,
-        })),
-      onSelectPaths: (paths: string[]) =>
-        updatePane(which, (current) => ({
-          ...current,
-          selected: new Set(paths),
-          selectionAnchor: null,
-        })),
-      onVisibleOrderChange: (visibleOrder: string[]) =>
-        updatePane(which, (current) => {
-          if (sameStringArray(current.visibleOrder, visibleOrder)) return current;
-          return { ...current, visibleOrder };
-        }),
+        selectionStoreFor(which).select(path, fileSelectionMode(modifiers)),
+      onSelectAll: (checked: boolean) => selectionStoreFor(which).selectAll(checked),
+      onSelectPaths: (paths: string[]) => selectionStoreFor(which).replace(paths),
       onOpenFile: (entry: Entry) => openMediaPreview(pane.rootId, entry),
       onRefresh: () => {
         if (pane.rootId) void loadPane(which, pane.rootId, pane.path);
@@ -240,34 +226,38 @@ export function DualPane({
 
   function selectContextTarget(which: PaneKey, path: string | null) {
     setActivePane(which);
-    updatePane(which, (current) => {
-      if (path === null) {
-        return current.selected.size || current.selectionAnchor
-          ? { ...current, selected: new Set(), selectionAnchor: null }
-          : current;
-      }
-      if (current.selected.has(path)) {
-        return current.selectionAnchor === path ? current : { ...current, selectionAnchor: path };
-      }
-      return { ...current, selected: new Set([path]), selectionAnchor: path };
-    });
+    selectionStoreFor(which).selectContextTarget(path);
   }
+
+  const resolveFileDragSource = useCallback((data: FileDragData) => {
+    const pane = paneStatesRef.current[data.pane];
+    const selection = selectionStores[data.pane];
+    const entriesByPath = new Map(pane.entries.map((entry) => [entry.relativePath, entry]));
+    const orderedEntries = selection.getVisibleOrder().flatMap((path) => {
+      const entry = entriesByPath.get(path);
+      return entry ? [entry] : [];
+    });
+    const visibleEntries = orderedEntries.length === pane.entries.length ? orderedEntries : pane.entries;
+    return buildFileDragSource(data, selection.getSelected(), visibleEntries);
+  }, [selectionStores]);
+  const dragAnnouncements = useMemo(
+    () => createFileDragAnnouncements(labels, resolveFileDragSource),
+    [labels, resolveFileDragSource],
+  );
+  const dndAccessibility = useMemo(() => ({ announcements: dragAnnouncements }), [dragAnnouncements]);
 
   function handleFileDragStart(event: DragStartEvent) {
     const data = event.active.data.current;
     if (!isFileDragData(data)) return;
-    const source = buildFileDragSource(data);
+    const source = resolveFileDragSource(data);
     dragSourceRef.current = source;
     setDragSource(source);
     setDropFeedback(null);
     setActivePane(source.pane);
 
-    if (!data.selectedPaths.includes(data.entry.relativePath)) {
-      updatePane(source.pane, (pane) => ({
-        ...pane,
-        selected: new Set(source.entries.map((entry) => entry.relativePath)),
-        selectionAnchor: data.entry.relativePath,
-      }));
+    const selection = selectionStores[data.pane];
+    if (!selection.isSelected(data.entry.relativePath)) {
+      selection.replace(source.entries.map((entry) => entry.relativePath), data.entry.relativePath);
     }
   }
 
@@ -310,7 +300,7 @@ export function DualPane({
         onDragOver={handleFileDragOver}
         onDragEnd={handleFileDragEnd}
         onDragCancel={clearFileDrag}
-        accessibility={{ announcements: createFileDragAnnouncements(labels) }}
+        accessibility={dndAccessibility}
       >
         <AppShell
           labels={labels}
@@ -319,9 +309,9 @@ export function DualPane({
           languageControl={<LanguageSelect value={languageMode} onChange={onLanguageModeChange} labels={labels} />}
         >
           <div className="grid h-full min-h-0 grid-rows-[42px_minmax(0,1fr)] overflow-hidden">
-            <ActionToolbar
-              actions={actionsFor(activePane)}
-              selectedCount={selectionFor(activePane).length}
+            <SelectionActionToolbar
+              selectionStore={selectionStoreFor(activePane)}
+              actionsForSelection={(selectedCount) => actionsFor(activePane, selectedCount)}
               labels={labels}
             />
             <section
@@ -431,17 +421,18 @@ export function DualPane({
   }
 
   function selectionFor(which: PaneKey) {
-    const state = stateFor(which);
-    const ordered = state.visibleOrder.filter((path) => state.selected.has(path));
-    const visible = new Set(state.visibleOrder);
-    return [...ordered, ...Array.from(state.selected).filter((path) => !visible.has(path))];
+    return selectionStoreFor(which).getOrderedPaths();
   }
 
-  function actionsFor(which: PaneKey) {
+  function selectionStoreFor(which: PaneKey) {
+    return selectionStores[which];
+  }
+
+  function actionsFor(which: PaneKey, selectedCount = selectionStoreFor(which).getSummary().selectedCount) {
     const destinationPane = oppositePane(which);
     return createFileActions({
       destination: destinationPane === "left" ? labels.leftPane : labels.rightPane,
-      selectedCount: selectionFor(which).length,
+      selectedCount,
       labels,
       commands: {
         onOperation: (type) => openOperationFrom(which, type),
@@ -523,6 +514,8 @@ export function DualPane({
   }
 }
 
+const pointerSensorOptions = { activationConstraint: { distance: 6 } } as const;
+
 const fileCollisionDetection: CollisionDetection = (args) => {
   const collisions = pointerWithin(args);
   const directory = collisions.find((collision) =>
@@ -535,19 +528,27 @@ const fileCollisionDetection: CollisionDetection = (args) => {
   return pane ? [pane] : [];
 };
 
-function sameStringArray(left: string[], right: string[]) {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-function visibleSelection(selected: Set<string>, entries: Entry[]) {
-  if (!selected.size) return selected;
-  const visiblePaths = new Set(entries.map((entry) => entry.relativePath));
-  const next = new Set(Array.from(selected).filter((path) => visiblePaths.has(path)));
-  return next.size === selected.size ? selected : next;
-}
-
-function visibleAnchor(anchor: string | null, entries: Entry[]) {
-  return anchor !== null && entries.some((entry) => entry.relativePath === anchor) ? anchor : null;
+function SelectionActionToolbar({
+  selectionStore,
+  actionsForSelection,
+  labels,
+}: {
+  selectionStore: FileSelectionStore;
+  actionsForSelection(selectedCount: number): FileAction[];
+  labels: UIStrings;
+}) {
+  const summary = useSyncExternalStore(
+    selectionStore.subscribeSummary,
+    selectionStore.getSummary,
+    selectionStore.getSummary,
+  );
+  return (
+    <ActionToolbar
+      actions={actionsForSelection(summary.selectedCount)}
+      selectedCount={summary.selectedCount}
+      labels={labels}
+    />
+  );
 }
 
 const terminalJobStatuses = new Set(["completed", "completed_with_errors", "failed", "canceled"]);

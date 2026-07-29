@@ -3,6 +3,7 @@ import { DndContext } from "@dnd-kit/core";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { paneDropId, type FileDropFeedback } from "../fileDrag";
+import { createFileSelectionStore } from "../fileSelectionStore";
 import { FilePane } from "./FilePane";
 
 const roots = [{ id: "data", name: "Data" }];
@@ -94,6 +95,20 @@ it("exposes row selection state without changing checkbox behavior", async () =>
   await userEvent.click(screen.getByLabelText("Select file.txt"));
   expect(onToggleSelection).toHaveBeenCalledWith("file.txt");
   expect(onSelectEntry).not.toHaveBeenCalled();
+});
+
+it("updates only subscribed row and summary consumers from an external selection store", () => {
+  const entries = [entry("a.txt", "file", 10), entry("b.txt", "file", 20)];
+  const selectionStore = createFileSelectionStore(entries);
+  renderPane({ entries, selectedPaths: undefined, selectionStore });
+
+  act(() => selectionStore.replace(["b.txt"]));
+
+  expect(screen.getByLabelText("Select a.txt")).not.toBeChecked();
+  expect(screen.getByLabelText("Select b.txt")).toBeChecked();
+  const status = screen.getByText("1 selected").closest("footer");
+  expect(status).not.toBeNull();
+  expect(within(status as HTMLElement).getByText("20 B")).toBeInTheDocument();
 });
 
 it("selects all visible entries from the header checkbox", async () => {
@@ -385,53 +400,108 @@ it("lets the name column fill remaining table width while staying resizable", as
 });
 
 it("replaces selection with rows intersecting a drag marquee", () => {
-  const onSelectPaths = vi.fn();
-  const { container } = renderPane({
-    entries: [entry("a.txt"), entry("b.txt"), entry("c.txt")],
-    selectedPaths: new Set(["c.txt"]),
-    onSelectPaths,
-  });
+  const frames = mockAnimationFrames();
+  try {
+    const onSelectPaths = vi.fn();
+    const { container } = renderPane({
+      entries: [entry("a.txt"), entry("b.txt"), entry("c.txt")],
+      selectedPaths: new Set(["c.txt"]),
+      onSelectPaths,
+    });
 
-  const fileList = container.querySelector(".file-list") as HTMLDivElement;
-  const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
-  mockRect(fileList, { left: 0, top: 0, right: 400, bottom: 160, width: 400, height: 160 });
-  rows.forEach((row, index) => {
-    mockRect(row, { left: 0, top: 32 + index * 32, right: 376, bottom: 64 + index * 32, width: 376, height: 32 });
-  });
+    const fileList = container.querySelector(".file-list") as HTMLDivElement;
+    const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
+    mockRect(fileList, { left: 0, top: 0, right: 400, bottom: 160, width: 400, height: 160 });
+    rows.forEach((row, index) => {
+      mockRect(row, { left: 0, top: 32 + index * 32, right: 376, bottom: 64 + index * 32, width: 376, height: 32 });
+    });
+    while (frames.pending()) frames.runNext();
 
-  fireEvent.mouseDown(fileList, { button: 0, clientX: 376, clientY: 36 });
-  fireEvent.mouseMove(document, { clientX: 380, clientY: 94 });
+    fireEvent.mouseDown(fileList, { button: 0, clientX: 376, clientY: 36 });
+    fireEvent.mouseMove(document, { clientX: 380, clientY: 94 });
+    frames.runNext();
 
-  expect(container.querySelector(".drag-selection-box")).toBeInTheDocument();
+    expect(container.querySelector(".drag-selection-box")).toBeInTheDocument();
 
-  fireEvent.mouseUp(document, { clientX: 380, clientY: 94 });
+    fireEvent.mouseUp(document, { clientX: 380, clientY: 94 });
 
-  expect(onSelectPaths).toHaveBeenCalledWith(["a.txt", "b.txt"]);
+    expect(onSelectPaths).toHaveBeenCalledWith(["a.txt", "b.txt"]);
+  } finally {
+    frames.restore();
+  }
 });
 
 it("updates marquee selection while dragging without emitting duplicate path lists", () => {
-  const onSelectPaths = vi.fn();
-  const { container } = renderPane({
-    entries: [entry("a.txt"), entry("b.txt"), entry("c.txt")],
-    onSelectPaths,
-  });
-  const fileList = container.querySelector(".file-list") as HTMLDivElement;
-  const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
-  mockRect(fileList, { left: 0, top: 0, right: 400, bottom: 160, width: 400, height: 160 });
-  rows.forEach((row, index) => {
-    mockRect(row, { left: 0, top: 32 + index * 32, right: 376, bottom: 64 + index * 32, width: 376, height: 32 });
-  });
+  const frames = mockAnimationFrames();
+  try {
+    const onSelectPaths = vi.fn();
+    const { container } = renderPane({
+      entries: [entry("a.txt"), entry("b.txt"), entry("c.txt")],
+      onSelectPaths,
+    });
+    const fileList = container.querySelector(".file-list") as HTMLDivElement;
+    const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
+    mockRect(fileList, { left: 0, top: 0, right: 400, bottom: 160, width: 400, height: 160 });
+    rows.forEach((row, index) => {
+      mockRect(row, { left: 0, top: 32 + index * 32, right: 376, bottom: 64 + index * 32, width: 376, height: 32 });
+    });
 
-  const typeCell = within(rows[0]).getAllByRole("cell")[2];
-  fireEvent.mouseDown(typeCell, { button: 0, clientX: 250, clientY: 40 });
-  fireEvent.mouseMove(document, { clientX: 260, clientY: 94 });
+    const typeCell = within(rows[0]).getAllByRole("cell")[2];
+    fireEvent.mouseDown(typeCell, { button: 0, clientX: 250, clientY: 40 });
+    fireEvent.mouseMove(document, { clientX: 260, clientY: 94 });
+    frames.runNext();
 
-  expect(onSelectPaths).toHaveBeenLastCalledWith(["a.txt", "b.txt"]);
-  const callCount = onSelectPaths.mock.calls.length;
-  fireEvent.mouseMove(document, { clientX: 260, clientY: 94 });
-  expect(onSelectPaths).toHaveBeenCalledTimes(callCount);
+    expect(onSelectPaths).toHaveBeenLastCalledWith(["a.txt", "b.txt"]);
+    expect(container.querySelector(".drag-selection-box")).toHaveStyle({
+      transform: "translate3d(250px, 40px, 0)",
+      width: "10px",
+      height: "54px",
+    });
+    const callCount = onSelectPaths.mock.calls.length;
+    fireEvent.mouseMove(document, { clientX: 260, clientY: 94 });
+    frames.runNext();
+    expect(onSelectPaths).toHaveBeenCalledTimes(callCount);
 
-  fireEvent.mouseUp(document, { clientX: 260, clientY: 94 });
+    fireEvent.mouseUp(document, { clientX: 260, clientY: 94 });
+  } finally {
+    frames.restore();
+  }
+});
+
+it("coalesces pointer movement into one frame and snapshots each row once", () => {
+  const frames = mockAnimationFrames();
+  try {
+    const onSelectPaths = vi.fn();
+    const { container } = renderPane({
+      entries: [entry("a.txt"), entry("b.txt"), entry("c.txt")],
+      onSelectPaths,
+    });
+    const fileList = container.querySelector(".file-list") as HTMLDivElement;
+    const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
+    mockRect(fileList, { left: 0, top: 0, right: 400, bottom: 160, width: 400, height: 160 });
+    rows.forEach((row, index) => {
+      mockRect(row, { left: 0, top: 32 + index * 32, right: 376, bottom: 64 + index * 32, width: 376, height: 32 });
+    });
+
+    fireEvent.mouseDown(fileList, { button: 0, clientX: 376, clientY: 36 });
+    fireEvent.mouseMove(document, { clientX: 380, clientY: 62 });
+    fireEvent.mouseMove(document, { clientX: 380, clientY: 126 });
+
+    expect(frames.pending()).toBe(1);
+    expect(onSelectPaths).not.toHaveBeenCalled();
+    rows.forEach((row) => expect(row.getBoundingClientRect).toHaveBeenCalledTimes(1));
+
+    frames.runNext();
+    expect(onSelectPaths).toHaveBeenLastCalledWith(["a.txt", "b.txt", "c.txt"]);
+
+    fireEvent.mouseMove(document, { clientX: 380, clientY: 94 });
+    frames.runNext();
+    rows.forEach((row) => expect(row.getBoundingClientRect).toHaveBeenCalledTimes(1));
+
+    fireEvent.mouseUp(document, { clientX: 380, clientY: 94 });
+  } finally {
+    frames.restore();
+  }
 });
 
 it("auto-scrolls a bottom-edge marquee to select rows below the initial viewport", () => {
@@ -627,19 +697,25 @@ it.each([
   { label: "size cell", cellIndex: 3 },
   { label: "modified-time cell", cellIndex: 4 },
 ])("starts marquee selection from $label", ({ cellIndex }) => {
-  const onSelectPaths = vi.fn();
-  const { container } = renderPane({ onSelectPaths });
-  const fileList = container.querySelector(".file-list") as HTMLDivElement;
-  const row = screen.getByText("file.txt").closest("tr") as HTMLTableRowElement;
-  const cells = within(row).getAllByRole("cell");
-  mockRect(fileList, { left: 0, top: 0, right: 400, bottom: 96, width: 400, height: 96 });
-  mockRect(row, { left: 0, top: 32, right: 376, bottom: 64, width: 376, height: 32 });
+  const frames = mockAnimationFrames();
+  try {
+    const onSelectPaths = vi.fn();
+    const { container } = renderPane({ onSelectPaths });
+    const fileList = container.querySelector(".file-list") as HTMLDivElement;
+    const row = screen.getByText("file.txt").closest("tr") as HTMLTableRowElement;
+    const cells = within(row).getAllByRole("cell");
+    mockRect(fileList, { left: 0, top: 0, right: 400, bottom: 96, width: 400, height: 96 });
+    mockRect(row, { left: 0, top: 32, right: 376, bottom: 64, width: 376, height: 32 });
 
-  fireEvent.mouseDown(cells[cellIndex], { button: 0, clientX: 300, clientY: 40 });
-  fireEvent.mouseMove(document, { clientX: 360, clientY: 60 });
-  expect(container.querySelector(".drag-selection-box")).toBeInTheDocument();
-  fireEvent.mouseUp(document, { clientX: 360, clientY: 60 });
-  expect(onSelectPaths).toHaveBeenCalledWith(["file.txt"]);
+    fireEvent.mouseDown(cells[cellIndex], { button: 0, clientX: 300, clientY: 40 });
+    fireEvent.mouseMove(document, { clientX: 360, clientY: 60 });
+    frames.runNext();
+    expect(container.querySelector(".drag-selection-box")).toBeInTheDocument();
+    fireEvent.mouseUp(document, { clientX: 360, clientY: 60 });
+    expect(onSelectPaths).toHaveBeenCalledWith(["file.txt"]);
+  } finally {
+    frames.restore();
+  }
 });
 
 it("keeps the checkbox interactive instead of using it as a drag activator", async () => {

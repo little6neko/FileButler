@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, KeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
@@ -10,8 +10,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { Entry, Root } from "../api/types";
 import { paneDropId, type FileDropData, type FileDropFeedback, type PaneKey } from "../fileDrag";
 import type { FileSelectionModifiers } from "../fileSelection";
+import { createFileSelectionStore, type FileSelectionStore } from "../fileSelectionStore";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
+import { pathsInsideMarquee, type MarqueeGeometry } from "../marqueeSelection";
 import { buildPathSegments, displayPath, fitPathSegments, normalizeInput } from "../pathSegments";
 import type { FittedPathSegments, PathSegment } from "../pathSegments";
 import { ErrorBanner } from "./ErrorBanner";
@@ -23,6 +25,7 @@ import { PaneStatusBar } from "./PaneStatusBar";
 type FilePaneProps = {
   paneKey?: PaneKey;
   actions?: FileAction[];
+  actionsForSelection?(selectedCount: number): FileAction[];
   onContextTarget?(path: string | null): void;
   dropFeedback?: FileDropFeedback | null;
   title: string;
@@ -30,7 +33,8 @@ type FilePaneProps = {
   selectedRootId: string;
   currentPath: string;
   entries: Entry[];
-  selectedPaths: Set<string>;
+  selectedPaths?: ReadonlySet<string>;
+  selectionStore?: FileSelectionStore;
   onRootChange(rootId: string): void;
   onPathChange(path: string): void;
   onToggleSelection(path: string): void;
@@ -50,6 +54,7 @@ type FilePaneProps = {
 export function FilePane({
   paneKey = "left",
   actions = [],
+  actionsForSelection,
   onContextTarget = () => undefined,
   dropFeedback = null,
   title,
@@ -58,6 +63,7 @@ export function FilePane({
   currentPath,
   entries,
   selectedPaths,
+  selectionStore,
   onRootChange,
   onPathChange,
   onToggleSelection,
@@ -77,20 +83,26 @@ export function FilePane({
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
   const [sortState, setSortState] = useState<SortState>({ column: "name", direction: "asc" });
   const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(defaultColumnWidths);
-  const [dragBox, setDragBox] = useState<DragBox | null>(null);
+  const [, refreshContextActions] = useState(0);
   const [fittedPath, setFittedPath] = useState<FittedPathSegments>(() => ({
     visible: buildPathSegments(currentPath),
     hidden: [],
   }));
   const fileListRef = useRef<HTMLDivElement>(null);
+  const fallbackSelectionStoreRef = useRef<FileSelectionStore | null>(null);
+  if (fallbackSelectionStoreRef.current === null) {
+    fallbackSelectionStoreRef.current = createFileSelectionStore(entries, selectedPaths ?? []);
+  }
+  const selection = selectionStore ?? fallbackSelectionStoreRef.current;
   const dragSelectionCleanupRef = useRef<((clearVisual?: boolean) => void) | null>(null);
+  const dragSelectionBoxRef = useRef<DragSelectionBoxHandle>(null);
   const pathSegmentsContentRef = useRef<HTMLDivElement>(null);
   const pathSegmentsMeasureRef = useRef<HTMLDivElement>(null);
   const columnsResizedRef = useRef(false);
+  const rowCallbacksRef = useRef({ onToggleSelection, onSelectEntry, onSelectAll, onPathChange, onOpenFile });
+  const visibleOrderCallbackRef = useRef(onVisibleOrderChange);
   const visibleEntries = useMemo(() => sortEntries(entries, sortState), [entries, sortState]);
-  const selectedEntries = visibleEntries.filter((entry) => selectedPaths.has(entry.relativePath));
-  const selectedBytes = selectedEntries.reduce((total, entry) => total + entry.size, 0);
-  const allVisibleSelected = visibleEntries.length > 0 && visibleEntries.every((entry) => selectedPaths.has(entry.relativePath));
+  const contextActions = actionsForSelection?.(selection.getSummary().selectedCount) ?? actions;
   const suggestions = useMemo(
     () =>
       entries
@@ -122,6 +134,30 @@ export function FilePane({
   }, [setPaneDropNodeRef]);
   const paneFeedback = dropFeedback?.target.id === paneTarget.id ? dropFeedback : null;
   const paneDropState = paneFeedback ? (paneFeedback.valid ? "valid" : "invalid") : undefined;
+
+  useLayoutEffect(() => {
+    rowCallbacksRef.current = { onToggleSelection, onSelectEntry, onSelectAll, onPathChange, onOpenFile };
+    visibleOrderCallbackRef.current = onVisibleOrderChange;
+  }, [onOpenFile, onPathChange, onSelectAll, onSelectEntry, onToggleSelection, onVisibleOrderChange]);
+
+  useLayoutEffect(() => {
+    selection.setEntries(entries);
+    if (!selectionStore) selection.replace(selectedPaths ?? []);
+  }, [entries, selectedPaths, selection, selectionStore]);
+
+  const handleRowToggle = useCallback((path: string) => {
+    rowCallbacksRef.current.onToggleSelection(path);
+  }, []);
+  const handleRowSelect = useCallback((path: string, modifiers: FileSelectionModifiers) => {
+    rowCallbacksRef.current.onSelectEntry(path, modifiers);
+  }, []);
+  const handleSelectAll = useCallback((checked: boolean) => {
+    rowCallbacksRef.current.onSelectAll(checked);
+  }, []);
+  const handleRowOpen = useCallback((entry: Entry) => {
+    if (entry.type === "directory") rowCallbacksRef.current.onPathChange(entry.relativePath);
+    else rowCallbacksRef.current.onOpenFile?.(entry);
+  }, []);
 
   useEffect(() => {
     setPathDraft(displayPath(currentPath));
@@ -177,8 +213,10 @@ export function FilePane({
   }, [pathSegments]);
 
   useEffect(() => {
-    onVisibleOrderChange?.(visibleEntries.map((entry) => entry.relativePath));
-  }, [onVisibleOrderChange, visibleEntries]);
+    const paths = visibleEntries.map((entry) => entry.relativePath);
+    selection.setVisibleOrder(paths);
+    visibleOrderCallbackRef.current?.(paths);
+  }, [selection, visibleEntries]);
 
   useEffect(() => {
     dragSelectionCleanupRef.current?.();
@@ -330,7 +368,7 @@ export function FilePane({
           <span data-path-measure="ellipsis">…</span>
         </div>
       </nav>
-      <PaneContextMenu actions={actions} label={labels.fileActions}>
+      <PaneContextMenu actions={contextActions} label={labels.fileActions}>
         <div className="file-list-frame" data-drop-state={paneDropState}>
           <div
             className="file-list"
@@ -342,6 +380,7 @@ export function FilePane({
               const element = event.target instanceof Element ? event.target : null;
               const row = element?.closest<HTMLTableRowElement>("tbody tr[data-entry-path]");
               onContextTarget(row?.dataset.entryPath ?? null);
+              refreshContextActions((version) => version + 1);
             }}
           >
         {loading ? (
@@ -365,10 +404,10 @@ export function FilePane({
             <tr>
               <th className="select-cell">
                 <div className="file-header-cell">
-                  <Checkbox
-                    aria-label={labels.selectAllVisible}
-                    checked={allVisibleSelected}
-                    onCheckedChange={(checked) => onSelectAll(checked === true)}
+                  <SelectAllCheckbox
+                    label={labels.selectAllVisible}
+                    selectionStore={selection}
+                    onChange={handleSelectAll}
                   />
                 </div>
               </th>
@@ -384,31 +423,20 @@ export function FilePane({
                 key={entry.relativePath}
                 paneKey={paneKey}
                 rootId={selectedRootId}
+                parentPath={currentPath}
                 entry={entry}
-                selected={selectedPaths.has(entry.relativePath)}
-                dragData={{
-                  kind: "file-entry",
-                  pane: paneKey,
-                  rootId: selectedRootId,
-                  parentPath: currentPath,
-                  entry,
-                  selectedPaths: Array.from(selectedPaths),
-                  visibleEntries,
-                }}
+                selectionStore={selection}
                 dropFeedback={dropFeedback}
                 labels={labels}
-                onToggleSelection={onToggleSelection}
-                onSelect={onSelectEntry}
-                onOpen={(item) => {
-                  if (item.type === "directory") onPathChange(item.relativePath);
-                  else onOpenFile?.(item);
-                }}
+                onToggleSelection={handleRowToggle}
+                onSelect={handleRowSelect}
+                onOpen={handleRowOpen}
               />
             ))}
           </tbody>
           </table>
         )}
-          {dragBox ? <div className="drag-selection-box" style={dragBox} /> : null}
+          <DragSelectionBox ref={dragSelectionBoxRef} />
           </div>
           {paneFeedback ? (
             <div
@@ -419,9 +447,8 @@ export function FilePane({
           ) : null}
         </div>
       </PaneContextMenu>
-      <PaneStatusBar
-        selectedCount={selectedEntries.length}
-        selectedBytes={selectedBytes}
+      <SelectionPaneStatusBar
+        selectionStore={selection}
         visibleCount={visibleEntries.length}
         labels={labels}
       />
@@ -509,58 +536,61 @@ export function FilePane({
     let moved = false;
     let active = true;
     let animationFrame: number | null = null;
+    let geometry: MeasuredMarqueeGeometry | null = null;
+    let pointerDirty = false;
     let lastSelectedPaths: string[] | null = null;
 
     function updateSelection() {
-      const currentPoint = listContentPoint(listElement, lastX, lastY);
+      if (!geometry) return;
+      const currentPoint = listContentPointFromGeometry(listElement, geometry, lastX, lastY);
       const left = Math.min(startPoint.x, currentPoint.x);
       const top = Math.min(startPoint.y, currentPoint.y);
       const right = Math.max(startPoint.x, currentPoint.x);
       const bottom = Math.max(startPoint.y, currentPoint.y);
-      setDragBox({
+      dragSelectionBoxRef.current?.update({
         left,
         top,
         width: right - left,
         height: bottom - top,
       });
 
-      const paths = pathsInsideSelection(listElement, startPoint.x, startPoint.y, currentPoint.x, currentPoint.y);
+      const paths = pathsInsideMarquee(geometry, startPoint.x, startPoint.y, currentPoint.x, currentPoint.y);
       if (!samePathList(lastSelectedPaths, paths)) {
         lastSelectedPaths = paths;
         onSelectPaths?.(paths);
       }
     }
 
-    function cancelAutoScroll() {
+    function cancelScheduledFrame() {
       if (animationFrame === null) return;
       window.cancelAnimationFrame(animationFrame);
       animationFrame = null;
     }
 
-    function scheduleAutoScroll() {
-      const velocity = marqueeScrollVelocity(lastY, listElement.getBoundingClientRect());
-      const maxScrollTop = Math.max(0, listElement.scrollHeight - listElement.clientHeight);
-      const canScroll = velocity < 0 ? listElement.scrollTop > 0 : velocity > 0 && listElement.scrollTop < maxScrollTop;
-      if (!active || !moved || velocity === 0 || !canScroll) {
-        cancelAutoScroll();
-        return;
-      }
-      if (animationFrame === null) animationFrame = window.requestAnimationFrame(runAutoScroll);
+    function canAutoScroll() {
+      if (!geometry) return false;
+      const velocity = marqueeScrollVelocity(lastY, geometry.listRect);
+      return velocity < 0 ? listElement.scrollTop > 0 : velocity > 0 && listElement.scrollTop < geometry.maxScrollTop;
     }
 
-    function runAutoScroll() {
+    function scheduleFrame() {
+      if (animationFrame === null) animationFrame = window.requestAnimationFrame(runFrame);
+    }
+
+    function runFrame() {
       animationFrame = null;
-      if (!active || !moved) return;
+      if (!active || !moved || !geometry) return;
 
-      const velocity = marqueeScrollVelocity(lastY, listElement.getBoundingClientRect());
-      const maxScrollTop = Math.max(0, listElement.scrollHeight - listElement.clientHeight);
+      const shouldUpdate = pointerDirty;
+      pointerDirty = false;
+      const velocity = marqueeScrollVelocity(lastY, geometry.listRect);
       const previousScrollTop = listElement.scrollTop;
-      const nextScrollTop = clamp(previousScrollTop + velocity, 0, maxScrollTop);
-      if (nextScrollTop === previousScrollTop) return;
+      const nextScrollTop = clamp(previousScrollTop + velocity, 0, geometry.maxScrollTop);
+      const didScroll = nextScrollTop !== previousScrollTop;
 
-      listElement.scrollTop = nextScrollTop;
-      updateSelection();
-      scheduleAutoScroll();
+      if (didScroll) listElement.scrollTop = nextScrollTop;
+      if (shouldUpdate || didScroll) updateSelection();
+      if (active && moved && (pointerDirty || canAutoScroll())) scheduleFrame();
     }
 
     function onMouseMove(moveEvent: MouseEvent) {
@@ -568,13 +598,21 @@ export function FilePane({
       lastY = moveEvent.clientY;
       const distance = Math.abs(moveEvent.clientX - startX) + Math.abs(moveEvent.clientY - startY);
       if (distance < 4) return;
-      moved = true;
-      updateSelection();
-      scheduleAutoScroll();
+      if (!moved) {
+        moved = true;
+        geometry = measureMarqueeGeometry(listElement);
+      }
+      pointerDirty = true;
+      scheduleFrame();
     }
 
     function onMouseUp(upEvent: MouseEvent) {
       const wasMoved = moved;
+      if (wasMoved && pointerDirty) {
+        cancelScheduledFrame();
+        pointerDirty = false;
+        updateSelection();
+      }
       cleanup();
       if (!wasMoved) {
         if (clickedPath) {
@@ -590,8 +628,10 @@ export function FilePane({
       document.removeEventListener("mousemove", onMouseMove);
       document.removeEventListener("mouseup", onMouseUp);
       window.removeEventListener("blur", onWindowBlur);
-      cancelAutoScroll();
-      if (clearVisual) setDragBox(null);
+      cancelScheduledFrame();
+      geometry = null;
+      pointerDirty = false;
+      if (clearVisual) dragSelectionBoxRef.current?.clear();
       if (dragSelectionCleanupRef.current === cleanup) dragSelectionCleanupRef.current = null;
     }
 
@@ -603,24 +643,6 @@ export function FilePane({
     document.addEventListener("mouseup", onMouseUp);
     window.addEventListener("blur", onWindowBlur);
     dragSelectionCleanupRef.current = cleanup;
-  }
-
-  function pathsInsideSelection(listElement: HTMLDivElement, startX: number, startY: number, endX: number, endY: number) {
-    const selectionRect = normalizeRect(startX, startY, endX, endY);
-    const listRect = listElement.getBoundingClientRect();
-    const rows = listElement.querySelectorAll<HTMLTableRowElement>("tbody tr[data-entry-path]");
-    return Array.from(rows)
-      .filter((row) => {
-        const rowRect = row.getBoundingClientRect();
-        return rectsIntersect(selectionRect, {
-          left: listElement.scrollLeft,
-          top: rowRect.top - listRect.top + listElement.scrollTop,
-          right: listElement.scrollLeft + listRect.width,
-          bottom: rowRect.bottom - listRect.top + listElement.scrollTop,
-        });
-      })
-      .map((row) => row.dataset.entryPath)
-      .filter((path): path is string => Boolean(path));
   }
 
   function handlePathKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -645,7 +667,12 @@ export function FilePane({
 type SortKey = "name" | "type" | "size" | "modified";
 type ColumnKey = "select" | SortKey;
 type SortState = { column: SortKey; direction: "asc" | "desc" } | null;
-type DragBox = Pick<CSSProperties, "left" | "top" | "width" | "height">;
+type DragBox = { left: number; top: number; width: number; height: number };
+type DragSelectionBoxHandle = { update(box: DragBox): void; clear(): void };
+type MeasuredMarqueeGeometry = MarqueeGeometry & {
+  listRect: { left: number; top: number; right: number; bottom: number; width: number; height: number };
+  maxScrollTop: number;
+};
 
 const defaultColumnWidths: Record<ColumnKey, number> = {
   select: 36,
@@ -658,6 +685,83 @@ const defaultTableWidth = Object.values(defaultColumnWidths).reduce((sum, width)
 const rightSelectionGutter = 24;
 const marqueeEdgeSize = 32;
 const marqueeMaxScrollSpeed = 18;
+
+const SelectAllCheckbox = memo(function SelectAllCheckbox({
+  label,
+  selectionStore,
+  onChange,
+}: {
+  label: string;
+  selectionStore: FileSelectionStore;
+  onChange(checked: boolean): void;
+}) {
+  const allVisibleSelected = useSyncExternalStore(
+    selectionStore.subscribeSummary,
+    () => selectionStore.getSummary().allVisibleSelected,
+    () => selectionStore.getSummary().allVisibleSelected,
+  );
+  return (
+    <Checkbox
+      aria-label={label}
+      checked={allVisibleSelected}
+      onCheckedChange={(next) => onChange(next === true)}
+    />
+  );
+});
+
+const SelectionPaneStatusBar = memo(function SelectionPaneStatusBar({
+  selectionStore,
+  visibleCount,
+  labels,
+}: {
+  selectionStore: FileSelectionStore;
+  visibleCount: number;
+  labels: UIStrings;
+}) {
+  const summary = useSelectionSummary(selectionStore);
+  return (
+    <PaneStatusBar
+      selectedCount={summary.selectedCount}
+      selectedBytes={summary.selectedBytes}
+      visibleCount={visibleCount}
+      labels={labels}
+    />
+  );
+});
+
+function useSelectionSummary(selectionStore: FileSelectionStore) {
+  return useSyncExternalStore(
+    selectionStore.subscribeSummary,
+    selectionStore.getSummary,
+    selectionStore.getSummary,
+  );
+}
+
+const DragSelectionBox = memo(forwardRef<DragSelectionBoxHandle>(function DragSelectionBox(_, ref) {
+  const [visible, setVisible] = useState(false);
+  const elementRef = useRef<HTMLDivElement>(null);
+  const pendingBoxRef = useRef<DragBox | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    update(box) {
+      pendingBoxRef.current = box;
+      if (elementRef.current) applyDragBoxStyle(elementRef.current, box);
+      else setVisible(true);
+    },
+    clear() {
+      pendingBoxRef.current = null;
+      setVisible(false);
+    },
+  }), []);
+
+  useLayoutEffect(() => {
+    if (elementRef.current && pendingBoxRef.current) {
+      applyDragBoxStyle(elementRef.current, pendingBoxRef.current);
+    }
+  }, [visible]);
+
+  return visible ? <div ref={elementRef} className="drag-selection-box" /> : null;
+}));
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
@@ -713,15 +817,6 @@ function isDragBlockedTarget(target: EventTarget) {
   );
 }
 
-function normalizeRect(startX: number, startY: number, endX: number, endY: number) {
-  return {
-    left: Math.min(startX, endX),
-    top: Math.min(startY, endY),
-    right: Math.max(startX, endX),
-    bottom: Math.max(startY, endY),
-  };
-}
-
 function listContentPoint(list: HTMLDivElement, clientX: number, clientY: number) {
   const rect = list.getBoundingClientRect();
   return {
@@ -730,7 +825,55 @@ function listContentPoint(list: HTMLDivElement, clientX: number, clientY: number
   };
 }
 
-function marqueeScrollVelocity(pointerY: number, listRect: DOMRect) {
+function measureMarqueeGeometry(list: HTMLDivElement): MeasuredMarqueeGeometry {
+  const measuredListRect = list.getBoundingClientRect();
+  const listRect = {
+    left: measuredListRect.left,
+    top: measuredListRect.top,
+    right: measuredListRect.right,
+    bottom: measuredListRect.bottom,
+    width: measuredListRect.width,
+    height: measuredListRect.height,
+  };
+  const rows = Array.from(list.querySelectorAll<HTMLTableRowElement>("tbody tr[data-entry-path]")).flatMap((row) => {
+    const path = row.dataset.entryPath;
+    if (!path) return [];
+    const rowRect = row.getBoundingClientRect();
+    return [{
+      path,
+      top: rowRect.top - listRect.top + list.scrollTop,
+      bottom: rowRect.bottom - listRect.top + list.scrollTop,
+    }];
+  });
+
+  return {
+    listRect,
+    contentLeft: list.scrollLeft,
+    contentRight: list.scrollLeft + listRect.width,
+    maxScrollTop: Math.max(0, list.scrollHeight - list.clientHeight),
+    rows,
+  };
+}
+
+function listContentPointFromGeometry(
+  list: HTMLDivElement,
+  geometry: MeasuredMarqueeGeometry,
+  clientX: number,
+  clientY: number,
+) {
+  return {
+    x: clientX - geometry.listRect.left + list.scrollLeft,
+    y: clientY - geometry.listRect.top + list.scrollTop,
+  };
+}
+
+function applyDragBoxStyle(element: HTMLDivElement, box: DragBox) {
+  element.style.transform = `translate3d(${box.left}px, ${box.top}px, 0)`;
+  element.style.width = `${box.width}px`;
+  element.style.height = `${box.height}px`;
+}
+
+function marqueeScrollVelocity(pointerY: number, listRect: Pick<DOMRect, "top" | "bottom">) {
   const topDistance = listRect.top + marqueeEdgeSize - pointerY;
   if (topDistance > 0) {
     return -Math.ceil(marqueeMaxScrollSpeed * clamp(topDistance / marqueeEdgeSize, 0, 1));
@@ -749,13 +892,6 @@ function samePathList(left: string[] | null, right: string[]) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
-}
-
-function rectsIntersect(
-  left: { left: number; top: number; right: number; bottom: number },
-  right: { left: number; top: number; right: number; bottom: number },
-) {
-  return left.left < right.right && left.right > right.left && left.top < right.bottom && left.bottom > right.top;
 }
 
 function samePathFit(current: FittedPathSegments, visible: PathSegment[], hidden: PathSegment[] = []) {

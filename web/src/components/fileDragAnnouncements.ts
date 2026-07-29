@@ -1,13 +1,17 @@
 import type { Announcements } from "@dnd-kit/core";
-import { buildFileDragSource, isFileDragData, isFileDropData } from "../fileDrag";
+import { isFileDragData, isFileDropData } from "../fileDrag";
+import type { FileDragData, FileDragSource } from "../fileDrag";
 import type { UIStrings } from "../i18n";
 
-export function createFileDragAnnouncements(labels: UIStrings): Announcements {
+export function createFileDragAnnouncements(
+  labels: UIStrings,
+  resolveSource: (data: FileDragData) => FileDragSource,
+): Announcements {
   return {
     onDragStart({ active }) {
       const data = active.data.current;
       if (!isFileDragData(data)) return undefined;
-      const source = buildFileDragSource(data);
+      const source = resolveSource(data);
       return labels.dragStarted(source.entries[0]?.name ?? data.entry.name, source.entries.length);
     },
     onDragOver({ over }) {

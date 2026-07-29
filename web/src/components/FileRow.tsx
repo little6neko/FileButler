@@ -1,8 +1,9 @@
-import { useCallback, useLayoutEffect, useRef } from "react";
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Entry } from "../api/types";
 import type { FileSelectionModifiers } from "../fileSelection";
+import type { FileSelectionStore } from "../fileSelectionStore";
 import { formatBytes } from "../format";
 import type { UIStrings } from "../i18n";
 import {
@@ -18,9 +19,9 @@ import { FileIcon } from "./FileIcon";
 type Props = {
   paneKey: PaneKey;
   rootId: string;
+  parentPath: string;
   entry: Entry;
-  selected: boolean;
-  dragData: FileDragData;
+  selectionStore: FileSelectionStore;
   dropFeedback: FileDropFeedback | null;
   labels: UIStrings;
   onToggleSelection(path: string): void;
@@ -28,12 +29,12 @@ type Props = {
   onOpen(entry: Entry): void;
 };
 
-export function FileRow({
+export const FileRow = memo(function FileRow({
   paneKey,
   rootId,
+  parentPath,
   entry,
-  selected,
-  dragData,
+  selectionStore,
   dropFeedback,
   labels,
   onToggleSelection,
@@ -41,6 +42,22 @@ export function FileRow({
   onOpen,
 }: Props) {
   const suppressSelectionClickRef = useRef(false);
+  const subscribeToSelection = useCallback(
+    (listener: () => void) => selectionStore.subscribePath(entry.relativePath, listener),
+    [entry.relativePath, selectionStore],
+  );
+  const getSelectionSnapshot = useCallback(
+    () => selectionStore.isSelected(entry.relativePath),
+    [entry.relativePath, selectionStore],
+  );
+  const selected = useSyncExternalStore(subscribeToSelection, getSelectionSnapshot, getSelectionSnapshot);
+  const dragData = useMemo<FileDragData>(() => ({
+    kind: "file-entry",
+    pane: paneKey,
+    rootId,
+    parentPath,
+    entry,
+  }), [entry, paneKey, parentPath, rootId]);
   const {
     attributes: dragAttributes,
     isDragging,
@@ -52,14 +69,14 @@ export function FileRow({
     data: dragData,
     attributes: { role: "button", tabIndex: -1 },
   });
-  const directoryTarget: FileDropData = {
+  const directoryTarget = useMemo<FileDropData>(() => ({
     id: directoryDropId(paneKey, entry.relativePath),
     kind: "directory",
     pane: paneKey,
     rootId,
     path: entry.relativePath,
     label: entry.name,
-  };
+  }), [entry.name, entry.relativePath, paneKey, rootId]);
   const drop = useDroppable({
     id: directoryTarget.id,
     data: directoryTarget,
@@ -137,4 +154,4 @@ export function FileRow({
       <td>{entry.modifiedUnix ? new Date(entry.modifiedUnix * 1000).toLocaleString() : ""}</td>
     </tr>
   );
-}
+});

@@ -12,33 +12,31 @@ import {
 describe("buildFileDragSource", () => {
   it("keeps selected entries in visible order", () => {
     const visibleEntries = [entry("a.txt"), entry("b.txt"), entry("folder", "directory")];
-    const source = buildFileDragSource(dragData(visibleEntries[1], visibleEntries, ["b.txt", "a.txt"]));
+    const source = buildFileDragSource(dragData(visibleEntries[1]), new Set(["b.txt", "a.txt"]), visibleEntries);
     expect(source.entries.map((item) => item.relativePath)).toEqual(["a.txt", "b.txt"]);
   });
 
   it("uses only an unselected dragged entry", () => {
     const visibleEntries = [entry("a.txt"), entry("b.txt")];
-    const source = buildFileDragSource(dragData(visibleEntries[1], visibleEntries, ["a.txt"]));
+    const source = buildFileDragSource(dragData(visibleEntries[1]), new Set(["a.txt"]), visibleEntries);
     expect(source.entries.map((item) => item.relativePath)).toEqual(["b.txt"]);
   });
 });
 
 it("defaults to move for equal roots and copy for different roots", () => {
-  const source = buildFileDragSource(dragData(entry("a.txt"), [entry("a.txt")], []));
+  const source = buildSource(entry("a.txt"));
   expect(defaultDragOperation(source, drop("left", "root-a", "folder", "directory"))).toBe("move");
   expect(defaultDragOperation(source, drop("right", "root-b", ".", "current-directory"))).toBe("copy");
 });
 
 it("rejects the existing parent, self, and descendants without prefix false positives", () => {
-  const fileSource = buildFileDragSource(dragData(entry("a.txt"), [entry("a.txt")], []));
+  const fileSource = buildSource(entry("a.txt"));
   expect(validateFileDrop(fileSource, drop("right", "root-a", ".", "current-directory"))).toEqual({
     valid: false,
     reason: "same-directory",
   });
 
-  const directorySource = buildFileDragSource(
-    dragData(entry("folder", "directory"), [entry("folder", "directory")], []),
-  );
+  const directorySource = buildSource(entry("folder", "directory"));
   expect(validateFileDrop(directorySource, drop("right", "root-a", "folder", "directory"))).toEqual({
     valid: false,
     reason: "inside-source",
@@ -51,16 +49,15 @@ it("rejects the existing parent, self, and descendants without prefix false posi
 });
 
 it("normalizes dot segments before checking no-op and recursive destinations", () => {
-  const fileData = dragData(entry("b/a.txt"), [entry("b/a.txt")], []);
+  const fileEntry = entry("b/a.txt");
+  const fileData = dragData(fileEntry);
   fileData.parentPath = "a/../b";
-  expect(validateFileDrop(buildFileDragSource(fileData), drop("right", "root-a", "b", "current-directory"))).toEqual({
+  expect(validateFileDrop(buildFileDragSource(fileData, new Set(), [fileEntry]), drop("right", "root-a", "b", "current-directory"))).toEqual({
     valid: false,
     reason: "same-directory",
   });
 
-  const directorySource = buildFileDragSource(
-    dragData(entry("folder", "directory"), [entry("folder", "directory")], []),
-  );
+  const directorySource = buildSource(entry("folder", "directory"));
   expect(validateFileDrop(directorySource, drop("right", "root-a", "other/../folder", "directory"))).toEqual({
     valid: false,
     reason: "inside-source",
@@ -68,7 +65,7 @@ it("normalizes dot segments before checking no-op and recursive destinations", (
 });
 
 it("allows different roots and builds the existing OpsRequest shape", () => {
-  const source = buildFileDragSource(dragData(entry("a.txt"), [entry("a.txt")], []));
+  const source = buildSource(entry("a.txt"));
   const target = drop("right", "root-b", "archive", "directory");
   expect(validateFileDrop(source, target)).toEqual({ valid: true });
   expect(buildDragRequest(source, target)).toEqual({
@@ -80,16 +77,18 @@ it("allows different roots and builds the existing OpsRequest shape", () => {
   });
 });
 
-function dragData(clicked: Entry, visibleEntries: Entry[], selectedPaths: string[]): FileDragData {
+function dragData(clicked: Entry): FileDragData {
   return {
     kind: "file-entry",
     pane: "left",
     rootId: "root-a",
     parentPath: ".",
     entry: clicked,
-    selectedPaths,
-    visibleEntries,
   };
+}
+
+function buildSource(clicked: Entry) {
+  return buildFileDragSource(dragData(clicked), new Set(), [clicked]);
 }
 
 function drop(

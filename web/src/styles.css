@@ -240,10 +240,14 @@ body {
 
 .drag-selection-box {
   position: absolute;
+  left: 0;
+  top: 0;
   z-index: 2;
   pointer-events: none;
   border: 1px solid var(--primary);
   background: color-mix(in oklab, var(--primary) 16%, transparent);
+  contain: layout paint;
+  will-change: transform;
 }
 
 .file-list-drop-feedback {
@@ -470,6 +474,10 @@ body {
 
 .file-table td.select-cell [data-slot="checkbox"] {
   margin: 0 auto;
+}
+
+.file-table td.select-cell > input[aria-hidden="true"] {
+  display: none;
 }
 
 .file-name-content {

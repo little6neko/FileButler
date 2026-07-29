@@ -52,6 +52,7 @@ it("keeps deep hidden-folder menus within the available viewport", () => {
 
 it("centers selection checkboxes in file rows", () => {
   expect(rule('.file-table td.select-cell [data-slot="checkbox"]')).toContain("margin: 0 auto;");
+  expect(rule('.file-table td.select-cell > input[aria-hidden="true"]')).toContain("display: none;");
 });
 
 it("keeps file drag cursors idle until dnd-kit activates a drag", () => {

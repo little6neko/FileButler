@@ -10,8 +10,6 @@ export type FileDragData = {
   rootId: string;
   parentPath: string;
   entry: Entry;
-  selectedPaths: string[];
-  visibleEntries: Entry[];
 };
 
 export type FileDragSource = {
@@ -49,10 +47,13 @@ export function directoryDropId(pane: PaneKey, path: string) {
   return `drop:${pane}:directory:${encodeURIComponent(path)}`;
 }
 
-export function buildFileDragSource(data: FileDragData): FileDragSource {
-  const selected = new Set(data.selectedPaths);
-  const entries = selected.has(data.entry.relativePath)
-    ? data.visibleEntries.filter((entry) => selected.has(entry.relativePath))
+export function buildFileDragSource(
+  data: FileDragData,
+  selectedPaths: ReadonlySet<string>,
+  visibleEntries: readonly Entry[],
+): FileDragSource {
+  const entries = selectedPaths.has(data.entry.relativePath)
+    ? visibleEntries.filter((entry) => selectedPaths.has(entry.relativePath))
     : [data.entry];
   return { pane: data.pane, rootId: data.rootId, parentPath: data.parentPath, entries };
 }

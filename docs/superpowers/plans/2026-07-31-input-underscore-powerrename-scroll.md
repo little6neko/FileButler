@@ -2,7 +2,7 @@
 
 **Goal:** Keep underscore glyphs visible in compact inputs and make PowerRename horizontal overflow directly draggable at the visible bottom of its preview viewport.
 
-**Architecture:** Adjust the shared input's internal vertical metrics without changing its outer dimensions. Extend the shared table wrapper with an optional container-class hook, then make the PowerRename preview body the only native two-axis scroll owner. Do not add custom wheel, touch, pointer, or middle-button event handling.
+**Architecture:** Give shared inputs deterministic bundled-font metrics and a one-pixel lower safety area without changing their outer dimensions. Extend the shared table wrapper with an optional container-class hook, then make the PowerRename preview body the only native two-axis scroll owner. Do not add custom wheel, touch, pointer, or middle-button event handling.
 
 **Tech Stack:** React 19, TypeScript, Tailwind CSS, shadcn/Base UI components, Testing Library, Vitest, Playwright Chromium.
 
@@ -14,9 +14,9 @@
 - Modify: `web/src/components/ui/input.tsx`
 - Test: `web/src/components/ui-foundation.test.tsx`
 
-- [ ] Add a shared-input regression test that renders an underscore-containing value and asserts the compact height, zero vertical padding, and explicit line height.
-- [ ] Run the focused test and confirm it fails against the existing `py-1` input style.
-- [ ] Replace vertical padding with `py-0` and add `leading-5`, retaining `h-8`, horizontal padding, responsive font size, and all state styles.
+- [ ] Add a shared-input regression test that renders an underscore-containing value and asserts the compact height, bundled Geist font, zero top padding, one-pixel bottom padding, and explicit line height.
+- [ ] Run the focused test and confirm it fails against the existing symmetric input metrics.
+- [ ] Add `font-sans`, `pt-0`, `pb-px`, and `leading-5`, retaining `h-8`, horizontal padding, responsive font size, and all state styles.
 - [ ] Run the focused UI-foundation tests.
 
 ### Task 2: Give PowerRename One Native Two-Axis Scroll Owner
@@ -44,7 +44,7 @@
 
 - [ ] Run all frontend unit tests.
 - [ ] Run frontend lint and the production build.
-- [ ] Render `a_b_c.txt` in the shared input under Chromium and verify the DOM value and visible underscore.
+- [ ] Render `a_b_c.txt` in the shared input under Chromium at device scale factors 1, 1.25, 1.5, 1.75, and 2; verify the DOM value, Geist font, `32px` height, visually centered text, and visible underscore.
 - [ ] Render PowerRename with long old and new names and verify the preview viewport has `scrollWidth > clientWidth`.
 - [ ] Set and read back the viewport's horizontal `scrollLeft` to verify native horizontal movement.
 - [ ] Verify short names do not produce horizontal overflow.

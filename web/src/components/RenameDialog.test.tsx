@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
@@ -151,6 +151,28 @@ it("renders controls and live preview in separate desktop columns", async () => 
   expect(screen.getByTestId("rename-options-column")).toBeInTheDocument();
   expect(screen.getByTestId("rename-preview-column")).toBeInTheDocument();
   expect(await screen.findByRole("button", { name: "Rename 2 items" })).toBeEnabled();
+});
+
+it("uses the visible preview body as the single native scroll owner", async () => {
+  vi.mocked(api.renamePreview).mockResolvedValue({
+    hasConflict: false,
+    items: [{
+      sourcePath: "a_very_long_filename.txt",
+      oldName: "a_very_long_filename.txt",
+      newName: "another_very_long_filename.txt",
+      changed: true,
+      conflict: false,
+    }],
+  });
+  render(<RenameDialog rootId="data" paths={["a_very_long_filename.txt"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+
+  expect(await screen.findByText("another_very_long_filename.txt")).toBeInTheDocument();
+  const scrollViewport = screen.getByTestId("rename-preview-scroll");
+  const tableContainer = within(scrollViewport).getByRole("table").parentElement;
+
+  expect(scrollViewport).toHaveClass("overflow-auto");
+  expect(tableContainer).toHaveClass("overflow-visible");
+  expect(tableContainer).not.toHaveClass("overflow-x-auto");
 });
 
 it("shows each preset only for an empty focused input", async () => {

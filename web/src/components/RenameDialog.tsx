@@ -173,8 +173,8 @@ export function RenameDialog({
             <div className="border-b bg-muted/40 px-3 py-2">
               <p className="text-xs font-semibold">{labels.livePreview}</p>
             </div>
-            <div className="min-h-0 flex-1 overflow-auto">
-              <Table>
+            <div data-testid="rename-preview-scroll" className="min-h-0 flex-1 overflow-auto">
+              <Table containerClassName="overflow-visible">
                 <TableHeader>
                   <TableRow>
                     <TableHead className="h-8 text-xs">{labels.old}</TableHead>

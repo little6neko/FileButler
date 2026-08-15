@@ -91,11 +91,12 @@ it("uses the opposite pane path as operation destination", async () => {
   );
 });
 
-it("opens mkdir in an app modal instead of the browser prompt", async () => {
+it("creates a mkdir job from the name dialog without a second confirmation", async () => {
   const prompt = vi.spyOn(window, "prompt").mockReturnValue("browser-folder");
   vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
   vi.mocked(api.browse).mockResolvedValue([]);
-  vi.mocked(api.opsDryRun).mockResolvedValue({ hasConflict: false, items: [] });
+  vi.mocked(api.opsCreateJob).mockResolvedValue({ id: "job-mkdir" });
+  vi.mocked(api.job).mockRejectedValue(new Error("stop legacy polling"));
   render(<DualPane />);
 
   await screen.findByRole("region", { name: "Left pane" });
@@ -107,17 +108,21 @@ it("opens mkdir in an app modal instead of the browser prompt", async () => {
   await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
 
   await waitFor(() =>
-    expect(api.opsDryRun).toHaveBeenCalledWith(
-      expect.objectContaining({
+    expect(api.opsCreateJob).toHaveBeenCalledWith(
+      {
         type: "mkdir",
         sourceRoot: "root",
         sources: [],
         destRoot: "root",
         destPath: ".",
         newName: "modal-folder",
-      }),
+      },
     ),
   );
+  expect(api.opsDryRun).not.toHaveBeenCalled();
+  expect(screen.queryByRole("dialog", { name: "mkdir preview" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "Directory name" })).not.toBeInTheDocument();
+  expect(toast.success).toHaveBeenCalledWith("Background job created");
   prompt.mockRestore();
 });
 

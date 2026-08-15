@@ -377,9 +377,18 @@ export function DualPane({
         <MkdirDialog
           labels={labels}
           onClose={() => setMkdirOpen(false)}
-          onSubmit={(name) => {
+          onSubmit={async (name) => {
+            const source = activeState();
+            const job = await api.opsCreateJob({
+              type: "mkdir",
+              sourceRoot: source.rootId,
+              sources: [],
+              destRoot: source.rootId,
+              destPath: source.path,
+              newName: name,
+            });
+            handleJobCreated(job.id);
             setMkdirOpen(false);
-            createMkdirPreview(name);
           }}
         />
       ) : null}
@@ -493,20 +502,6 @@ export function DualPane({
         sources: selectionFor(which),
         destRoot: type === "delete" ? undefined : dest.rootId,
         destPath: type === "delete" ? undefined : dest.path,
-      },
-    });
-  }
-
-  function createMkdirPreview(name: string) {
-    const source = activeState();
-    setPreviewState({
-      request: {
-        type: "mkdir",
-        sourceRoot: source.rootId,
-        sources: [],
-        destRoot: source.rootId,
-        destPath: source.path,
-        newName: name,
       },
     });
   }

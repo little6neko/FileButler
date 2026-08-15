@@ -2,18 +2,21 @@ import type { ReactNode } from "react";
 import { BriefcaseBusiness, Files, ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { UIStrings } from "../i18n";
+import { appVersion } from "../version";
 
 export function AppShell({
   labels,
   activeJobCount,
   onJobsOpen,
   languageControl,
+  version = appVersion,
   children,
 }: {
   labels: UIStrings;
   activeJobCount: number;
   onJobsOpen(): void;
   languageControl: ReactNode;
+  version?: string;
   children: ReactNode;
 }) {
   return (
@@ -22,6 +25,12 @@ export function AppShell({
         <div className="mb-4 grid size-8 place-items-center rounded-lg bg-blue-600 font-bold text-white shadow-sm">F</div>
         <Button aria-current="page" aria-label={labels.files} title={labels.files} size="icon" variant="secondary"><Files /></Button>
         <Button aria-label={labels.jobs} title={labels.jobs} size="icon" variant="ghost" onClick={onJobsOpen}><ListChecks /></Button>
+        <span
+          className="mt-auto max-w-full truncate px-0.5 text-center text-[10px] font-medium leading-4 text-slate-500"
+          title={`FileButler ${version}`}
+        >
+          {version}
+        </span>
       </nav>
       <section className="grid min-w-0 grid-rows-[48px_minmax(0,1fr)] overflow-hidden">
         <header className="flex items-center gap-3 border-b bg-white px-4">

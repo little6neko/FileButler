@@ -52,6 +52,8 @@ jobs:
           push: true
           tags: ${{ steps.metadata.outputs.tags }}
           labels: ${{ steps.metadata.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
           provenance: false
           sbom: false
           cache-from: type=gha

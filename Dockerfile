@@ -1,4 +1,8 @@
+ARG VERSION=dev
+
 FROM node:25-alpine AS frontend
+ARG VERSION
+ENV VITE_APP_VERSION=${VERSION}
 WORKDIR /src/web
 COPY web/package*.json ./
 RUN npm ci
@@ -15,7 +19,7 @@ COPY --from=frontend /src/web/dist ./web/dist
 RUN go build -o /out/filebutler ./cmd/filebutler
 
 FROM alpine:3.22
-ARG VERSION=0.1.5
+ARG VERSION
 LABEL org.opencontainers.image.version="${VERSION}"
 RUN apk add --no-cache ca-certificates
 WORKDIR /app

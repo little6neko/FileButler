@@ -74,8 +74,67 @@ func TestRunnerWritesAuditRecordForCompletedItem(t *testing.T) {
 	}
 }
 
+func TestRunnerPublishesLifecycleEvents(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	actorID := insertActor(t, db)
+	broker := NewBroker(1)
+	store := Store{DB: db, Publisher: broker}
+	events, unsubscribe := broker.Subscribe()
+	defer unsubscribe()
+	if err := store.Create(context.Background(), Job{
+		ID: "job_1", Type: "copy", ActorID: actorID, SourceRootID: "a",
+		PlanJSON: "{}", RootSnapshotJSON: "{}", ProgressTotal: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	runner := Runner{Store: store, Audit: audit.Store{DB: db}, Executor: fakeExecutor{failIndex: -1}}
+	if err := runner.Run(context.Background(), "job_1", []ExecutableItem{{Index: 0, Action: "copy", SourceRoot: "a", SourcePath: "a.txt"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	wantStatuses := []Status{StatusPending, StatusRunning, StatusRunning, StatusCompleted}
+	for index, want := range wantStatuses {
+		event, ok := <-events
+		if !ok {
+			t.Fatalf("event stream closed at index %d", index)
+		}
+		if event.Job.EventVersion != int64(index+1) || event.Job.Status != want {
+			t.Fatalf("event %d = %+v, want version=%d status=%s", index, event, index+1, want)
+		}
+	}
+}
+
+func TestRunnerDoesNotExecuteTerminalJobAgain(t *testing.T) {
+	db := testutil.OpenTestDB(t)
+	actorID := insertActor(t, db)
+	store := Store{DB: db}
+	if err := store.Create(context.Background(), Job{ID: "job_1", Type: "copy", ActorID: actorID, SourceRootID: "a", PlanJSON: "{}", RootSnapshotJSON: "{}"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Finish(context.Background(), "job_1", StatusCompleted, ""); err != nil {
+		t.Fatal(err)
+	}
+	executor := &countingExecutor{}
+	runner := Runner{Store: store, Audit: audit.Store{DB: db}, Executor: executor}
+	if err := runner.Run(context.Background(), "job_1", []ExecutableItem{{Index: 0}}); err != nil {
+		t.Fatal(err)
+	}
+	if executor.calls != 0 {
+		t.Fatalf("executor called %d times for terminal job", executor.calls)
+	}
+}
+
 type fakeExecutor struct {
 	failIndex int
+}
+
+type countingExecutor struct {
+	calls int
+}
+
+func (e *countingExecutor) ExecuteItem(context.Context, ExecutableItem) error {
+	e.calls++
+	return nil
 }
 
 func (f fakeExecutor) ExecuteItem(ctx context.Context, item ExecutableItem) error {

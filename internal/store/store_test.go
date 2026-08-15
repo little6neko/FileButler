@@ -27,10 +27,27 @@ func TestOpenAppliesMigrations(t *testing.T) {
 		}
 		tables[name] = true
 	}
-	for _, name := range []string{"schema_migrations", "users", "sessions", "jobs", "job_items", "audit_records"} {
+	for _, name := range []string{"schema_migrations", "users", "sessions", "jobs", "job_items", "audit_records", "job_event_clock"} {
 		if !tables[name] {
 			t.Fatalf("missing table %s; tables=%v", name, tables)
 		}
+	}
+
+	var eventVersionColumn int
+	if err := db.QueryRowContext(context.Background(), `
+select count(1) from pragma_table_info('jobs') where name = 'event_version'`).Scan(&eventVersionColumn); err != nil {
+		t.Fatal(err)
+	}
+	if eventVersionColumn != 1 {
+		t.Fatal("jobs.event_version migration was not applied")
+	}
+
+	var clock int64
+	if err := db.QueryRowContext(context.Background(), `select version from job_event_clock where id = 1`).Scan(&clock); err != nil {
+		t.Fatal(err)
+	}
+	if clock != 0 {
+		t.Fatalf("initial event clock = %d, want 0", clock)
 	}
 }
 

@@ -25,6 +25,7 @@ type Deps struct {
 	AuditStore   audit.Store
 	OpsRunner    jobs.Runner
 	RenameRunner jobs.Runner
+	JobBroker    *jobs.Broker
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -53,6 +54,7 @@ func NewRouter(deps Deps) http.Handler {
 		protected.Post("/api/rename/jobs", rename.CreateJobHandler(deps.Browser, deps.JobStore, deps.RenameRunner))
 		protected.Post("/api/rename/single/jobs", rename.SingleRenameCreateJobHandler(deps.Browser, deps.JobStore, deps.RenameRunner))
 		protected.Get("/api/jobs", jobs.ListHandler(deps.JobStore))
+		protected.Get("/api/jobs/events", jobs.EventsHandler(deps.JobStore, deps.JobBroker))
 		protected.Get("/api/jobs/{id}", jobs.GetHandler(deps.JobStore))
 		protected.Post("/api/jobs/{id}/cancel", jobs.CancelHandler(deps.JobStore))
 		protected.Get("/api/audit", auditHandler(deps.AuditStore))

@@ -47,6 +47,7 @@ export type UIStrings = {
   runningJobs: string;
   completedJobs: string;
   emptyJobs: string;
+  jobsReconnecting: string;
   jobProgress(type: string): string;
   refresh: string;
   resizePanes: string;
@@ -183,6 +184,7 @@ export const strings: Record<Language, UIStrings> = {
     runningJobs: "Running",
     completedJobs: "Completed",
     emptyJobs: "No background jobs yet",
+    jobsReconnecting: "Reconnecting",
     jobProgress: (type) => `${strings.en.operationType(type)} progress`,
     refresh: "Refresh",
     resizePanes: "Resize panes",
@@ -320,6 +322,7 @@ export const strings: Record<Language, UIStrings> = {
     runningJobs: "进行中",
     completedJobs: "已完成",
     emptyJobs: "暂无后台任务",
+    jobsReconnecting: "正在重新连接",
     jobProgress: (type) => `${strings["zh-CN"].operationType(type)}进度`,
     refresh: "刷新",
     resizePanes: "调整左右栏宽度",

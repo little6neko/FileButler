@@ -70,6 +70,14 @@ create table if not exists audit_records (
   created_at text not null default current_timestamp
 );
 `},
+	{Version: 2, SQL: `
+alter table jobs add column event_version integer not null default 0;
+create table if not exists job_event_clock (
+  id integer primary key check (id = 1),
+  version integer not null
+);
+insert or ignore into job_event_clock(id, version) values (1, 0);
+`},
 }
 
 func ApplyMigrations(ctx context.Context, db *sql.DB) error {

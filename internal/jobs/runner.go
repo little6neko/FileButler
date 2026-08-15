@@ -34,6 +34,15 @@ func (r Runner) Run(ctx context.Context, jobID string, items []ExecutableItem) e
 	if err != nil {
 		return err
 	}
+	if job.Status.IsTerminal() {
+		return nil
+	}
+	if job.Status == StatusCancelRequested {
+		return r.Store.Finish(ctx, jobID, StatusCanceled, "")
+	}
+	if job.Status != StatusRunning {
+		return nil
+	}
 	failures := 0
 	for _, item := range items {
 		cancel, err := r.Store.IsCancelRequested(ctx, jobID)
@@ -66,7 +75,7 @@ func (r Runner) Run(ctx context.Context, jobID string, items []ExecutableItem) e
 			result.ErrorCode = "operation_failed"
 			result.ErrorMessage = execErr.Error()
 		}
-		if err := r.Store.AddItemResult(ctx, result); err != nil {
+		if err := r.Store.RecordItemResult(ctx, result); err != nil {
 			_ = r.Store.Finish(ctx, jobID, StatusFailed, err.Error())
 			return err
 		}
@@ -84,10 +93,6 @@ func (r Runner) Run(ctx context.Context, jobID string, items []ExecutableItem) e
 				_ = r.Store.Finish(ctx, jobID, StatusFailed, err.Error())
 				return err
 			}
-		}
-		if err := r.Store.IncrementProgress(ctx, jobID); err != nil {
-			_ = r.Store.Finish(ctx, jobID, StatusFailed, err.Error())
-			return err
 		}
 	}
 	if failures > 0 {

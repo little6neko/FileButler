@@ -1,4 +1,4 @@
-import type { Entry, Job, OpsRequest, PlanItem, RenameRequest, Root, SingleRenameRequest } from "./types";
+import type { Entry, Job, JobDetail, OpsRequest, PlanItem, RenameRequest, Root, SingleRenameRequest } from "./types";
 
 export class APIError extends Error {
   code: string;
@@ -62,7 +62,7 @@ export const api = {
   singleRenameCreateJob: (payload: SingleRenameRequest) =>
     request<{ id: string }>("/api/rename/single/jobs", { method: "POST", body: JSON.stringify(payload) }),
   jobs: () => request<Job[]>("/api/jobs"),
-  job: (id: string) => request<Job & { items: PlanItem[] }>(`/api/jobs/${encodeURIComponent(id)}`),
+  job: (id: string) => request<JobDetail>(`/api/jobs/${encodeURIComponent(id)}`),
   cancelJob: (id: string) =>
     request<{ id: string }>(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
 };

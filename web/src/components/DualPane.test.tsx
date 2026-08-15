@@ -1,8 +1,10 @@
-import { fireEvent, within, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, within, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import { api } from "../api/client";
+import type { Job } from "../api/types";
+import { JobEventsStore } from "../jobEvents";
 import { DualPane } from "./DualPane";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -236,15 +238,6 @@ it("keeps PowerRename settings only after a rename job is created", async () => 
   ]);
   vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
   vi.mocked(api.renameCreateJob).mockResolvedValue({ id: "job-rename" });
-  vi.mocked(api.job).mockResolvedValue({
-    id: "job-rename",
-    type: "rename",
-    status: "completed",
-    progressTotal: 1,
-    progressDone: 1,
-    errorMessage: "",
-    items: [],
-  });
   render(<DualPane />);
 
   const leftPane = await screen.findByRole("region", { name: "Left pane" });
@@ -275,6 +268,8 @@ it("keeps PowerRename settings only after a rename job is created", async () => 
 });
 
 it("clears hidden selection after a rename job refreshes the pane", async () => {
+  const jobEvents = new JobEventsStore();
+  jobEvents.handleSnapshot({ cursor: 0, jobs: [] });
   let renamed = false;
   vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
   vi.mocked(api.browse).mockImplementation(async () =>
@@ -286,16 +281,7 @@ it("clears hidden selection after a rename job refreshes the pane", async () => 
     renamed = true;
     return { id: "job-rename" };
   });
-  vi.mocked(api.job).mockResolvedValue({
-    id: "job-rename",
-    type: "rename",
-    status: "completed",
-    progressTotal: 1,
-    progressDone: 1,
-    errorMessage: "",
-    items: [],
-  });
-  render(<DualPane />);
+  render(<DualPane jobEventsStore={jobEvents} />);
 
   const leftPane = await screen.findByRole("region", { name: "Left pane" });
   await userEvent.click(await within(leftPane).findByLabelText("Select old.txt"));
@@ -304,6 +290,11 @@ it("clears hidden selection after a rename job refreshes the pane", async () => 
   await userEvent.clear(within(dialog).getByRole("textbox"));
   await userEvent.type(within(dialog).getByRole("textbox"), "new.txt");
   await userEvent.click(within(dialog).getByRole("button", { name: "Rename" }));
+
+  await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Background job created"));
+  act(() => {
+    jobEvents.handleChanged({ job: makeJob({ id: "job-rename", type: "rename", status: "completed", eventVersion: 1 }) });
+  });
 
   expect(await within(leftPane).findByLabelText("Select new.txt")).not.toBeChecked();
   await waitFor(() => expect(screen.getByRole("button", { name: "Rename" })).toBeDisabled());
@@ -335,6 +326,8 @@ it("clears selection when navigating to another folder", async () => {
 });
 
 it("refreshes both panes after an operation job reaches a terminal status", async () => {
+  const jobEvents = new JobEventsStore();
+  jobEvents.handleSnapshot({ cursor: 0, jobs: [] });
   vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
   vi.mocked(api.browse).mockResolvedValue([
     { name: "source.txt", relativePath: "source.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
@@ -344,16 +337,7 @@ it("refreshes both panes after an operation job reaches a terminal status", asyn
     items: [{ sourcePath: "source.txt", destPath: "source.txt", conflict: false, changed: true }],
   });
   vi.mocked(api.opsCreateJob).mockResolvedValue({ id: "job-1" });
-  vi.mocked(api.job).mockResolvedValue({
-    id: "job-1",
-    type: "copy",
-    status: "completed",
-    progressTotal: 1,
-    progressDone: 1,
-    errorMessage: "",
-    items: [],
-  });
-  render(<DualPane />);
+  render(<DualPane jobEventsStore={jobEvents} />);
 
   const leftPane = await screen.findByRole("region", { name: "Left pane" });
   await waitFor(() => expect(api.browse).toHaveBeenCalledTimes(2));
@@ -365,8 +349,17 @@ it("refreshes both panes after an operation job reaches a terminal status", asyn
 
   await waitFor(() => expect(api.opsCreateJob).toHaveBeenCalled());
   expect(toast.success).toHaveBeenCalledWith("Background job created");
-  await waitFor(() => expect(api.job).toHaveBeenCalledWith("job-1"));
+
+  act(() => {
+    jobEvents.handleChanged({ job: makeJob({ id: "job-1", status: "running", eventVersion: 1 }) });
+  });
+  expect(api.browse).not.toHaveBeenCalled();
+
+  act(() => {
+    jobEvents.handleChanged({ job: makeJob({ id: "job-1", status: "completed", progressDone: 1, eventVersion: 2 }) });
+  });
   await waitFor(() => expect(api.browse).toHaveBeenCalledTimes(2));
+  expect(api.job).not.toHaveBeenCalled();
   expect(screen.queryByRole("dialog", { name: "Jobs" })).not.toBeInTheDocument();
   expect(within(leftPane).getByLabelText("Select source.txt")).not.toBeChecked();
   expect(screen.getByRole("button", { name: "Copy to right pane" })).toBeDisabled();
@@ -518,4 +511,22 @@ function mockFourEntries() {
     { name: "c.txt", relativePath: "c.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
     { name: "d.txt", relativePath: "d.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
   ]);
+}
+
+function makeJob(overrides: Partial<Job> = {}): Job {
+  return {
+    id: "job-1",
+    type: "copy",
+    status: "pending",
+    actorId: 1,
+    sourceRootId: "root",
+    progressTotal: 1,
+    progressDone: 0,
+    cancelRequested: false,
+    errorMessage: "",
+    createdAtUnix: 1,
+    updatedAtUnix: 1,
+    eventVersion: 1,
+    ...overrides,
+  };
 }

@@ -43,7 +43,13 @@ func main() {
 		DB:            db,
 		SessionMaxAge: time.Duration(cfg.Session.MaxAgeSeconds) * time.Second,
 	}
-	jobStore := jobs.Store{DB: db}
+	baseJobStore := jobs.Store{DB: db}
+	currentEventVersion, err := baseJobStore.CurrentEventVersion(context.Background())
+	if err != nil {
+		log.Fatalf("read job event version: %v", err)
+	}
+	jobBroker := jobs.NewBroker(currentEventVersion + 1)
+	jobStore := jobs.Store{DB: db, Publisher: jobBroker}
 	auditStore := audit.Store{DB: db}
 	opsExecutor := ops.Executor{Resolver: resolver}
 	r := web.NewRouter(web.Deps{
@@ -56,6 +62,7 @@ func main() {
 		AuditStore:   auditStore,
 		OpsRunner:    jobs.Runner{Store: jobStore, Audit: auditStore, Executor: ops.JobExecutor{Executor: opsExecutor}},
 		RenameRunner: jobs.Runner{Store: jobStore, Audit: auditStore, Executor: rename.Executor{Resolver: resolver}},
+		JobBroker:    jobBroker,
 	})
 
 	log.Printf("FileButler listening on %s", cfg.Listen)

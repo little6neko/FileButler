@@ -47,10 +47,12 @@ func TestInitStatusEndpoint(t *testing.T) {
 
 func TestProtectedRoutesRequireLogin(t *testing.T) {
 	router := testRouter(t)
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/roots", nil))
-	if rec.Code != http.StatusUnauthorized {
-		t.Fatalf("status=%d", rec.Code)
+	for _, path := range []string{"/api/roots", "/api/jobs/events"} {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("%s status=%d", path, rec.Code)
+		}
 	}
 }
 
@@ -178,14 +180,17 @@ func testRouterWithRoot(t *testing.T, root string) http.Handler {
 	resolver := roots.NewResolver([]roots.Root{{ID: "data", Name: "Data", Path: root}})
 	cfg := config.Config{Session: config.SessionConfig{CookieName: "filebutler_session"}, Roots: []config.RootConfig{{ID: "data", Name: "Data", Path: root}}}
 	authSvc := auth.Service{DB: db, SessionMaxAge: time.Hour}
+	jobBroker := jobs.NewBroker(1)
+	jobStore := jobs.Store{DB: db, Publisher: jobBroker}
 	return NewRouter(Deps{
 		Config:     cfg,
 		Auth:       authSvc,
 		Roots:      resolver,
 		Browser:    browser.Service{Resolver: resolver},
 		OpsPlanner: ops.Planner{Resolver: resolver},
-		JobStore:   jobs.Store{DB: db},
+		JobStore:   jobStore,
 		AuditStore: audit.Store{DB: db},
+		JobBroker:  jobBroker,
 	})
 }
 

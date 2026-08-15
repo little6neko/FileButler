@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "./api/client";
 import { DualPane } from "./components/DualPane";
 import { InitScreen } from "./components/InitScreen";
+import { JobEventsProvider } from "./components/JobEventsProvider";
 import { LanguageSelect } from "./components/LanguageSelect";
 import { LoginScreen } from "./components/LoginScreen";
 import { resolveLanguage, strings } from "./i18n";
@@ -37,7 +38,11 @@ export default function App() {
   }, []);
 
   if (state === "ready") {
-    return <DualPane labels={t} languageMode={languageMode} onLanguageModeChange={setLanguageMode} />;
+    return (
+      <JobEventsProvider>
+        <DualPane labels={t} languageMode={languageMode} onLanguageModeChange={setLanguageMode} />
+      </JobEventsProvider>
+    );
   }
 
   return (

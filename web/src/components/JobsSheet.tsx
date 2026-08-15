@@ -1,97 +1,112 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { api } from "../api/client";
-import type { Job, PlanItem } from "../api/types";
+import type { Job, JobDetail } from "../api/types";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
+import { activeJobStatuses, JobEventsStore, mergeJobDetail } from "../jobEvents";
+import { useOptionalJobEventsStore } from "../jobEventsContext";
 
-type JobDetail = Job & { items: PlanItem[] };
 type Filter = "all" | "running" | "completed";
-
-const activeStatuses = new Set(["pending", "running", "cancel_requested"]);
 
 export function JobsSheet({
   open,
   onOpenChange,
   onActiveCountChange,
+  eventsStore,
   labels = strings.en,
 }: {
   open: boolean;
   onOpenChange(open: boolean): void;
-  onActiveCountChange(count: number): void;
+  onActiveCountChange?(count: number): void;
+  eventsStore?: JobEventsStore;
   labels?: UIStrings;
 }) {
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [selectedID, setSelectedID] = useState<string | null>(null);
+  const contextEventsStore = useOptionalJobEventsStore();
+  const [fallbackEventsStore] = useState(() => new JobEventsStore());
+  const jobEvents = eventsStore ?? contextEventsStore ?? fallbackEventsStore;
+  const eventState = useSyncExternalStore(jobEvents.subscribe, jobEvents.getSnapshot, jobEvents.getSnapshot);
+  const [requestedSelectedID, setRequestedSelectedID] = useState<string | null>(null);
   const [detail, setDetail] = useState<JobDetail | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
+  const reconciledSnapshots = useRef(new Map<string, number>());
+  const jobs = eventState.jobs;
+  const selectedID = requestedSelectedID && jobs.some((job) => job.id === requestedSelectedID)
+    ? requestedSelectedID
+    : jobs[0]?.id ?? null;
 
   useEffect(() => {
-    let active = true;
-
-    async function loadJobs() {
-      let list: Job[];
-      try {
-        list = (await api.jobs()) ?? [];
-      } catch {
-        return;
-      }
-      if (!active) return;
-      setJobs(list);
-      setSelectedID((current) => (current && list.some((job) => job.id === current) ? current : list[0]?.id ?? null));
-      onActiveCountChange(list.filter((job) => activeStatuses.has(job.status)).length);
-    }
-
-    void loadJobs();
-    const interval = window.setInterval(loadJobs, 2000);
-    return () => {
-      active = false;
-      window.clearInterval(interval);
-    };
-  }, [onActiveCountChange]);
+    onActiveCountChange?.(eventState.activeCount);
+  }, [eventState.activeCount, onActiveCountChange]);
 
   useEffect(() => {
     if (!open || !selectedID) return;
     const jobID = selectedID;
     let active = true;
 
-    async function loadDetail() {
-      let next: JobDetail;
-      try {
-        next = await api.job(jobID);
-      } catch {
-        return;
-      }
-      if (active) setDetail(next);
-    }
-
-    void loadDetail();
-    const interval = window.setInterval(loadDetail, 1000);
+    void api.job(jobID).then(
+      (next) => {
+        if (!active) return;
+        jobEvents.hydrateItems(jobID, next.items);
+        setDetail(next);
+      },
+      () => undefined,
+    );
     return () => {
       active = false;
-      window.clearInterval(interval);
     };
-  }, [open, selectedID]);
+  }, [jobEvents, open, selectedID]);
+
+  useEffect(() => {
+    if (!open || !selectedID || !detail || detail.id !== selectedID || eventState.snapshotRevision <= 1) return;
+    const snapshotRevision = eventState.snapshotRevision;
+    const previousRevision = reconciledSnapshots.current.get(selectedID) ?? 1;
+    if (snapshotRevision <= previousRevision) return;
+    reconciledSnapshots.current.set(selectedID, snapshotRevision);
+    const eventJob = jobs.find((job) => job.id === selectedID);
+    if (!eventJob || eventJob.eventVersion <= detail.eventVersion) return;
+
+    let active = true;
+    void api.job(selectedID).then(
+      (next) => {
+        if (!active) return;
+        jobEvents.hydrateItems(selectedID, next.items);
+        setDetail(next);
+      },
+      () => undefined,
+    );
+    return () => {
+      active = false;
+    };
+  }, [detail, eventState.snapshotRevision, jobEvents, jobs, open, selectedID]);
 
   const filteredJobs = useMemo(
     () =>
       jobs.filter((job) => {
-        if (filter === "running") return activeStatuses.has(job.status);
-        if (filter === "completed") return !activeStatuses.has(job.status);
+        if (filter === "running") return activeJobStatuses.has(job.status);
+        if (filter === "completed") return !activeJobStatuses.has(job.status);
         return true;
       }),
     [filter, jobs],
   );
-  const activeCount = jobs.filter((job) => activeStatuses.has(job.status)).length;
+  const selectedEventJob = selectedID ? jobs.find((job) => job.id === selectedID) : undefined;
+  const displayedDetail = detail && selectedEventJob
+    ? mergeJobDetail(detail, selectedEventJob, jobEvents.getItems(selectedEventJob.id))
+    : detail;
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent aria-label={labels.jobs} className="w-[420px] gap-0 overflow-hidden sm:max-w-[420px]">
         <SheetHeader className="border-b">
           <SheetTitle>{labels.jobs}</SheetTitle>
-          <SheetDescription>{labels.activeJobs(activeCount)}</SheetDescription>
+          <SheetDescription className="flex items-center gap-2">
+            <span>{labels.activeJobs(eventState.activeCount)}</span>
+            {eventState.connectionState === "reconnecting" ? (
+              <span className="text-amber-700">{labels.jobsReconnecting}</span>
+            ) : null}
+          </SheetDescription>
         </SheetHeader>
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
@@ -120,7 +135,7 @@ export function JobsSheet({
                     type="button"
                     className="rounded-lg border bg-white p-3 text-left"
                     aria-pressed={selectedID === job.id}
-                    onClick={() => setSelectedID(job.id)}
+                    onClick={() => setRequestedSelectedID(job.id)}
                   >
                     <span className="flex items-center justify-between text-xs font-semibold">
                       <span>{labels.operationType(job.type)}</span>
@@ -139,7 +154,7 @@ export function JobsSheet({
             )}
           </div>
 
-          {detail?.id === selectedID ? <JobDetails detail={detail} labels={labels} /> : null}
+          {displayedDetail?.id === selectedID ? <JobDetails detail={displayedDetail} labels={labels} /> : null}
         </div>
       </SheetContent>
     </Sheet>
@@ -155,20 +170,24 @@ function JobDetails({ detail, labels }: { detail: JobDetail; labels: UIStrings }
       </p>
       {detail.items.length ? (
         <ul className="mt-3 grid gap-1 text-xs text-slate-600">
-          {detail.items.map((item, index) => {
-            const destination = item.destPath ?? item.targetPath;
-            return (
-              <li key={`${item.sourcePath}-${destination ?? index}`} className="rounded border bg-slate-50 px-2 py-1.5">
-                <span className="font-medium text-slate-800">{item.sourcePath}</span>
-                {destination ? <span className="ml-2 text-slate-400">→ {destination}</span> : null}
-                {item.conflict ? <span className="ml-2 text-destructive">{item.errorText || item.errorCode}</span> : null}
-              </li>
-            );
-          })}
+          {detail.items.map((item) => (
+            <li key={item.index} className="rounded border bg-slate-50 px-2 py-1.5">
+              <span className="font-medium text-slate-800">{item.sourcePath}</span>
+              {item.destPath ? <span className="ml-2 text-slate-400">→ {item.destPath}</span> : null}
+              {item.status === "failed" ? (
+                <span className="ml-2 text-destructive">{item.errorMessage || item.errorCode}</span>
+              ) : null}
+            </li>
+          ))}
         </ul>
       ) : null}
-      {activeStatuses.has(detail.status) ? (
-        <Button className="mt-3" variant="outline" size="sm" onClick={() => void api.cancelJob(detail.id)}>
+      {activeJobStatuses.has(detail.status) ? (
+        <Button
+          className="mt-3"
+          variant="outline"
+          size="sm"
+          onClick={() => void api.cancelJob(detail.id).catch(() => undefined)}
+        >
           {labels.cancel}
         </Button>
       ) : null}

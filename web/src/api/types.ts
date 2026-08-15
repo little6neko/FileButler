@@ -76,7 +76,36 @@ export type Job = {
   id: string;
   type: string;
   status: string;
+  actorId: number;
+  sourceRootId: string;
+  destRootId?: string;
   progressTotal: number;
   progressDone: number;
+  cancelRequested: boolean;
   errorMessage: string;
+  createdAtUnix: number;
+  updatedAtUnix: number;
+  finishedAtUnix?: number;
+  eventVersion: number;
+};
+
+export type JobItem = {
+  index: number;
+  sourcePath: string;
+  destPath?: string;
+  status: string;
+  errorCode: string;
+  errorMessage: string;
+};
+
+export type JobDetail = Job & { items: JobItem[] };
+
+export type JobEvent = {
+  job: Job;
+  item?: JobItem;
+};
+
+export type JobSnapshot = {
+  cursor: number;
+  jobs: Job[];
 };

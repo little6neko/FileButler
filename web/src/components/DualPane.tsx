@@ -32,6 +32,8 @@ import type { FileSelectionModifiers } from "../fileSelection";
 import { createFileSelectionStore, type FileSelectionStore } from "../fileSelectionStore";
 import { strings } from "../i18n";
 import type { LanguageMode, UIStrings } from "../i18n";
+import { JobEventsStore } from "../jobEvents";
+import { useOptionalJobEventsStore } from "../jobEventsContext";
 import { mediaKindForPath } from "../media";
 import type { MediaKind } from "../media";
 import { ActionToolbar } from "./ActionToolbar";
@@ -72,10 +74,12 @@ export function DualPane({
   labels = strings.en,
   languageMode = "auto",
   onLanguageModeChange = () => undefined,
+  jobEventsStore,
 }: {
   labels?: UIStrings;
   languageMode?: LanguageMode;
   onLanguageModeChange?(mode: LanguageMode): void;
+  jobEventsStore?: JobEventsStore;
 }) {
   const [roots, setRoots] = useState<Root[]>([]);
   const [activePane, setActivePane] = useState<PaneKey>("left");
@@ -86,7 +90,6 @@ export function DualPane({
   const [powerRenameOpen, setPowerRenameOpen] = useState(false);
   const [powerRenameOptions, setPowerRenameOptions] = useState<RenameOptions | undefined>();
   const [jobsOpen, setJobsOpen] = useState(false);
-  const [activeJobCount, setActiveJobCount] = useState(0);
   const [leftPanePercent, setLeftPanePercent] = useState(50);
   const [left, setLeft] = useState<PaneState>({ rootId: "", path: ".", entries: [], loading: false, error: null });
   const [right, setRight] = useState<PaneState>({ rootId: "", path: ".", entries: [], loading: false, error: null });
@@ -98,6 +101,11 @@ export function DualPane({
   const [dropFeedback, setDropFeedback] = useState<FileDropFeedback | null>(null);
   const dragSourceRef = useRef<FileDragSource | null>(null);
   const paneStatesRef = useRef({ left, right });
+  const refreshStateRef = useRef({ running: false, pending: false });
+  const contextJobEvents = useOptionalJobEventsStore();
+  const [fallbackJobEvents] = useState(() => new JobEventsStore());
+  const jobEvents = jobEventsStore ?? contextJobEvents ?? fallbackJobEvents;
+  const jobEventsState = useSyncExternalStore(jobEvents.subscribe, jobEvents.getSnapshot, jobEvents.getSnapshot);
   const sensors = useSensors(useSensor(PointerSensor, pointerSensorOptions));
 
   useLayoutEffect(() => {
@@ -151,31 +159,38 @@ export function DualPane({
     if (right.rootId) void loadPane("right", right.rootId, right.path);
   }, [right.rootId, right.path, loadPane]);
 
-  function refreshBothPanes() {
-    if (left.rootId) void loadPane("left", left.rootId, left.path);
-    if (right.rootId) void loadPane("right", right.rootId, right.path);
-  }
+  const refreshBothPanes = useCallback(async () => {
+    const refreshes: Promise<void>[] = [];
+    if (left.rootId) refreshes.push(loadPane("left", left.rootId, left.path));
+    if (right.rootId) refreshes.push(loadPane("right", right.rootId, right.path));
+    await Promise.all(refreshes);
+  }, [left.rootId, left.path, loadPane, right.rootId, right.path]);
+
+  const requestPaneRefresh = useCallback(() => {
+    const state = refreshStateRef.current;
+    if (state.running) {
+      state.pending = true;
+      return;
+    }
+    state.running = true;
+    void (async () => {
+      try {
+        do {
+          state.pending = false;
+          await refreshBothPanes();
+        } while (state.pending);
+      } finally {
+        state.running = false;
+      }
+    })();
+  }, [refreshBothPanes]);
+
+  useEffect(() => jobEvents.subscribeTerminal(requestPaneRefresh), [jobEvents, requestPaneRefresh]);
 
   function handleJobCreated(id: string) {
     clearSelections();
     toast.success(labels.jobCreated);
-    void refreshWhenJobFinishes(id);
-  }
-
-  async function refreshWhenJobFinishes(id: string) {
-    for (let attempt = 0; attempt < 120; attempt += 1) {
-      let job;
-      try {
-        job = await api.job(id);
-      } catch {
-        return;
-      }
-      if (terminalJobStatuses.has(job.status)) {
-        refreshBothPanes();
-        return;
-      }
-      await delay(1000);
-    }
+    jobEvents.registerCreatedJob(id);
   }
 
   function clearSelections() {
@@ -304,7 +319,7 @@ export function DualPane({
       >
         <AppShell
           labels={labels}
-          activeJobCount={activeJobCount}
+          activeJobCount={jobEventsState.activeCount}
           onJobsOpen={() => setJobsOpen(true)}
           languageControl={<LanguageSelect value={languageMode} onChange={onLanguageModeChange} labels={labels} />}
         >
@@ -398,7 +413,7 @@ export function DualPane({
       <JobsSheet
         open={jobsOpen}
         onOpenChange={setJobsOpen}
-        onActiveCountChange={setActiveJobCount}
+        eventsStore={jobEvents}
         labels={labels}
       />
     </>
@@ -549,12 +564,6 @@ function SelectionActionToolbar({
       labels={labels}
     />
   );
-}
-
-const terminalJobStatuses = new Set(["completed", "completed_with_errors", "failed", "canceled"]);
-
-function delay(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function clamp(value: number, min: number, max: number) {

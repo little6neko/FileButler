@@ -28,6 +28,7 @@ type Job struct {
 	CreatedAtUnix    int64  `json:"createdAtUnix"`
 	UpdatedAtUnix    int64  `json:"updatedAtUnix"`
 	FinishedAtUnix   int64  `json:"finishedAtUnix,omitempty"`
+	EventVersion     int64  `json:"eventVersion"`
 }
 
 type ItemResult struct {
@@ -39,4 +40,13 @@ type ItemResult struct {
 	ErrorCode    string `json:"errorCode"`
 	ErrorMessage string `json:"errorMessage"`
 	UndoJSON     string `json:"-"`
+}
+
+func (s Status) IsTerminal() bool {
+	switch s {
+	case StatusCompleted, StatusCompletedWithErrors, StatusFailed, StatusCanceled:
+		return true
+	default:
+		return false
+	}
 }

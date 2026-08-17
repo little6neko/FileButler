@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "../api/client";
+import type { Entry } from "../api/types";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
 import { confirmDialogOnEnter } from "./dialogConfirm";
@@ -14,15 +15,17 @@ type Props = {
   rootId: string;
   path: string;
   initialName: string;
+  entryType: Entry["type"];
   onJobCreated(id: string): void;
   onClose(): void;
   labels?: UIStrings;
 };
 
-export function SingleRenameDialog({ rootId, path, initialName, onJobCreated, onClose, labels = strings.en }: Props) {
+export function SingleRenameDialog({ rootId, path, initialName, entryType, onJobCreated, onClose, labels = strings.en }: Props) {
   const [newName, setNewName] = useState(initialName);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const initialSelectionApplied = useRef(false);
   const canSubmit = !submitting && newName.trim().length > 0;
 
   async function submit() {
@@ -56,6 +59,11 @@ export function SingleRenameDialog({ rootId, path, initialName, onJobCreated, on
             id="single-rename-name"
             value={newName}
             onChange={(event) => setNewName(event.target.value)}
+            onFocus={(event) => {
+              if (initialSelectionApplied.current) return;
+              initialSelectionApplied.current = true;
+              event.currentTarget.setSelectionRange(0, initialSelectionEnd(initialName, entryType));
+            }}
             autoFocus
           />
         </div>
@@ -69,4 +77,12 @@ export function SingleRenameDialog({ rootId, path, initialName, onJobCreated, on
       </DialogContent>
     </Dialog>
   );
+}
+
+function initialSelectionEnd(name: string, entryType: Entry["type"]) {
+  if (entryType === "directory") return name.length;
+  const extensionSeparator = name.lastIndexOf(".");
+  return extensionSeparator > 0 && extensionSeparator < name.length - 1
+    ? extensionSeparator
+    : name.length;
 }

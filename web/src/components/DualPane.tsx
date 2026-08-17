@@ -397,6 +397,7 @@ export function DualPane({
           rootId={activeState().rootId}
           path={activeSelection()[0]}
           initialName={basename(activeSelection()[0])}
+          entryType={activeEntry()?.type ?? "file"}
           labels={labels}
           onClose={() => setSingleRenameOpen(false)}
           onJobCreated={(id) => {
@@ -434,6 +435,11 @@ export function DualPane({
 
   function activeSelection() {
     return selectionFor(activePane);
+  }
+
+  function activeEntry() {
+    const selectedPath = activeSelection()[0];
+    return activeState().entries.find((entry) => entry.relativePath === selectedPath);
   }
 
   function stateFor(which: PaneKey) {

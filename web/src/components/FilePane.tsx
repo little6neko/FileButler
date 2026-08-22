@@ -11,6 +11,13 @@ import type { Entry, Root } from "../api/types";
 import { paneDropId, type FileDropData, type FileDropFeedback, type PaneKey } from "../fileDrag";
 import type { FileSelectionModifiers } from "../fileSelection";
 import { createFileSelectionStore, type FileSelectionStore } from "../fileSelectionStore";
+import {
+  defaultFilePaneColumnWidths,
+  type FilePaneColumnKey,
+  type FilePaneSortKey,
+  type FilePaneSortState,
+  type FilePaneViewState,
+} from "../filePaneViewState";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
 import { pathsInsideMarquee, type MarqueeGeometry } from "../marqueeSelection";
@@ -24,6 +31,7 @@ import { PaneStatusBar } from "./PaneStatusBar";
 
 type FilePaneProps = {
   paneKey?: PaneKey;
+  dropLayer?: number;
   actions?: FileAction[];
   actionsForSelection?(selectedCount: number): FileAction[];
   onContextTarget?(path: string | null): void;
@@ -33,6 +41,13 @@ type FilePaneProps = {
   selectedRootId: string;
   currentPath: string;
   entries: Entry[];
+  cutPaths?: ReadonlySet<string>;
+  initialViewState?: FilePaneViewState;
+  onViewStateChange?(state: FilePaneViewState): void;
+  showRootSelector?: boolean;
+  pathRootLabel?: string;
+  rootCatalogLabel?: string;
+  onOpenRootCatalog?(): void;
   selectedPaths?: ReadonlySet<string>;
   selectionStore?: FileSelectionStore;
   onRootChange(rootId: string): void;
@@ -53,6 +68,7 @@ type FilePaneProps = {
 
 export function FilePane({
   paneKey = "left",
+  dropLayer = 0,
   actions = [],
   actionsForSelection,
   onContextTarget = () => undefined,
@@ -62,6 +78,13 @@ export function FilePane({
   selectedRootId,
   currentPath,
   entries,
+  cutPaths,
+  initialViewState,
+  onViewStateChange,
+  showRootSelector = true,
+  pathRootLabel,
+  rootCatalogLabel,
+  onOpenRootCatalog,
   selectedPaths,
   selectionStore,
   onRootChange,
@@ -81,8 +104,10 @@ export function FilePane({
 }: FilePaneProps) {
   const [pathDraft, setPathDraft] = useState(displayPath(currentPath));
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
-  const [sortState, setSortState] = useState<SortState>({ column: "name", direction: "asc" });
-  const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(defaultColumnWidths);
+  const [sortState, setSortState] = useState<FilePaneSortState>(() => initialViewState?.sortState ?? { column: "name", direction: "asc" });
+  const [columnWidths, setColumnWidths] = useState<Record<FilePaneColumnKey, number>>(() => ({
+    ...(initialViewState?.columnWidths ?? defaultFilePaneColumnWidths),
+  }));
   const [, refreshContextActions] = useState(0);
   const [fittedPath, setFittedPath] = useState<FittedPathSegments>(() => ({
     visible: buildPathSegments(currentPath),
@@ -98,7 +123,8 @@ export function FilePane({
   const dragSelectionBoxRef = useRef<DragSelectionBoxHandle>(null);
   const pathSegmentsContentRef = useRef<HTMLDivElement>(null);
   const pathSegmentsMeasureRef = useRef<HTMLDivElement>(null);
-  const columnsResizedRef = useRef(false);
+  const columnsResizedRef = useRef(initialViewState?.columnsResized ?? false);
+  const onViewStateChangeRef = useRef(onViewStateChange);
   const rowCallbacksRef = useRef({ onToggleSelection, onSelectEntry, onSelectAll, onPathChange, onOpenFile });
   const visibleOrderCallbackRef = useRef(onVisibleOrderChange);
   const visibleEntries = useMemo(() => sortEntries(entries, sortState), [entries, sortState]);
@@ -112,7 +138,14 @@ export function FilePane({
     [entries, pathDraft],
   );
 
-  const pathSegments = useMemo(() => buildPathSegments(currentPath), [currentPath]);
+  const pathSegments = useMemo(() => {
+    const segments = buildPathSegments(currentPath).map((segment, index) =>
+      index === 0 && pathRootLabel ? { ...segment, label: pathRootLabel } : segment,
+    );
+    return rootCatalogLabel && onOpenRootCatalog
+      ? [{ label: rootCatalogLabel, path: virtualRootSegmentPath }, ...segments]
+      : segments;
+  }, [currentPath, onOpenRootCatalog, pathRootLabel, rootCatalogLabel]);
   const singleRoot = roots.length <= 1;
   const paneTarget: FileDropData = {
     id: paneDropId(paneKey),
@@ -121,6 +154,7 @@ export function FilePane({
     rootId: selectedRootId,
     path: currentPath,
     label: labels.currentDirectory,
+    layer: dropLayer,
   };
   const paneDrop = useDroppable({
     id: paneTarget.id,
@@ -138,7 +172,12 @@ export function FilePane({
   useLayoutEffect(() => {
     rowCallbacksRef.current = { onToggleSelection, onSelectEntry, onSelectAll, onPathChange, onOpenFile };
     visibleOrderCallbackRef.current = onVisibleOrderChange;
-  }, [onOpenFile, onPathChange, onSelectAll, onSelectEntry, onToggleSelection, onVisibleOrderChange]);
+    onViewStateChangeRef.current = onViewStateChange;
+  }, [onOpenFile, onPathChange, onSelectAll, onSelectEntry, onToggleSelection, onViewStateChange, onVisibleOrderChange]);
+
+  useEffect(() => {
+    onViewStateChangeRef.current?.({ sortState, columnWidths, columnsResized: columnsResizedRef.current });
+  }, [columnWidths, sortState]);
 
   useLayoutEffect(() => {
     selection.setEntries(entries);
@@ -257,9 +296,13 @@ export function FilePane({
       data-active={isActive ? "true" : "false"}
       onClick={onActivate}
     >
-      <div className="pane-header">
+      <div className="pane-header" data-root-selector={showRootSelector ? "visible" : "hidden"}>
         <strong>{title}</strong>
-        {singleRoot ? (
+        {!showRootSelector ? (
+          <span className="root-marker" aria-label={labels.rootLabel(title)} title={pathRootLabel}>
+            {pathRootLabel ?? "/"}
+          </span>
+        ) : singleRoot ? (
           <span className="root-marker" aria-label={labels.rootLabel(title)}>
             /
           </span>
@@ -422,9 +465,11 @@ export function FilePane({
               <FileRow
                 key={entry.relativePath}
                 paneKey={paneKey}
+                dropLayer={dropLayer}
                 rootId={selectedRootId}
                 parentPath={currentPath}
                 entry={entry}
+                isCut={cutPaths?.has(entry.relativePath)}
                 selectionStore={selection}
                 dropFeedback={dropFeedback}
                 labels={labels}
@@ -470,12 +515,13 @@ export function FilePane({
   }
 
   function renderPathButton(segment: PathSegment, index: number) {
+    const opensRootCatalog = segment.path === virtualRootSegmentPath && Boolean(onOpenRootCatalog);
     return (
       <button
         key={`${segment.path}-${index}`}
         type="button"
         className="path-segment-button"
-        onClick={() => onPathChange(segment.path)}
+        onClick={() => opensRootCatalog ? onOpenRootCatalog?.() : onPathChange(segment.path)}
       >
         {segment.label}
       </button>
@@ -664,9 +710,9 @@ export function FilePane({
   }
 }
 
-type SortKey = "name" | "type" | "size" | "modified";
-type ColumnKey = "select" | SortKey;
-type SortState = { column: SortKey; direction: "asc" | "desc" } | null;
+type SortKey = FilePaneSortKey;
+type ColumnKey = FilePaneColumnKey;
+type SortState = FilePaneSortState;
 type DragBox = { left: number; top: number; width: number; height: number };
 type DragSelectionBoxHandle = { update(box: DragBox): void; clear(): void };
 type MeasuredMarqueeGeometry = MarqueeGeometry & {
@@ -674,13 +720,8 @@ type MeasuredMarqueeGeometry = MarqueeGeometry & {
   maxScrollTop: number;
 };
 
-const defaultColumnWidths: Record<ColumnKey, number> = {
-  select: 36,
-  name: 220,
-  type: 96,
-  size: 84,
-  modified: 140,
-};
+const defaultColumnWidths = defaultFilePaneColumnWidths;
+const virtualRootSegmentPath = "filebutler://virtual-root";
 const defaultTableWidth = Object.values(defaultColumnWidths).reduce((sum, width) => sum + width, 0);
 const rightSelectionGutter = 24;
 const marqueeEdgeSize = 32;

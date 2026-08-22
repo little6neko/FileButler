@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api/client";
-import { DualPane } from "./components/DualPane";
+import { FileWorkspace } from "./components/FileWorkspace";
 import { InitScreen } from "./components/InitScreen";
 import { JobEventsProvider } from "./components/JobEventsProvider";
 import { LanguageSelect } from "./components/LanguageSelect";
@@ -40,7 +40,7 @@ export default function App() {
   if (state === "ready") {
     return (
       <JobEventsProvider>
-        <DualPane labels={t} languageMode={languageMode} onLanguageModeChange={setLanguageMode} />
+        <FileWorkspace labels={t} languageMode={languageMode} onLanguageModeChange={setLanguageMode} />
       </JobEventsProvider>
     );
   }

@@ -358,6 +358,50 @@ it("resizes columns by dragging a header divider", () => {
   expect(table).toHaveStyle({ "--file-col-name": "280px" });
 });
 
+it("restores a session view state and reports later sort changes", async () => {
+  const onViewStateChange = vi.fn();
+  renderPane({
+    entries: [entry("a.txt"), entry("b.txt")],
+    initialViewState: {
+      sortState: { column: "name", direction: "desc" },
+      columnWidths: { select: 36, name: 310, type: 96, size: 84, modified: 140 },
+      columnsResized: true,
+    },
+    onViewStateChange,
+  });
+
+  expect(screen.getByRole("columnheader", { name: /Name/ })).toHaveAttribute("aria-sort", "descending");
+  expect(screen.getByRole("table")).toHaveStyle({ "--file-col-name": "310px" });
+  expect(visibleEntryNames()).toEqual(["b.txt", "a.txt"]);
+
+  await userEvent.click(screen.getByRole("button", { name: "Size" }));
+  await waitFor(() => expect(onViewStateChange).toHaveBeenLastCalledWith(expect.objectContaining({
+    sortState: { column: "size", direction: "asc" },
+    columnsResized: true,
+  })));
+});
+
+it("renders full-mode root navigation without a root selector", async () => {
+  const onOpenRootCatalog = vi.fn();
+  renderPane({
+    roots: [{ id: "data", name: "Data" }, { id: "backup", name: "Backup" }],
+    showRootSelector: false,
+    pathRootLabel: "Data",
+    rootCatalogLabel: "All locations",
+    onOpenRootCatalog,
+  });
+
+  expect(screen.queryByRole("combobox", { name: /root/i })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Data" })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "All locations" }));
+  expect(onOpenRootCatalog).toHaveBeenCalledOnce();
+});
+
+it("marks entries that are pending a clipboard cut", () => {
+  renderPane({ cutPaths: new Set(["file.txt"]) });
+  expect(screen.getByText("file.txt").closest("tr")).toHaveAttribute("data-clipboard-cut", "true");
+});
+
 it("locks the selection column to checkbox-only and keeps it non-resizable", () => {
   renderPane();
 

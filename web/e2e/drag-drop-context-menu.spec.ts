@@ -15,9 +15,248 @@ type CheckboxMutationProbe = {
   observers: MutationObserver[];
 };
 
-test("previews same-pane and cross-pane drops with Windows-style defaults", async ({ page }) => {
+test("opens independent full-mode windows and pastes between their active locations", async ({ page }) => {
+  const { dryRuns } = await installMockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  const icon = page.getByRole("button", { name: "Open File Manager" });
+  await expect(icon).toBeVisible();
+
+  await icon.click();
+  let windows = page.locator(".desktop-window");
+  await expect(windows).toHaveCount(1);
+  const firstWindow = windows.nth(0);
+  await page.screenshot({ path: "test-results/full-mode-virtual-root.png", fullPage: true });
+  const dataRoot = firstWindow.getByRole("button", { name: /Data/ });
+  await dataRoot.click();
+  await expect(firstWindow.getByRole("region", { name: "All locations" })).toBeVisible();
+  await expect(entryRow(firstWindow, "source.txt")).not.toBeVisible();
+  await dataRoot.dblclick();
+  await expect(entryRow(firstWindow, "source.txt")).toBeVisible();
+  await firstWindow.getByLabel("Select source.txt").click();
+  await page.keyboard.press("Control+C");
+
+  await icon.click();
+  windows = page.locator(".desktop-window");
+  await expect(windows).toHaveCount(2);
+  const taskButtons = page.getByRole("navigation", { name: "System taskbar" }).locator(".taskbar-window-button");
+  await expect(taskButtons).toHaveCount(2);
+  const secondWindow = windows.nth(1);
+  await secondWindow.getByRole("button", { name: /Archive/ }).dblclick();
+  await expect(entryRow(secondWindow, "archive.txt")).toBeVisible();
+
+  const titlebar = secondWindow.locator(".desktop-window-titlebar");
+  const beforeMove = await secondWindow.boundingBox();
+  const titlebarBox = await titlebar.boundingBox();
+  if (!beforeMove || !titlebarBox) throw new Error("window geometry is unavailable");
+  await dragLocatorBy(page, titlebar, 36, 24);
+  const afterMove = await secondWindow.boundingBox();
+  expect(afterMove?.x).toBeGreaterThan(beforeMove.x);
+  expect(afterMove?.y).toBeGreaterThan(beforeMove.y);
+
+  await page.keyboard.press("Control+V");
+  await expect.poll(() => dryRuns.at(-1)).toMatchObject({
+    type: "copy", sourceRoot: "data", sources: ["source.txt"], destRoot: "archive", destPath: ".",
+  });
+  await page.getByRole("dialog", { name: "copy preview" }).getByRole("button", { name: "Cancel" }).click();
+
+  await dragLocatorBy(page, secondWindow.locator('[data-resize-direction="w"]'), 520, 0);
+  await dragLocatorBy(page, titlebar, 360, 0);
+  await taskButtons.nth(0).click();
+  await dragLocatorBy(page, firstWindow.locator('[data-resize-direction="e"]'), -380, 0);
+  const firstBox = await firstWindow.boundingBox();
+  const secondBox = await secondWindow.boundingBox();
+  if (!firstBox || !secondBox) throw new Error("resized window geometry is unavailable");
+  expect(firstBox.x + firstBox.width).toBeLessThan(secondBox.x);
+  await page.screenshot({ path: "test-results/full-mode-two-windows.png", fullPage: true });
+
+  const crossWindowDropCount = dryRuns.length;
+  await dragFileTo(page, entryRow(firstWindow, "source.txt"), entryRow(secondWindow, "archive-folder"));
+  await expect.poll(() => dryRuns.length).toBeGreaterThan(crossWindowDropCount);
+  await expect.poll(() => dryRuns.at(-1)).toMatchObject({
+    type: "copy", sourceRoot: "data", sources: ["source.txt"], destRoot: "archive", destPath: "archive-folder",
+  });
+  await page.getByRole("dialog", { name: "copy preview" }).getByRole("button", { name: "Cancel" }).click();
+
+  await secondWindow.getByRole("button", { name: "All locations" }).click();
+  await expect(secondWindow.getByRole("region", { name: "All locations" })).toBeVisible();
+  const rootCardDropCount = dryRuns.length;
+  await dragFileTo(page, entryRow(firstWindow, "source.txt"), secondWindow.getByRole("button", { name: /Archive/ }));
+  await expect.poll(() => dryRuns.length).toBeGreaterThan(rootCardDropCount);
+  await expect.poll(() => dryRuns.at(-1)).toMatchObject({
+    type: "copy", sourceRoot: "data", sources: ["source.txt"], destRoot: "archive", destPath: ".",
+  });
+  await page.getByRole("dialog", { name: "copy preview" }).getByRole("button", { name: "Cancel" }).click();
+
+  await secondWindow.getByRole("button", { name: "Maximize window" }).click();
+  await expect(secondWindow).toHaveAttribute("data-window-status", "maximized");
+  await secondWindow.getByRole("button", { name: "Restore window" }).click();
+  await secondWindow.getByRole("button", { name: "Minimize window" }).click();
+  await expect(windows).toHaveCount(1);
+  const secondTaskButton = taskButtons.nth(1);
+  await expect(secondTaskButton).toHaveAttribute("data-window-status", "minimized");
+  await secondTaskButton.click();
+  await expect(windows).toHaveCount(2);
+
+  await page.getByRole("button", { name: "Switch to compact mode" }).click();
+  await expect(page.getByTestId("workspace")).toBeVisible();
+  await page.getByRole("button", { name: "Switch to full mode" }).click();
+  await expect(page.locator(".desktop-window")).toHaveCount(2);
+
+  await page.reload();
+  await expect(page.getByTestId("desktop-workspace")).toBeVisible();
+  await expect(page.locator(".desktop-window")).toHaveCount(0);
+  await page.getByRole("button", { name: "Switch to compact mode" }).click();
+  await expect(page.getByTestId("workspace")).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId("workspace")).toBeVisible();
+  await expect(page.locator(".desktop-window")).toHaveCount(0);
+});
+
+test("keeps a context-opened directory window active and routes keyboard paste to it", async ({ page }) => {
   const { dryRuns } = await installMockApi(page);
   await page.goto("/");
+  await page.getByRole("button", { name: "Open File Manager" }).click();
+  const windows = page.locator(".desktop-window");
+  await expect(windows).toHaveCount(1);
+  const sourceWindow = windows.nth(0);
+  await sourceWindow.getByRole("button", { name: /Data/ }).dblclick();
+  await expect(entryRow(sourceWindow, "folder")).toBeVisible();
+
+  const toolbarActions = sourceWindow.getByRole("navigation", { name: "File actions" }).locator("[data-action-id]");
+  await expect(toolbarActions).toHaveCount(4);
+  expect(await toolbarActions.evaluateAll((elements) => elements.map((element) => element.getAttribute("data-action-id")))).toEqual([
+    "rename", "powerRename", "mkdir", "delete",
+  ]);
+  await expect(toolbarActions.first()).toHaveAttribute("data-variant", "outline");
+
+  await sourceWindow.getByLabel("Select source.txt").click();
+  await page.keyboard.press("Control+C");
+  await entryRow(sourceWindow, "folder").click({ button: "right" });
+  const fullMenu = page.getByRole("menu", { name: "File actions" });
+  const fullMenuActions = fullMenu.locator("[data-action-id]");
+  await expect(fullMenuActions).toHaveCount(8);
+  expect(await fullMenuActions.evaluateAll((elements) => elements.map((element) => element.getAttribute("data-action-id")))).toEqual([
+    "openInNewWindow", "clipboardCopy", "clipboardCut", "clipboardPaste",
+    "rename", "powerRename", "mkdir", "delete",
+  ]);
+  await fullMenu.locator('[data-action-id="openInNewWindow"]').click();
+
+  await expect(windows).toHaveCount(2);
+  const directoryWindow = windows.nth(1);
+  await expect(sourceWindow).toHaveAttribute("data-active", "false");
+  await expect(directoryWindow).toHaveAttribute("data-active", "true");
+  await expect(page.locator(".taskbar-window-button").nth(1)).toHaveAttribute("aria-current", "page");
+  const [sourceZ, directoryZ] = await Promise.all([
+    sourceWindow.evaluate((element) => Number.parseInt(getComputedStyle(element).zIndex, 10)),
+    directoryWindow.evaluate((element) => Number.parseInt(getComputedStyle(element).zIndex, 10)),
+  ]);
+  expect(directoryZ).toBeGreaterThan(sourceZ);
+
+  await page.keyboard.press("Control+V");
+  await expect.poll(() => dryRuns.at(-1)).toMatchObject({
+    type: "copy", sourceRoot: "data", sources: ["source.txt"], destRoot: "data", destPath: "folder",
+  });
+  await page.getByRole("dialog", { name: "copy preview" }).getByRole("button", { name: "Cancel" }).click();
+});
+
+test("positions and toggles the jobs sheet and dismisses it for taskbar context changes", async ({ page }) => {
+  await installMockApi(page);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/");
+  const icon = page.getByRole("button", { name: "Open File Manager" });
+  await icon.click();
+  await icon.click();
+  const jobsButton = page.locator('.system-taskbar button[aria-label="Jobs"]');
+  const jobsSheet = page.getByRole("dialog", { name: "Jobs" });
+
+  await expect(jobsButton).toHaveAttribute("aria-expanded", "false");
+  await jobsButton.click();
+  await expect(jobsSheet).toBeVisible();
+  await expect(jobsButton).toHaveAttribute("aria-expanded", "true");
+  const [taskbarBox, sheetBox] = await Promise.all([
+    page.locator(".system-taskbar").boundingBox(),
+    jobsSheet.boundingBox(),
+  ]);
+  if (!taskbarBox || !sheetBox) throw new Error("jobs sheet geometry is unavailable");
+  expect(sheetBox.y).toBeGreaterThanOrEqual(taskbarBox.y + taskbarBox.height);
+  expect(sheetBox.y + sheetBox.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+
+  await jobsButton.click();
+  await expect(jobsSheet).not.toBeVisible();
+  await expect(jobsButton).toHaveAttribute("aria-expanded", "false");
+
+  await jobsButton.click();
+  await expect(jobsSheet).toBeVisible();
+  await page.locator(".taskbar-window-button").nth(0).click();
+  await expect(jobsSheet).not.toBeVisible();
+
+  await jobsButton.click();
+  await expect(jobsSheet).toBeVisible();
+  await page.locator('.taskbar-mode-button[aria-label="Switch to compact mode"]').click();
+  await expect(jobsSheet).not.toBeVisible();
+  await expect(page.getByTestId("workspace")).toBeVisible();
+});
+
+test("cancels from the overlaid task X and keeps terminal history only until refresh", async ({ page }) => {
+  await installMockJobEventSource(page);
+  const { canceledJobs } = await installMockApi(page);
+  await page.goto("/");
+  await expect(page.getByRole("button", { name: "Open File Manager" })).toBeVisible();
+  await emitMockJobEvent(page, "jobs.snapshot", {
+    runtimeId: "e2e-runtime",
+    cursor: 2,
+    reset: false,
+    jobs: [
+      { ...makeE2EJob({ id: "job-copy", type: "copy", createdAtUnix: 2, eventVersion: 1 }), items: [] },
+      { ...makeE2EJob({ id: "job-move", type: "move", createdAtUnix: 1, eventVersion: 2 }), items: [] },
+    ],
+  });
+
+  await page.getByRole("button", { name: "Jobs" }).click();
+  const copyRow = page.getByRole("button", { name: /copy.*Running/i });
+  const moveRow = page.getByRole("button", { name: /move.*Running/i });
+  const cancelMove = page.getByRole("button", { name: "Cancel move job" });
+  await expect(copyRow).toHaveAttribute("aria-pressed", "true");
+  await expect(moveRow).toHaveAttribute("aria-pressed", "false");
+  expect(await cancelMove.evaluate((button) => button.parentElement?.classList.contains("job-row-shell"))).toBe(true);
+  expect(await cancelMove.evaluate((button) => button.parentElement?.querySelector(".job-row-main") !== null)).toBe(true);
+  const restingBackground = await cancelMove.evaluate((button) => getComputedStyle(button).backgroundColor);
+  await cancelMove.hover();
+  const hoverBackground = await cancelMove.evaluate((button) => getComputedStyle(button).backgroundColor);
+  expect(hoverBackground).not.toBe(restingBackground);
+
+  await cancelMove.click();
+
+  await expect.poll(() => canceledJobs).toContain("job-move");
+  await expect(cancelMove).toBeDisabled();
+  await expect(page.getByRole("button", { name: /move.*Canceling/i })).toHaveAttribute("aria-pressed", "false");
+  await expect(copyRow).toHaveAttribute("aria-pressed", "true");
+
+  await emitMockJobEvent(page, "job.changed", {
+    runtimeId: "e2e-runtime",
+    cursor: 3,
+    job: makeE2EJob({ id: "job-move", type: "move", status: "canceled", createdAtUnix: 1, eventVersion: 3 }),
+    items: [],
+  });
+  await expect(page.getByRole("button", { name: /move.*Canceled/i })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Cancel move job" })).toHaveCount(0);
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Open File Manager" })).toBeVisible();
+  await emitMockJobEvent(page, "jobs.snapshot", {
+    runtimeId: "e2e-runtime-next-page",
+    cursor: 0,
+    reset: false,
+    jobs: [],
+  });
+  await page.getByRole("button", { name: "Jobs" }).click();
+  await expect(page.getByText("No background jobs yet")).toBeVisible();
+});
+
+test("previews same-pane and cross-pane drops with Windows-style defaults", async ({ page }) => {
+  const { dryRuns } = await installMockApi(page);
+  await openCompactWorkspace(page);
   const left = page.getByRole("region", { name: "Left pane" });
   const right = page.getByRole("region", { name: "Right pane" });
   await expect(entryRow(left, "source.txt")).toBeVisible();
@@ -73,7 +312,7 @@ test("previews same-pane and cross-pane drops with Windows-style defaults", asyn
 test("limits dragging to names and keeps feedback above table chrome", async ({ page }) => {
   await installMockApi(page);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/");
+  await openCompactWorkspace(page);
   const workspace = page.getByTestId("workspace");
   const left = page.getByRole("region", { name: "Left pane" });
   const right = page.getByRole("region", { name: "Right pane" });
@@ -134,7 +373,7 @@ test("limits dragging to names and keeps feedback above table chrome", async ({ 
 test("supports desktop row selection and auto-scrolls a long marquee", async ({ page }) => {
   await installMockApi(page);
   await page.setViewportSize({ width: 1280, height: 720 });
-  await page.goto("/");
+  await openCompactWorkspace(page);
   const left = page.getByRole("region", { name: "Left pane" });
   await left.getByRole("combobox", { name: "Left pane root" }).selectOption("long");
   await expect(entryRow(left, "item-01.txt")).toBeVisible();
@@ -204,7 +443,7 @@ test("supports desktop row selection and auto-scrolls a long marquee", async ({ 
 
 test("updates only the changed row checkbox when selection changes", async ({ page }) => {
   await installMockApi(page);
-  await page.goto("/");
+  await openCompactWorkspace(page);
   const left = page.getByRole("region", { name: "Left pane" });
   const right = page.getByRole("region", { name: "Right pane" });
   await left.getByRole("combobox", { name: "Left pane root" }).selectOption("long");
@@ -250,7 +489,7 @@ test("updates only the changed row checkbox when selection changes", async ({ pa
 test("uses row and whitespace context selection while keeping all actions visible", async ({ page }) => {
   await installMockApi(page);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto("/");
+  await openCompactWorkspace(page);
   const left = page.getByRole("region", { name: "Left pane" });
   await expect(entryRow(left, "source.txt")).toBeVisible();
 
@@ -270,9 +509,15 @@ test("uses row and whitespace context selection while keeping all actions visibl
   await openBlankContextMenu(left.getByTestId("file-list-left"));
   menu = page.getByRole("menu", { name: "File actions" });
   await expect(menu.locator("[data-action-id]")).toHaveCount(8);
+  expect(await menu.locator("[data-action-id]").evaluateAll((elements) => elements.map((element) => element.getAttribute("data-action-id")))).toEqual([
+    "copy", "move", "symlink", "hardlink", "rename", "powerRename", "mkdir", "delete",
+  ]);
   await expect(menu.locator('[data-action-id="mkdir"]')).not.toHaveAttribute("aria-disabled", "true");
   for (const id of ["copy", "move", "symlink", "hardlink", "rename", "powerRename", "delete"]) {
     await expect(menu.locator(`[data-action-id="${id}"]`)).toHaveAttribute("aria-disabled", "true");
+  }
+  for (const id of ["openInNewWindow", "clipboardCopy", "clipboardCut", "clipboardPaste"]) {
+    await expect(menu.locator(`[data-action-id="${id}"]`)).toHaveCount(0);
   }
 
   await expect(menu).toBeInViewport();
@@ -287,9 +532,29 @@ test("uses row and whitespace context selection while keeping all actions visibl
   await page.screenshot({ path: "test-results/file-context-menu-1024x768.png", fullPage: true });
 });
 
+test("points compact move actions toward their destination pane", async ({ page }) => {
+  await installMockApi(page);
+  await openCompactWorkspace(page);
+  const left = page.getByRole("region", { name: "Left pane" });
+  const right = page.getByRole("region", { name: "Right pane" });
+  const toolbarMove = page.getByRole("navigation", { name: "File actions" }).locator('[data-action-id="move"]');
+
+  await expect(toolbarMove.locator(".lucide-move-right")).toHaveCount(1);
+  await openBlankContextMenu(left.getByTestId("file-list-left"));
+  let menu = page.getByRole("menu", { name: "File actions" });
+  await expect(menu.locator('[data-action-id="move"] .lucide-move-right')).toHaveCount(1);
+  await page.keyboard.press("Escape");
+
+  await openBlankContextMenu(right.getByTestId("file-list-right"));
+  menu = page.getByRole("menu", { name: "File actions" });
+  await expect(menu.locator('[data-action-id="move"] .lucide-move-left')).toHaveCount(1);
+  await page.keyboard.press("Escape");
+  await expect(toolbarMove.locator(".lucide-move-left")).toHaveCount(1);
+});
+
 test("confirms a ready operation with Enter without opening Jobs", async ({ page }) => {
   const { createdJobs } = await installMockApi(page);
-  await page.goto("/");
+  await openCompactWorkspace(page);
   const left = page.getByRole("region", { name: "Left pane" });
   await expect(entryRow(left, "source.txt")).toBeVisible();
 
@@ -341,6 +606,17 @@ async function holdFileDragTo(page: Page, source: Locator, target: Locator) {
   await page.mouse.move(targetX, targetY, { steps: 8 });
 }
 
+async function dragLocatorBy(page: Page, locator: Locator, deltaX: number, deltaY: number) {
+  const box = await locator.boundingBox();
+  if (!box) throw new Error("drag locator has no bounding box");
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  await page.mouse.move(startX + deltaX, startY + deltaY, { steps: 8 });
+  await page.mouse.up();
+}
+
 async function openBlankContextMenu(fileList: Locator) {
   const box = await fileList.boundingBox();
   if (!box) throw new Error("file list has no bounding box");
@@ -350,9 +626,18 @@ async function openBlankContextMenu(fileList: Locator) {
   });
 }
 
+async function openCompactWorkspace(page: Page) {
+  await page.goto("/");
+  const switchButton = page.getByRole("button", { name: "Switch to compact mode" });
+  await expect(switchButton.or(page.getByTestId("workspace"))).toBeVisible();
+  if (await switchButton.isVisible()) await switchButton.click();
+  await expect(page.getByTestId("workspace")).toBeVisible();
+}
+
 async function installMockApi(page: Page) {
   const dryRuns: OpsPayload[] = [];
   const createdJobs: OpsPayload[] = [];
+  const canceledJobs: string[] = [];
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "languages", { configurable: true, get: () => ["en-US"] });
   });
@@ -394,14 +679,80 @@ async function installMockApi(page: Page) {
       createdJobs.push(request.postDataJSON() as OpsPayload);
       return respond(route, { id: "job-1" });
     }
-    if (url.pathname === "/api/jobs" && request.method() === "GET") return respond(route, []);
+    const cancelMatch = url.pathname.match(/^\/api\/jobs\/([^/]+)\/cancel$/);
+    if (cancelMatch && request.method() === "POST") {
+      canceledJobs.push(decodeURIComponent(cancelMatch[1]));
+      return respond(route, { id: canceledJobs.at(-1) });
+    }
     return route.fulfill({
       status: 404,
       contentType: "application/json",
       body: JSON.stringify({ error: { code: "not_mocked", message: url.pathname } }),
     });
   });
-  return { dryRuns, createdJobs };
+  return { dryRuns, createdJobs, canceledJobs };
+}
+
+async function installMockJobEventSource(page: Page) {
+  await page.addInitScript(() => {
+    type Listener = (event: MessageEvent<string>) => void;
+    type JobEventWindow = Window & {
+      __fileButlerJobSource?: { emit(type: string, payload: unknown): void };
+    };
+    class MockEventSource {
+      onopen: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      listeners = new Map<string, Set<Listener>>();
+
+      constructor(url: string) {
+        void url;
+        (window as JobEventWindow).__fileButlerJobSource = this;
+        queueMicrotask(() => this.onopen?.());
+      }
+
+      addEventListener(type: string, listener: Listener) {
+        const listeners = this.listeners.get(type) ?? new Set<Listener>();
+        listeners.add(listener);
+        this.listeners.set(type, listeners);
+      }
+
+      close() {}
+
+      emit(type: string, payload: unknown) {
+        const event = new MessageEvent(type, { data: JSON.stringify(payload) });
+        for (const listener of this.listeners.get(type) ?? []) listener(event);
+      }
+    }
+    Object.defineProperty(window, "EventSource", { configurable: true, value: MockEventSource });
+  });
+}
+
+async function emitMockJobEvent(page: Page, type: string, payload: unknown) {
+  await page.evaluate(({ eventType, eventPayload }) => {
+    const source = (window as Window & {
+      __fileButlerJobSource?: { emit(type: string, payload: unknown): void };
+    }).__fileButlerJobSource;
+    if (!source) throw new Error("mock job EventSource is unavailable");
+    source.emit(eventType, eventPayload);
+  }, { eventType: type, eventPayload: payload });
+}
+
+function makeE2EJob(overrides: Record<string, unknown>) {
+  return {
+    id: "job-1",
+    type: "copy",
+    status: "running",
+    actorId: 1,
+    sourceRootId: "data",
+    progressTotal: 4,
+    progressDone: 1,
+    cancelRequested: false,
+    errorMessage: "",
+    createdAtUnix: 1,
+    updatedAtUnix: 1,
+    eventVersion: 1,
+    ...overrides,
+  };
 }
 
 async function respond(route: Route, data: unknown) {

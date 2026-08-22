@@ -13,14 +13,14 @@ type Props = {
 export function ActionToolbar({ actions, selectedCount, labels }: Props) {
   return (
     <nav aria-label={labels.fileActions} className="flex h-[42px] items-center gap-1.5 border-b bg-slate-50 px-3">
-      {actions.map((action, index) => {
+      {actions.map((action) => {
         const Icon = action.icon;
         return (
           <Fragment key={action.id}>
             {action.separatorBefore ? <Separator orientation="vertical" className="mx-1 h-5" /> : null}
             <Button
               size="sm"
-              variant={index === 0 ? "default" : action.destructive ? "ghost" : "outline"}
+              variant={action.destructive ? "ghost" : "outline"}
               aria-label={action.label}
               data-action-id={action.id}
               className={action.destructive ? "text-destructive hover:text-destructive" : undefined}

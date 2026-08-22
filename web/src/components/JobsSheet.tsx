@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -6,7 +7,7 @@ import { api } from "../api/client";
 import type { Job, JobDetail } from "../api/types";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
-import { activeJobStatuses, JobEventsStore, mergeJobDetail } from "../jobEvents";
+import { activeJobStatuses, JobEventsStore } from "../jobEvents";
 import { useOptionalJobEventsStore } from "../jobEventsContext";
 
 type Filter = "all" | "running" | "completed";
@@ -29,9 +30,9 @@ export function JobsSheet({
   const jobEvents = eventsStore ?? contextEventsStore ?? fallbackEventsStore;
   const eventState = useSyncExternalStore(jobEvents.subscribe, jobEvents.getSnapshot, jobEvents.getSnapshot);
   const [requestedSelectedID, setRequestedSelectedID] = useState<string | null>(null);
-  const [detail, setDetail] = useState<JobDetail | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
-  const reconciledSnapshots = useRef(new Map<string, number>());
+  const [cancelingJobIDs, setCancelingJobIDs] = useState(() => new Set<string>());
+  const [cancelErrors, setCancelErrors] = useState<Record<string, string>>({});
   const jobs = eventState.jobs;
   const selectedID = requestedSelectedID && jobs.some((job) => job.id === requestedSelectedID)
     ? requestedSelectedID
@@ -40,47 +41,6 @@ export function JobsSheet({
   useEffect(() => {
     onActiveCountChange?.(eventState.activeCount);
   }, [eventState.activeCount, onActiveCountChange]);
-
-  useEffect(() => {
-    if (!open || !selectedID) return;
-    const jobID = selectedID;
-    let active = true;
-
-    void api.job(jobID).then(
-      (next) => {
-        if (!active) return;
-        jobEvents.hydrateItems(jobID, next.items);
-        setDetail(next);
-      },
-      () => undefined,
-    );
-    return () => {
-      active = false;
-    };
-  }, [jobEvents, open, selectedID]);
-
-  useEffect(() => {
-    if (!open || !selectedID || !detail || detail.id !== selectedID || eventState.snapshotRevision <= 1) return;
-    const snapshotRevision = eventState.snapshotRevision;
-    const previousRevision = reconciledSnapshots.current.get(selectedID) ?? 1;
-    if (snapshotRevision <= previousRevision) return;
-    reconciledSnapshots.current.set(selectedID, snapshotRevision);
-    const eventJob = jobs.find((job) => job.id === selectedID);
-    if (!eventJob || eventJob.eventVersion <= detail.eventVersion) return;
-
-    let active = true;
-    void api.job(selectedID).then(
-      (next) => {
-        if (!active) return;
-        jobEvents.hydrateItems(selectedID, next.items);
-        setDetail(next);
-      },
-      () => undefined,
-    );
-    return () => {
-      active = false;
-    };
-  }, [detail, eventState.snapshotRevision, jobEvents, jobs, open, selectedID]);
 
   const filteredJobs = useMemo(
     () =>
@@ -91,14 +51,25 @@ export function JobsSheet({
       }),
     [filter, jobs],
   );
-  const selectedEventJob = selectedID ? jobs.find((job) => job.id === selectedID) : undefined;
-  const displayedDetail = detail && selectedEventJob
-    ? mergeJobDetail(detail, selectedEventJob, jobEvents.getItems(selectedEventJob.id))
-    : detail;
+  const displayedDetail = selectedID ? jobEvents.getDetail(selectedID) : null;
+
+  function requestCancel(job: Job) {
+    if (cancelingJobIDs.has(job.id) || job.status === "cancel_requested") return;
+    setCancelingJobIDs((current) => new Set(current).add(job.id));
+    setCancelErrors((current) => removeRecordKey(current, job.id));
+    void api.cancelJob(job.id).catch(() => {
+      setCancelingJobIDs((current) => {
+        const next = new Set(current);
+        next.delete(job.id);
+        return next;
+      });
+      setCancelErrors((current) => ({ ...current, [job.id]: labels.cancelJobFailed }));
+    });
+  }
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent aria-label={labels.jobs} className="w-[420px] gap-0 overflow-hidden sm:max-w-[420px]">
+      <SheetContent aria-label={labels.jobs} className="jobs-sheet-content w-[420px] gap-0 overflow-hidden sm:max-w-[420px]">
         <SheetHeader className="border-b">
           <SheetTitle>{labels.jobs}</SheetTitle>
           <SheetDescription className="flex items-center gap-2">
@@ -129,24 +100,50 @@ export function JobsSheet({
             {filteredJobs.length ? (
               filteredJobs.map((job) => {
                 const percent = progressPercent(job);
+                const canceling = cancelingJobIDs.has(job.id) && (job.status === "pending" || job.status === "running");
+                const cancelDisabled = canceling || job.status === "cancel_requested";
+                const displayedStatus = canceling ? "cancel_requested" : job.status;
+                const cancelLabel = labels.cancelJob(labels.operationType(job.type));
                 return (
-                  <button
-                    key={job.id}
-                    type="button"
-                    className="rounded-lg border bg-white p-3 text-left"
-                    aria-pressed={selectedID === job.id}
-                    onClick={() => setRequestedSelectedID(job.id)}
-                  >
-                    <span className="flex items-center justify-between text-xs font-semibold">
-                      <span>{labels.operationType(job.type)}</span>
-                      <span>{labels.jobStatus(job.status)}</span>
-                    </span>
-                    <Progress aria-label={labels.jobProgress(job.type)} value={percent} className="mt-2" />
-                    <span className="mt-1 flex justify-between text-[11px] text-slate-500">
-                      <span>{job.progressDone}/{job.progressTotal}</span>
-                      <span>{percent}%</span>
-                    </span>
-                  </button>
+                  <div key={job.id} className="grid gap-1">
+                    <div className="job-row-shell">
+                      <button
+                        type="button"
+                        className="job-row-main"
+                        aria-pressed={selectedID === job.id}
+                        onClick={() => setRequestedSelectedID(job.id)}
+                      >
+                        <span className="flex items-center justify-between text-xs font-semibold">
+                          <span>{labels.operationType(job.type)}</span>
+                          <span>{labels.jobStatus(displayedStatus)}</span>
+                        </span>
+                        <Progress aria-label={labels.jobProgress(job.type)} value={percent} className="mt-2" />
+                        <span className="mt-1 flex justify-between text-[11px] text-slate-500">
+                          <span>{job.progressDone}/{job.progressTotal}</span>
+                          <span>{percent}%</span>
+                        </span>
+                      </button>
+                      {activeJobStatuses.has(job.status) ? (
+                        <button
+                          type="button"
+                          className="job-row-cancel"
+                          aria-label={cancelLabel}
+                          title={cancelLabel}
+                          disabled={cancelDisabled}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            requestCancel(job);
+                          }}
+                        >
+                          <X aria-hidden="true" />
+                        </button>
+                      ) : null}
+                    </div>
+                    {cancelErrors[job.id] ? (
+                      <p role="alert" className="px-1 text-xs text-destructive">{cancelErrors[job.id]}</p>
+                    ) : null}
+                  </div>
                 );
               })
             ) : (
@@ -181,16 +178,6 @@ function JobDetails({ detail, labels }: { detail: JobDetail; labels: UIStrings }
           ))}
         </ul>
       ) : null}
-      {activeJobStatuses.has(detail.status) ? (
-        <Button
-          className="mt-3"
-          variant="outline"
-          size="sm"
-          onClick={() => void api.cancelJob(detail.id).catch(() => undefined)}
-        >
-          {labels.cancel}
-        </Button>
-      ) : null}
     </section>
   );
 }
@@ -203,4 +190,11 @@ function filterLabel(filter: Filter, labels: UIStrings) {
 
 function progressPercent(job: Job) {
   return job.progressTotal ? Math.round((job.progressDone / job.progressTotal) * 100) : 0;
+}
+
+function removeRecordKey(record: Record<string, string>, key: string) {
+  if (!(key in record)) return record;
+  const next = { ...record };
+  delete next[key];
+  return next;
 }

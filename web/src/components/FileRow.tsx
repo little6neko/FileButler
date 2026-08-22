@@ -18,9 +18,11 @@ import { FileIcon } from "./FileIcon";
 
 type Props = {
   paneKey: PaneKey;
+  dropLayer?: number;
   rootId: string;
   parentPath: string;
   entry: Entry;
+  isCut?: boolean;
   selectionStore: FileSelectionStore;
   dropFeedback: FileDropFeedback | null;
   labels: UIStrings;
@@ -31,9 +33,11 @@ type Props = {
 
 export const FileRow = memo(function FileRow({
   paneKey,
+  dropLayer = 0,
   rootId,
   parentPath,
   entry,
+  isCut = false,
   selectionStore,
   dropFeedback,
   labels,
@@ -76,7 +80,8 @@ export const FileRow = memo(function FileRow({
     rootId,
     path: entry.relativePath,
     label: entry.name,
-  }), [entry.name, entry.relativePath, paneKey, rootId]);
+    layer: dropLayer,
+  }), [dropLayer, entry.name, entry.relativePath, paneKey, rootId]);
   const drop = useDroppable({
     id: directoryTarget.id,
     data: directoryTarget,
@@ -109,6 +114,7 @@ export const FileRow = memo(function FileRow({
       data-density="compact"
       data-file-drag-source="true"
       data-dragging={isDragging ? "true" : "false"}
+      data-clipboard-cut={isCut ? "true" : undefined}
       data-drop-kind={entry.type === "directory" ? "directory" : undefined}
       data-drop-state={feedback ? (feedback.valid ? "valid" : "invalid") : undefined}
       aria-selected={selected}

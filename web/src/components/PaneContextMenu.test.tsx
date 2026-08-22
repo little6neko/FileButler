@@ -7,16 +7,20 @@ import { PaneContextMenu } from "./PaneContextMenu";
 
 it("renders every shared action and dispatches enabled items", async () => {
   const onMkdir = vi.fn();
+  const onParentClick = vi.fn();
   const actions = createFileActions({
     destination: strings.en.rightPane,
+    destinationDirection: "right",
     selectedCount: 1,
     labels: strings.en,
     commands: { onOperation: vi.fn(), onMkdir, onRename: vi.fn(), onPowerRename: vi.fn() },
   });
   render(
-    <PaneContextMenu actions={actions} label={strings.en.fileActions}>
-      <div data-testid="target">Target</div>
-    </PaneContextMenu>,
+    <div onClick={onParentClick}>
+      <PaneContextMenu actions={actions} label={strings.en.fileActions}>
+        <div data-testid="target">Target</div>
+      </PaneContextMenu>
+    </div>,
   );
 
   fireEvent.contextMenu(screen.getByTestId("target"), { clientX: 80, clientY: 60 });
@@ -24,11 +28,13 @@ it("renders every shared action and dispatches enabled items", async () => {
   expect(within(menu).getAllByRole("menuitem")).toHaveLength(8);
   await userEvent.click(within(menu).getByRole("menuitem", { name: "mkdir" }));
   expect(onMkdir).toHaveBeenCalledOnce();
+  expect(onParentClick).not.toHaveBeenCalled();
 });
 
 it("shows every empty-selection action while disabling all except mkdir", async () => {
   const actions = createFileActions({
     destination: strings.en.rightPane,
+    destinationDirection: "right",
     selectedCount: 0,
     labels: strings.en,
     commands: { onOperation: vi.fn(), onMkdir: vi.fn(), onRename: vi.fn(), onPowerRename: vi.fn() },

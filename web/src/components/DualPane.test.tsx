@@ -19,8 +19,6 @@ vi.mock("../api/client", () => ({
     renamePreview: vi.fn(),
     renameCreateJob: vi.fn(),
     singleRenameCreateJob: vi.fn(),
-    jobs: vi.fn(),
-    job: vi.fn(),
     cancelJob: vi.fn(),
   },
 }));
@@ -36,9 +34,6 @@ beforeEach(() => {
   vi.mocked(api.renamePreview).mockReset();
   vi.mocked(api.renameCreateJob).mockReset();
   vi.mocked(api.singleRenameCreateJob).mockReset();
-  vi.mocked(api.jobs).mockReset();
-  vi.mocked(api.jobs).mockResolvedValue([]);
-  vi.mocked(api.job).mockReset();
   vi.mocked(api.cancelJob).mockReset();
 });
 
@@ -96,7 +91,6 @@ it("creates a mkdir job from the name dialog without a second confirmation", asy
   vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
   vi.mocked(api.browse).mockResolvedValue([]);
   vi.mocked(api.opsCreateJob).mockResolvedValue({ id: "job-mkdir" });
-  vi.mocked(api.job).mockRejectedValue(new Error("stop legacy polling"));
   render(<DualPane />);
 
   await screen.findByRole("region", { name: "Left pane" });
@@ -274,7 +268,7 @@ it("keeps PowerRename settings only after a rename job is created", async () => 
 
 it("clears hidden selection after a rename job refreshes the pane", async () => {
   const jobEvents = new JobEventsStore();
-  jobEvents.handleSnapshot({ cursor: 0, jobs: [] });
+  jobEvents.handleSnapshot({ runtimeId: "runtime-a", cursor: 0, reset: false, jobs: [] });
   let renamed = false;
   vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
   vi.mocked(api.browse).mockImplementation(async () =>
@@ -298,7 +292,12 @@ it("clears hidden selection after a rename job refreshes the pane", async () => 
 
   await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Background job created"));
   act(() => {
-    jobEvents.handleChanged({ job: makeJob({ id: "job-rename", type: "rename", status: "completed", eventVersion: 1 }) });
+    jobEvents.handleChanged({
+      runtimeId: "runtime-a",
+      cursor: 1,
+      job: makeJob({ id: "job-rename", type: "rename", status: "completed", eventVersion: 1 }),
+      items: [],
+    });
   });
 
   expect(await within(leftPane).findByLabelText("Select new.txt")).not.toBeChecked();
@@ -332,7 +331,7 @@ it("clears selection when navigating to another folder", async () => {
 
 it("refreshes both panes after an operation job reaches a terminal status", async () => {
   const jobEvents = new JobEventsStore();
-  jobEvents.handleSnapshot({ cursor: 0, jobs: [] });
+  jobEvents.handleSnapshot({ runtimeId: "runtime-a", cursor: 0, reset: false, jobs: [] });
   vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
   vi.mocked(api.browse).mockResolvedValue([
     { name: "source.txt", relativePath: "source.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
@@ -356,15 +355,24 @@ it("refreshes both panes after an operation job reaches a terminal status", asyn
   expect(toast.success).toHaveBeenCalledWith("Background job created");
 
   act(() => {
-    jobEvents.handleChanged({ job: makeJob({ id: "job-1", status: "running", eventVersion: 1 }) });
+    jobEvents.handleChanged({
+      runtimeId: "runtime-a",
+      cursor: 1,
+      job: makeJob({ id: "job-1", status: "running", eventVersion: 1 }),
+      items: null,
+    });
   });
   expect(api.browse).not.toHaveBeenCalled();
 
   act(() => {
-    jobEvents.handleChanged({ job: makeJob({ id: "job-1", status: "completed", progressDone: 1, eventVersion: 2 }) });
+    jobEvents.handleChanged({
+      runtimeId: "runtime-a",
+      cursor: 2,
+      job: makeJob({ id: "job-1", status: "completed", progressDone: 1, eventVersion: 2 }),
+      items: [],
+    });
   });
   await waitFor(() => expect(api.browse).toHaveBeenCalledTimes(2));
-  expect(api.job).not.toHaveBeenCalled();
   expect(screen.queryByRole("dialog", { name: "Jobs" })).not.toBeInTheDocument();
   expect(within(leftPane).getByLabelText("Select source.txt")).not.toBeChecked();
   expect(screen.getByRole("button", { name: "Copy to right pane" })).toBeDisabled();
@@ -396,7 +404,6 @@ it("shows browse failures inside the affected panes", async () => {
 it("opens the jobs sheet from the workbench", async () => {
   vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
   vi.mocked(api.browse).mockResolvedValue([]);
-  vi.mocked(api.jobs).mockResolvedValue([]);
   render(<DualPane />);
 
   await screen.findByRole("region", { name: "Left pane" });
@@ -440,7 +447,9 @@ it("clears selection on whitespace but keeps every action visible", async () => 
   fireEvent.contextMenu(within(leftPane).getByTestId("file-list-left"), { clientX: 500, clientY: 400 });
   const menu = await screen.findByRole("menu", { name: "File actions" });
   const items = within(menu).getAllByRole("menuitem");
-  expect(items).toHaveLength(8);
+  expect(items.map((item) => item.dataset.actionId)).toEqual([
+    "copy", "move", "symlink", "hardlink", "rename", "powerRename", "mkdir", "delete",
+  ]);
   expect(items.find((item) => item.dataset.actionId === "mkdir")).not.toHaveAttribute("aria-disabled", "true");
   expect(items.filter((item) => item.dataset.actionId !== "mkdir").every((item) => item.getAttribute("aria-disabled") === "true")).toBe(true);
 });

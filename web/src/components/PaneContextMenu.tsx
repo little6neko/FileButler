@@ -34,7 +34,10 @@ export function PaneContextMenu({
                     data-action-id={action.id}
                     className={action.destructive ? "file-action-menu-item text-destructive" : "file-action-menu-item"}
                     disabled={action.disabled}
-                    onClick={action.run}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      action.run();
+                    }}
                   >
                     <Icon aria-hidden="true" className="size-3.5 shrink-0" />
                     <span>{action.label}</span>

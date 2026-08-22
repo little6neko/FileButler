@@ -101,11 +101,16 @@ export type JobItem = {
 export type JobDetail = Job & { items: JobItem[] };
 
 export type JobEvent = {
+  runtimeId: string;
+  cursor: number;
   job: Job;
   item?: JobItem;
+  items?: JobItem[] | null;
 };
 
 export type JobSnapshot = {
+  runtimeId: string;
   cursor: number;
-  jobs: Job[];
+  reset: boolean;
+  jobs: JobDetail[];
 };

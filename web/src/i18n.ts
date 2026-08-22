@@ -26,6 +26,29 @@ export type UIStrings = {
   initializationFailed: string;
   workspace: string;
   workspaceNavigation: string;
+  taskbar: string;
+  desktopMode: string;
+  compactMode: string;
+  switchToDesktop: string;
+  switchToCompact: string;
+  fileManager: string;
+  allLocations: string;
+  mappedLocations: string;
+  openFileManager: string;
+  noMappedRoots: string;
+  minimizeWindow: string;
+  maximizeWindow: string;
+  restoreWindow: string;
+  closeWindow: string;
+  openInNewWindow: string;
+  clipboardCopy: string;
+  cut: string;
+  paste: string;
+  clipboardCopied(count: number): string;
+  clipboardCut(count: number): string;
+  clipboardSelectionRequired: string;
+  clipboardEmpty: string;
+  pasteUnavailable: string;
   fileActions: string;
   files: string;
   activeJobs(count: number): string;
@@ -48,6 +71,8 @@ export type UIStrings = {
   completedJobs: string;
   emptyJobs: string;
   jobsReconnecting: string;
+  cancelJob(type: string): string;
+  cancelJobFailed: string;
   jobProgress(type: string): string;
   refresh: string;
   resizePanes: string;
@@ -163,6 +188,29 @@ export const strings: Record<Language, UIStrings> = {
     initializationFailed: "Initialization failed",
     workspace: "Dual-pane file workspace",
     workspaceNavigation: "Workspace navigation",
+    taskbar: "System taskbar",
+    desktopMode: "Full mode",
+    compactMode: "Compact mode",
+    switchToDesktop: "Switch to full mode",
+    switchToCompact: "Switch to compact mode",
+    fileManager: "File Manager",
+    allLocations: "All locations",
+    mappedLocations: "Mapped locations",
+    openFileManager: "Open File Manager",
+    noMappedRoots: "No mapped roots are configured",
+    minimizeWindow: "Minimize window",
+    maximizeWindow: "Maximize window",
+    restoreWindow: "Restore window",
+    closeWindow: "Close window",
+    openInNewWindow: "Open in new window",
+    clipboardCopy: "Copy",
+    cut: "Cut",
+    paste: "Paste",
+    clipboardCopied: (count) => `Copied ${count} ${count === 1 ? "item" : "items"}`,
+    clipboardCut: (count) => `Cut ${count} ${count === 1 ? "item" : "items"}`,
+    clipboardSelectionRequired: "Select one or more items first",
+    clipboardEmpty: "The app clipboard is empty",
+    pasteUnavailable: "Choose a mapped location before pasting",
     fileActions: "File actions",
     files: "Files",
     activeJobs: (count) => `${count} active ${count === 1 ? "job" : "jobs"}`,
@@ -185,6 +233,8 @@ export const strings: Record<Language, UIStrings> = {
     completedJobs: "Completed",
     emptyJobs: "No background jobs yet",
     jobsReconnecting: "Reconnecting",
+    cancelJob: (type) => `Cancel ${type} job`,
+    cancelJobFailed: "Unable to cancel this job",
     jobProgress: (type) => `${strings.en.operationType(type)} progress`,
     refresh: "Refresh",
     resizePanes: "Resize panes",
@@ -264,7 +314,11 @@ export const strings: Record<Language, UIStrings> = {
     deleteWarning: "Deleted items cannot be restored by FileButler.",
     conflictsFound: (count) => `${count} ${count === 1 ? "conflict" : "conflicts"} must be resolved before continuing.`,
     jobCreated: "Background job created",
-    operationType: (type) => type,
+    operationType: (type) =>
+      ({
+        rename: "Rename",
+        power_rename: "PowerRename",
+      })[type] ?? type,
     dragSummary: (name, count) => count === 1 ? name : `${name} and ${count - 1} more`,
     dragDestination: (type, target) => `${strings.en.operationType(type)} to ${target}`,
     dragStarted: (name, count) => count === 1 ? `Started dragging ${name}` : `Started dragging ${name} and ${count - 1} more`,
@@ -274,7 +328,17 @@ export const strings: Record<Language, UIStrings> = {
     invalidDrop: (reason) => reason === "same-directory"
       ? "The selected items are already in this directory"
       : "A folder cannot be placed inside itself or one of its subfolders",
-    jobStatus: (status) => status,
+    jobStatus: (status) =>
+      ({
+        pending: "Pending",
+        running: "Running",
+        cancel_requested: "Canceling",
+        canceled: "Canceled",
+        completed: "Completed",
+        completed_with_errors: "Completed with errors",
+        failed: "Failed",
+        interrupted: "Interrupted",
+      })[status] ?? status,
   },
   "zh-CN": {
     subtitle: "自托管文件操作",
@@ -301,6 +365,29 @@ export const strings: Record<Language, UIStrings> = {
     initializationFailed: "初始化失败",
     workspace: "双栏文件工作台",
     workspaceNavigation: "工作区导航",
+    taskbar: "系统任务栏",
+    desktopMode: "完整模式",
+    compactMode: "精简模式",
+    switchToDesktop: "切换到完整模式",
+    switchToCompact: "切换到精简模式",
+    fileManager: "文件管理器",
+    allLocations: "所有位置",
+    mappedLocations: "映射位置",
+    openFileManager: "打开文件管理器",
+    noMappedRoots: "尚未配置映射根目录",
+    minimizeWindow: "最小化窗口",
+    maximizeWindow: "最大化窗口",
+    restoreWindow: "还原窗口",
+    closeWindow: "关闭窗口",
+    openInNewWindow: "在新窗口中打开",
+    clipboardCopy: "复制",
+    cut: "剪切",
+    paste: "粘贴",
+    clipboardCopied: (count) => `已复制 ${count} 项`,
+    clipboardCut: (count) => `已剪切 ${count} 项`,
+    clipboardSelectionRequired: "请先选择一个或多个项目",
+    clipboardEmpty: "应用内剪贴板为空",
+    pasteUnavailable: "请先进入一个映射位置再粘贴",
     fileActions: "文件操作",
     files: "文件",
     activeJobs: (count) => `${count} 个任务运行中`,
@@ -323,6 +410,8 @@ export const strings: Record<Language, UIStrings> = {
     completedJobs: "已完成",
     emptyJobs: "暂无后台任务",
     jobsReconnecting: "正在重新连接",
+    cancelJob: (type) => `取消${type}任务`,
+    cancelJobFailed: "取消任务失败",
     jobProgress: (type) => `${strings["zh-CN"].operationType(type)}进度`,
     refresh: "刷新",
     resizePanes: "调整左右栏宽度",
@@ -410,6 +499,8 @@ export const strings: Record<Language, UIStrings> = {
         hardlink: "硬链接",
         delete: "删除",
         mkdir: "新建文件夹",
+        rename: "重命名",
+        power_rename: "PowerRename",
       })[type] ?? type,
     dragSummary: (name, count) => count === 1 ? name : `${name} 等 ${count} 项`,
     dragDestination: (type, target) => `${strings["zh-CN"].operationType(type)}到${target}`,
@@ -427,7 +518,9 @@ export const strings: Record<Language, UIStrings> = {
         cancel_requested: "正在取消",
         canceled: "已取消",
         completed: "已完成",
+        completed_with_errors: "完成但有错误",
         failed: "失败",
+        interrupted: "已中断",
       })[status] ?? status,
   },
 };

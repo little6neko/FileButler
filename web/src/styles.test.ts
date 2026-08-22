@@ -17,6 +17,23 @@ it("keeps the application desktop-only and pane scrolling internal", () => {
   expect(rule(".file-list")).toContain("overflow: auto;");
 });
 
+it("keeps the jobs sheet below the shared system taskbar height", () => {
+  expect(rule(":root")).toContain("--system-taskbar-height: 44px;");
+  expect(rule(".workspace-shell")).toContain("grid-template-rows: var(--system-taskbar-height) minmax(0, 1fr);");
+  expect(rule('.jobs-sheet-content[data-side="right"]')).toContain("top: var(--system-taskbar-height);");
+  expect(rule('.jobs-sheet-content[data-side="right"]')).toContain("height: calc(100dvh - var(--system-taskbar-height));");
+});
+
+it("overlays the job cancel button with file-row-like interaction feedback", () => {
+  expect(rule(".job-row-shell")).toContain("position: relative;");
+  expect(rule(".job-row-main")).toContain("padding: 0.75rem 3.25rem 0.75rem 0.75rem;");
+  expect(rule(".job-row-cancel")).toContain("position: absolute;");
+  expect(rule(".job-row-cancel")).toContain("right: 0.625rem;");
+  expect(rule(".job-row-cancel:hover:not(:disabled)")).toContain("background: var(--muted);");
+  expect(rule(".job-row-cancel:active:not(:disabled)")).toContain("background:");
+  expect(rule(".job-row-cancel:focus-visible")).toContain("outline: 2px solid var(--ring);");
+});
+
 it("keeps compact sticky file headers and an active-pane ring", () => {
   expect(rule(".file-table thead th")).toContain("position: sticky;");
   expect(rule(".file-table thead th")).toContain("height: 29px;");

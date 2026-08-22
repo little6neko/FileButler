@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { api } from "./api/client";
@@ -11,8 +11,6 @@ vi.mock("./api/client", () => ({
     me: vi.fn(),
     roots: vi.fn(),
     browse: vi.fn(),
-    jobs: vi.fn(),
-    job: vi.fn(),
     cancelJob: vi.fn(),
   },
 }));
@@ -22,7 +20,6 @@ beforeEach(() => {
   vi.mocked(api.me).mockResolvedValue({ id: 1, username: "admin" });
   vi.mocked(api.roots).mockResolvedValue([{ id: "downloads", name: "Downloads" }]);
   vi.mocked(api.browse).mockResolvedValue([]);
-  vi.mocked(api.jobs).mockResolvedValue([]);
 });
 
 it("renders the FileButler app shell", async () => {
@@ -37,11 +34,11 @@ it("sets the browser page title to FileButler", () => {
 it("allows manually switching to Simplified Chinese labels", async () => {
   render(<App />);
 
-  await waitFor(() => expect(screen.getAllByText("This directory is empty")).toHaveLength(2));
+  await screen.findByRole("button", { name: "Open File Manager" });
   await userEvent.click(await screen.findByRole("combobox", { name: "Language" }));
   await userEvent.click(await screen.findByRole("option", { name: "简体中文" }));
 
-  expect(screen.getByRole("button", { name: "移动到右栏" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "切换到精简模式" })).toBeInTheDocument();
 });
 
 it("uses the selected language on the login screen", async () => {

@@ -6,6 +6,7 @@ export type JobEventsState = {
   jobs: Job[];
   activeCount: number;
   connectionState: JobConnectionState;
+  runtimeId: string | null;
   cursor: number;
   snapshotRevision: number;
 };
@@ -22,9 +23,13 @@ export type EventSourceLike = {
 export type EventSourceFactory = (url: string) => EventSourceLike;
 
 export const activeJobStatuses = new Set(["pending", "running", "cancel_requested"]);
-export const terminalJobStatuses = new Set(["completed", "completed_with_errors", "failed", "canceled"]);
-
-const terminalLimit = 50;
+export const terminalJobStatuses = new Set([
+  "completed",
+  "completed_with_errors",
+  "failed",
+  "canceled",
+  "interrupted",
+]);
 
 export class JobEventsStore {
   private readonly eventSourceFactory: EventSourceFactory;
@@ -41,6 +46,7 @@ export class JobEventsStore {
     jobs: [],
     activeCount: 0,
     connectionState: "connecting",
+    runtimeId: null,
     cursor: 0,
     snapshotRevision: 0,
   };
@@ -65,9 +71,6 @@ export class JobEventsStore {
       source.addEventListener("jobs.snapshot", (event) => this.handleSnapshot(event));
       source.addEventListener("job.changed", (event) => this.handleChanged(event));
     } catch {
-      // There is no polling fallback. EventSource will be available in the
-      // browser; keeping the store reconnecting makes the failure visible to
-      // the workspace without breaking the rest of the UI.
       this.setConnectionState("reconnecting");
     }
   }
@@ -102,12 +105,9 @@ export class JobEventsStore {
     return [...(this.itemsByJob.get(jobID)?.values() ?? [])].sort((left, right) => left.index - right.index);
   }
 
-  hydrateItems(jobID: string, items: JobItem[]) {
-    const byIndex = this.itemsByJob.get(jobID) ?? new Map<number, JobItem>();
-    for (const item of items) byIndex.set(item.index, item);
-    this.itemsByJob.set(jobID, byIndex);
-    this.state = { ...this.state };
-    this.emit();
+  getDetail(jobID: string): JobDetail | null {
+    const job = this.jobsByID.get(jobID);
+    return job ? { ...job, items: this.getItems(jobID) } : null;
   }
 
   registerCreatedJob(jobID: string) {
@@ -120,44 +120,71 @@ export class JobEventsStore {
 
   handleSnapshot(snapshot: JobSnapshot | EventMessage) {
     const payload = this.parsePayload<JobSnapshot>(snapshot);
-    if (!payload || !Number.isFinite(payload.cursor) || !Array.isArray(payload.jobs)) return;
+    if (!isJobSnapshot(payload)) return;
 
     const firstSnapshot = !this.hasBaseline;
+    const runtimeChanged = this.state.runtimeId !== null && this.state.runtimeId !== payload.runtimeId;
+    const authoritativeReset = payload.reset || runtimeChanged;
+    const activeIDs = new Set(payload.jobs.map((detail) => detail.id));
     const terminalChanges: Job[] = [];
-    for (const job of payload.jobs) {
-      const previous = this.jobsByID.get(job.id);
-      if (!this.mergeJob(job)) continue;
-      if (terminalJobStatuses.has(job.status)) {
-        if (firstSnapshot) {
-          if (this.createdJobIDs.has(job.id)) terminalChanges.push(job);
-        } else if (!previous || previous.eventVersion < job.eventVersion || !terminalJobStatuses.has(previous.status)) {
-          terminalChanges.push(job);
-        }
+
+    if (authoritativeReset) {
+      const interruptedAt = Math.floor(Date.now() / 1000);
+      for (const [id, job] of this.jobsByID) {
+        if (!activeJobStatuses.has(job.status) || activeIDs.has(id)) continue;
+        const interrupted = {
+          ...job,
+          status: "interrupted",
+          cancelRequested: false,
+          updatedAtUnix: interruptedAt,
+          finishedAtUnix: interruptedAt,
+        };
+        this.jobsByID.set(id, interrupted);
+        terminalChanges.push(interrupted);
       }
     }
+
+    for (const detail of payload.jobs) {
+      const previous = this.jobsByID.get(detail.id);
+      if (previous && terminalJobStatuses.has(previous.status)) continue;
+      const snapshotJob = jobFromDetail(detail);
+      const accepted = authoritativeReset ? true : this.mergeJob(snapshotJob);
+      if (authoritativeReset) this.jobsByID.set(detail.id, jobFromDetail(detail));
+      if (!accepted) continue;
+      this.replaceItems(detail.id, detail.items);
+      if (terminalJobStatuses.has(detail.status)) {
+        if (!firstSnapshot || this.createdJobIDs.has(detail.id)) terminalChanges.push(detail);
+      }
+    }
+
     this.hasBaseline = true;
     this.state = {
       ...this.state,
-      cursor: Math.max(this.state.cursor, payload.cursor),
+      runtimeId: payload.runtimeId,
+      cursor: payload.cursor,
       snapshotRevision: this.state.snapshotRevision + 1,
     };
-    this.pruneJobs();
+    this.rebuildState();
     this.emit();
     this.notifyTerminalJobs(terminalChanges);
   }
 
   handleChanged(event: JobEvent | EventMessage) {
     const payload = this.parsePayload<JobEvent>(event);
-    if (!payload?.job) return;
+    if (!isJobEvent(payload)) return;
+    if (this.state.runtimeId !== null && payload.runtimeId !== this.state.runtimeId) return;
+    if (payload.cursor <= this.state.cursor) return;
+
     const accepted = this.mergeJob(payload.job);
+    this.state = { ...this.state, runtimeId: payload.runtimeId, cursor: payload.cursor };
     if (!accepted) return;
     if (payload.item) {
       const byIndex = this.itemsByJob.get(payload.job.id) ?? new Map<number, JobItem>();
       byIndex.set(payload.item.index, payload.item);
       this.itemsByJob.set(payload.job.id, byIndex);
     }
-    this.state = { ...this.state, cursor: Math.max(this.state.cursor, payload.job.eventVersion) };
-    this.pruneJobs();
+    if (Array.isArray(payload.items)) this.replaceItems(payload.job.id, payload.items);
+    this.rebuildState();
     this.emit();
     if (this.hasBaseline && terminalJobStatuses.has(payload.job.status)) {
       this.notifyTerminalJobs([payload.job]);
@@ -171,25 +198,16 @@ export class JobEventsStore {
     return true;
   }
 
-  private pruneJobs() {
-    const terminalJobs = [...this.jobsByID.values()]
-      .filter((job) => terminalJobStatuses.has(job.status))
-      .sort(compareNewestJobs);
-    const keepIDs = new Set(
-      [...this.jobsByID.values()]
-        .filter((job) => activeJobStatuses.has(job.status))
-        .map((job) => job.id),
-    );
-    for (const job of terminalJobs.slice(0, terminalLimit)) keepIDs.add(job.id);
-    for (const id of this.jobsByID.keys()) {
-      if (keepIDs.has(id)) continue;
-      this.jobsByID.delete(id);
-      this.itemsByJob.delete(id);
-    }
+  private replaceItems(jobID: string, items: JobItem[]) {
+    this.itemsByJob.set(jobID, new Map(items.map((item) => [item.index, item])));
+  }
+
+  private rebuildState() {
+    const jobs = [...this.jobsByID.values()].sort(compareNewestJobs);
     this.state = {
       ...this.state,
-      jobs: [...this.jobsByID.values()].sort(compareNewestJobs),
-      activeCount: [...this.jobsByID.values()].filter((job) => activeJobStatuses.has(job.status)).length,
+      jobs,
+      activeCount: jobs.filter((job) => activeJobStatuses.has(job.status)).length,
     };
   }
 
@@ -230,17 +248,36 @@ export class JobEventsStore {
   }
 }
 
+function isJobSnapshot(value: JobSnapshot | null): value is JobSnapshot {
+  return Boolean(
+    value &&
+    typeof value.runtimeId === "string" &&
+    value.runtimeId.length > 0 &&
+    Number.isFinite(value.cursor) &&
+    typeof value.reset === "boolean" &&
+    Array.isArray(value.jobs),
+  );
+}
+
+function isJobEvent(value: JobEvent | null): value is JobEvent {
+  return Boolean(
+    value?.job &&
+    typeof value.runtimeId === "string" &&
+    value.runtimeId.length > 0 &&
+    Number.isFinite(value.cursor),
+  );
+}
+
+function jobFromDetail(detail: JobDetail): Job {
+  const { items, ...job } = detail;
+  void items;
+  return job;
+}
+
 function compareNewestJobs(left: Job, right: Job) {
   return right.createdAtUnix - left.createdAtUnix || right.eventVersion - left.eventVersion || right.id.localeCompare(left.id);
 }
 
 function defaultEventSourceFactory(url: string): EventSourceLike {
   return new EventSource(url) as unknown as EventSourceLike;
-}
-
-export function mergeJobDetail(detail: JobDetail, eventJob: Job, eventItems: JobItem[]): JobDetail {
-  const byIndex = new Map(detail.items.map((item) => [item.index, item]));
-  for (const item of eventItems) byIndex.set(item.index, item);
-  const latestJob = eventJob.eventVersion >= detail.eventVersion ? eventJob : detail;
-  return { ...detail, ...latestJob, items: [...byIndex.values()].sort((left, right) => left.index - right.index) };
 }

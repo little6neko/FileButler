@@ -1,6 +1,6 @@
 import type { Entry, OpsRequest } from "./api/types";
 
-export type PaneKey = "left" | "right";
+export type PaneKey = string;
 export type DragOperation = Extract<OpsRequest["type"], "move" | "copy">;
 export type InvalidDropReason = "same-directory" | "inside-source";
 
@@ -26,6 +26,7 @@ export type FileDropData = {
   rootId: string;
   path: string;
   label: string;
+  layer?: number;
 };
 
 export type FileDropFeedback = {

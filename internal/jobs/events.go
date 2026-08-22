@@ -1,94 +1,112 @@
 package jobs
 
-import "sync"
-
-const defaultSubscriberBuffer = 64
+import (
+	"context"
+	"errors"
+	"sync"
+)
 
 type Event struct {
-	Job  Job         `json:"job"`
-	Item *ItemResult `json:"item,omitempty"`
+	RuntimeID string       `json:"runtimeId"`
+	Cursor    int64        `json:"cursor"`
+	Job       Job          `json:"job"`
+	Item      *ItemResult  `json:"item,omitempty"`
+	Items     []ItemResult `json:"items"`
 }
 
-type Publisher interface {
-	Publish(Event)
+type EventCursor struct {
+	RuntimeID string
+	Cursor    int64
 }
 
-// Broker orders committed events by their persistent event version. If a
-// subscriber cannot keep up, its channel is closed so the client reconnects
-// and recovers from a database snapshot instead of silently missing events.
-type Broker struct {
-	mu             sync.Mutex
-	nextSubscriber uint64
-	nextVersion    int64
-	bufferSize     int
-	subscribers    map[uint64]chan Event
-	pending        map[int64]Event
+type Subscription struct {
+	Snapshot    *Snapshot
+	Replay      []Event
+	Events      <-chan Event
+	Unsubscribe func()
 }
 
-func NewBroker(nextVersion int64) *Broker {
-	return newBroker(nextVersion, defaultSubscriberBuffer)
-}
-
-func newBroker(nextVersion int64, bufferSize int) *Broker {
-	if nextVersion < 1 {
-		nextVersion = 1
+func (s Store) Subscribe(ctx context.Context, cursor *EventCursor) (Subscription, error) {
+	if err := ctx.Err(); err != nil {
+		return Subscription{}, err
 	}
-	if bufferSize < 1 {
-		bufferSize = 1
+	if s.state == nil {
+		return Subscription{}, errors.New("job store is unavailable")
 	}
-	return &Broker{
-		nextVersion: nextVersion,
-		bufferSize:  bufferSize,
-		subscribers: make(map[uint64]chan Event),
-		pending:     make(map[int64]Event),
-	}
-}
+	s.state.mu.Lock()
+	id := s.state.nextSubscriberID
+	s.state.nextSubscriberID++
+	channel := make(chan Event, s.state.subscriberQueue)
+	s.state.subscribers[id] = channel
 
-func (b *Broker) Subscribe() (<-chan Event, func()) {
-	b.mu.Lock()
-	id := b.nextSubscriber
-	b.nextSubscriber++
-	ch := make(chan Event, b.bufferSize)
-	b.subscribers[id] = ch
-	b.mu.Unlock()
+	var snapshot *Snapshot
+	var replay []Event
+	switch {
+	case cursor == nil:
+		value := s.state.snapshotLocked(false)
+		snapshot = &value
+	case !s.state.canReplayLocked(*cursor):
+		value := s.state.snapshotLocked(true)
+		snapshot = &value
+	default:
+		for _, event := range s.state.replay {
+			if event.Cursor > cursor.Cursor {
+				replay = append(replay, cloneEvent(event))
+			}
+		}
+	}
+	s.state.mu.Unlock()
 
 	var once sync.Once
-	return ch, func() {
+	unsubscribe := func() {
 		once.Do(func() {
-			b.mu.Lock()
-			if current, ok := b.subscribers[id]; ok && current == ch {
-				delete(b.subscribers, id)
-				close(ch)
+			s.state.mu.Lock()
+			if current, exists := s.state.subscribers[id]; exists && current == channel {
+				delete(s.state.subscribers, id)
+				close(channel)
 			}
-			b.mu.Unlock()
+			s.state.mu.Unlock()
 		})
+	}
+	return Subscription{Snapshot: snapshot, Replay: replay, Events: channel, Unsubscribe: unsubscribe}, nil
+}
+
+func (state *storeState) canReplayLocked(cursor EventCursor) bool {
+	if cursor.RuntimeID != state.runtimeID || cursor.Cursor < 0 || cursor.Cursor > state.cursor {
+		return false
+	}
+	if cursor.Cursor == state.cursor {
+		return true
+	}
+	if len(state.replay) == 0 {
+		return false
+	}
+	return cursor.Cursor >= state.replay[0].Cursor-1
+}
+
+func (state *storeState) publishLocked(event Event) {
+	state.replay = append(state.replay, cloneEvent(event))
+	if overflow := len(state.replay) - state.replayCapacity; overflow > 0 {
+		state.replay = append([]Event(nil), state.replay[overflow:]...)
+	}
+	for id, subscriber := range state.subscribers {
+		select {
+		case subscriber <- cloneEvent(event):
+		default:
+			delete(state.subscribers, id)
+			close(subscriber)
+		}
 	}
 }
 
-func (b *Broker) Publish(event Event) {
-	version := event.Job.EventVersion
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	if version < b.nextVersion {
-		return
+func cloneEvent(event Event) Event {
+	cloned := event
+	if event.Item != nil {
+		item := *event.Item
+		cloned.Item = &item
 	}
-	if _, exists := b.pending[version]; !exists {
-		b.pending[version] = event
+	if event.Items != nil {
+		cloned.Items = append(make([]ItemResult, 0, len(event.Items)), event.Items...)
 	}
-	for {
-		next, ok := b.pending[b.nextVersion]
-		if !ok {
-			return
-		}
-		delete(b.pending, b.nextVersion)
-		b.nextVersion++
-		for id, subscriber := range b.subscribers {
-			select {
-			case subscriber <- next:
-			default:
-				delete(b.subscribers, id)
-				close(subscriber)
-			}
-		}
-	}
+	return cloned
 }

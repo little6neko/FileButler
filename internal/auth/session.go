@@ -1,50 +1,65 @@
 package auth
 
 import (
-	"context"
-	"crypto/rand"
-	"database/sql"
+	"crypto/hmac"
+	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
-	"errors"
+	"encoding/json"
+	"strings"
 	"time"
 )
 
-func newSessionID() (string, error) {
-	buf := make([]byte, 32)
-	if _, err := rand.Read(buf); err != nil {
+type sessionClaims struct {
+	Version   int    `json:"version"`
+	Username  string `json:"username"`
+	ExpiresAt int64  `json:"expiresAt"`
+}
+
+func createSessionToken(record credentials, now time.Time) (string, error) {
+	claims := sessionClaims{
+		Version:   record.version,
+		Username:  record.username,
+		ExpiresAt: now.Add(SessionLifetime).Unix(),
+	}
+	payload, err := json.Marshal(claims)
+	if err != nil {
 		return "", err
 	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
+	encodedPayload := base64.RawURLEncoding.EncodeToString(payload)
+	signature := sessionSignature(record.signingKey, encodedPayload)
+	return encodedPayload + "." + base64.RawURLEncoding.EncodeToString(signature), nil
 }
 
-func (s Service) LookupSession(ctx context.Context, sessionID string) (User, error) {
-	if sessionID == "" {
-		return User{}, ErrUnauthorized
+func verifySessionToken(token string, record credentials, now time.Time) (sessionClaims, error) {
+	encodedPayload, encodedSignature, ok := strings.Cut(token, ".")
+	if !ok || encodedPayload == "" || encodedSignature == "" || strings.Contains(encodedSignature, ".") {
+		return sessionClaims{}, ErrUnauthorized
 	}
-	var user User
-	var expiresRaw string
-	err := s.DB.QueryRowContext(ctx, `
-select users.id, users.username, sessions.expires_at
-from sessions join users on users.id = sessions.user_id
-where sessions.id = ?`, sessionID).Scan(&user.ID, &user.Username, &expiresRaw)
-	if errors.Is(err, sql.ErrNoRows) {
-		return User{}, ErrUnauthorized
+	providedSignature, err := base64.RawURLEncoding.DecodeString(encodedSignature)
+	if err != nil || len(providedSignature) != sha256.Size {
+		return sessionClaims{}, ErrUnauthorized
 	}
+	expectedSignature := sessionSignature(record.signingKey, encodedPayload)
+	if subtle.ConstantTimeCompare(providedSignature, expectedSignature) != 1 {
+		return sessionClaims{}, ErrUnauthorized
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(encodedPayload)
 	if err != nil {
-		return User{}, err
+		return sessionClaims{}, ErrUnauthorized
 	}
-	expires, err := time.Parse(time.RFC3339Nano, expiresRaw)
-	if err != nil {
-		return User{}, err
+	var claims sessionClaims
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		return sessionClaims{}, ErrUnauthorized
 	}
-	if !time.Now().Before(expires) {
-		_ = s.DeleteSession(ctx, sessionID)
-		return User{}, ErrUnauthorized
+	if claims.Version != record.version || claims.Username == "" || claims.ExpiresAt <= now.Unix() {
+		return sessionClaims{}, ErrUnauthorized
 	}
-	return user, nil
+	return claims, nil
 }
 
-func (s Service) DeleteSession(ctx context.Context, sessionID string) error {
-	_, err := s.DB.ExecContext(ctx, `delete from sessions where id = ?`, sessionID)
-	return err
+func sessionSignature(key []byte, payload string) []byte {
+	mac := hmac.New(sha256.New, key)
+	_, _ = mac.Write([]byte(payload))
+	return mac.Sum(nil)
 }

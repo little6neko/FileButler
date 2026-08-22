@@ -1,56 +1,121 @@
 package jobs
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
-func TestBrokerPublishesCommittedVersionsInOrder(t *testing.T) {
-	broker := newBroker(1, 4)
-	events, unsubscribe := broker.Subscribe()
-	defer unsubscribe()
-
-	broker.Publish(Event{Job: Job{ID: "job_2", EventVersion: 2}})
-	select {
-	case event := <-events:
-		t.Fatalf("received version %d before version 1", event.Job.EventVersion)
-	default:
+func TestValidCursorReplaysMissedEvents(t *testing.T) {
+	store := newStore("runtime-a", 4, 4)
+	createTestJob(t, store, "job_1", 1)
+	if err := store.MarkRunning(context.Background(), "job_1"); err != nil {
+		t.Fatal(err)
 	}
 
-	broker.Publish(Event{Job: Job{ID: "job_1", EventVersion: 1}})
-	for _, want := range []int64{1, 2} {
-		event, ok := <-events
-		if !ok {
-			t.Fatalf("subscription closed before version %d", want)
-		}
-		if event.Job.EventVersion != want {
-			t.Fatalf("event version = %d, want %d", event.Job.EventVersion, want)
-		}
+	subscription, err := store.Subscribe(context.Background(), &EventCursor{RuntimeID: "runtime-a", Cursor: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Unsubscribe()
+	if subscription.Snapshot != nil || len(subscription.Replay) != 1 {
+		t.Fatalf("subscription=%+v", subscription)
+	}
+	if subscription.Replay[0].Cursor != 2 || subscription.Replay[0].Job.Status != StatusRunning {
+		t.Fatalf("replay=%+v", subscription.Replay)
 	}
 }
 
-func TestBrokerClosesOverflowingSubscription(t *testing.T) {
-	broker := newBroker(1, 1)
-	events, unsubscribe := broker.Subscribe()
-	defer unsubscribe()
-
-	broker.Publish(Event{Job: Job{EventVersion: 1}})
-	broker.Publish(Event{Job: Job{EventVersion: 2}})
-
-	if event, ok := <-events; !ok || event.Job.EventVersion != 1 {
-		t.Fatalf("buffered event = %+v, open=%v", event, ok)
+func TestReplayBufferGapReturnsResetSnapshot(t *testing.T) {
+	store := newStore("runtime-a", 2, 4)
+	createTestJob(t, store, "job_1", 1)
+	if err := store.MarkRunning(context.Background(), "job_1"); err != nil {
+		t.Fatal(err)
 	}
-	if _, ok := <-events; ok {
+	if err := store.RequestCancel(context.Background(), "job_1"); err != nil {
+		t.Fatal(err)
+	}
+	subscription, err := store.Subscribe(context.Background(), &EventCursor{RuntimeID: "runtime-a", Cursor: 0})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Unsubscribe()
+	if subscription.Snapshot == nil || !subscription.Snapshot.Reset || len(subscription.Snapshot.Jobs) != 1 {
+		t.Fatalf("snapshot=%+v", subscription.Snapshot)
+	}
+}
+
+func TestRuntimeChangeReturnsResetSnapshot(t *testing.T) {
+	store := newStore("runtime-b", 4, 4)
+	subscription, err := store.Subscribe(context.Background(), &EventCursor{RuntimeID: "runtime-a", Cursor: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Unsubscribe()
+	if subscription.Snapshot == nil || !subscription.Snapshot.Reset || subscription.Snapshot.RuntimeID != "runtime-b" {
+		t.Fatalf("snapshot=%+v", subscription.Snapshot)
+	}
+}
+
+func TestFreshSubscriptionNeverReceivesTerminalHistory(t *testing.T) {
+	store := newStore("runtime-a", 8, 8)
+	createTestJob(t, store, "job_1", 0)
+	if err := store.Finish(context.Background(), "job_1", StatusCompleted, ""); err != nil {
+		t.Fatal(err)
+	}
+	subscription, err := store.Subscribe(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Unsubscribe()
+	if subscription.Snapshot == nil || len(subscription.Snapshot.Jobs) != 0 || len(subscription.Replay) != 0 {
+		t.Fatalf("subscription=%+v", subscription)
+	}
+}
+
+func TestOverflowingSubscriberIsClosedAndCanReplay(t *testing.T) {
+	store := newStore("runtime-a", 8, 1)
+	subscription, err := store.Subscribe(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Unsubscribe()
+	createTestJob(t, store, "job_1", 1)
+	if err := store.MarkRunning(context.Background(), "job_1"); err != nil {
+		t.Fatal(err)
+	}
+	first, open := <-subscription.Events
+	if !open || first.Cursor != 1 {
+		t.Fatalf("first=%+v open=%v", first, open)
+	}
+	if _, open := <-subscription.Events; open {
 		t.Fatal("overflowing subscription remained open")
 	}
-
-	// Publishing after overflow and unsubscribing twice must remain safe.
-	broker.Publish(Event{Job: Job{EventVersion: 3}})
-	unsubscribe()
+	reconnected, err := store.Subscribe(context.Background(), &EventCursor{RuntimeID: "runtime-a", Cursor: first.Cursor})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reconnected.Unsubscribe()
+	if len(reconnected.Replay) != 1 || reconnected.Replay[0].Cursor != 2 {
+		t.Fatalf("replay=%+v", reconnected.Replay)
+	}
 }
 
-func TestBrokerUnsubscribeClosesSubscription(t *testing.T) {
-	broker := newBroker(1, 1)
-	events, unsubscribe := broker.Subscribe()
-	unsubscribe()
-	if _, ok := <-events; ok {
-		t.Fatal("subscription remained open after unsubscribe")
+func TestSnapshotAndSubscriptionRegistrationDoNotLoseNextEvent(t *testing.T) {
+	store := newStore("runtime-a", 8, 8)
+	createTestJob(t, store, "job_1", 1)
+	subscription, err := store.Subscribe(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Unsubscribe()
+	if subscription.Snapshot == nil || subscription.Snapshot.Cursor != 1 {
+		t.Fatalf("snapshot=%+v", subscription.Snapshot)
+	}
+	if err := store.MarkRunning(context.Background(), "job_1"); err != nil {
+		t.Fatal(err)
+	}
+	event := <-subscription.Events
+	if event.Cursor != 2 || event.Job.Status != StatusRunning {
+		t.Fatalf("event=%+v", event)
 	}
 }

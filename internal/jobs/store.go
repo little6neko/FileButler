@@ -2,414 +2,300 @@ package jobs
 
 import (
 	"context"
-	"database/sql"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"sort"
+	"sync"
 	"time"
 )
 
-const jobColumns = `
-id, type, status, actor_id, source_root_id, dest_root_id, plan_json, root_snapshot_json,
-progress_total, progress_done, cancel_requested, error_message,
-strftime('%s', created_at), strftime('%s', updated_at), finished_at, event_version`
+const (
+	defaultReplayCapacity  = 256
+	defaultSubscriberQueue = 64
+)
+
+var (
+	ErrJobNotFound   = errors.New("job not found")
+	ErrDuplicateJob  = errors.New("job already exists")
+	ErrDuplicateItem = errors.New("job item already exists")
+)
 
 type Store struct {
-	DB        *sql.DB
-	Publisher Publisher
+	state *storeState
 }
 
-type Snapshot struct {
-	Cursor int64 `json:"cursor"`
-	Jobs   []Job `json:"jobs"`
+type storeState struct {
+	mu               sync.Mutex
+	runtimeID        string
+	cursor           int64
+	active           map[string]*jobRecord
+	replay           []Event
+	replayCapacity   int
+	subscriberQueue  int
+	nextSubscriberID uint64
+	subscribers      map[uint64]chan Event
+	now              func() time.Time
+}
+
+type jobRecord struct {
+	job   Job
+	items map[int]ItemResult
+}
+
+func NewStore() Store {
+	return newStore(newRuntimeID(), defaultReplayCapacity, defaultSubscriberQueue)
+}
+
+func newStore(runtimeID string, replayCapacity, subscriberQueue int) Store {
+	if runtimeID == "" {
+		runtimeID = newRuntimeID()
+	}
+	if replayCapacity < 1 {
+		replayCapacity = 1
+	}
+	if subscriberQueue < 1 {
+		subscriberQueue = 1
+	}
+	return Store{state: &storeState{
+		runtimeID:       runtimeID,
+		active:          make(map[string]*jobRecord),
+		replayCapacity:  replayCapacity,
+		subscriberQueue: subscriberQueue,
+		subscribers:     make(map[uint64]chan Event),
+		now:             time.Now,
+	}}
+}
+
+func (s Store) Available() bool {
+	return s.state != nil
 }
 
 func (s Store) Create(ctx context.Context, job Job) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.state == nil {
+		return errors.New("job store is unavailable")
+	}
+	if job.ID == "" {
+		return errors.New("job id is required")
+	}
 	if job.Status == "" {
 		job.Status = StatusPending
 	}
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
+	if job.Status.IsTerminal() {
+		return errors.New("new job status must be nonterminal")
 	}
-	defer tx.Rollback()
 
-	version, err := nextEventVersion(ctx, tx)
-	if err != nil {
-		return err
+	s.state.mu.Lock()
+	defer s.state.mu.Unlock()
+	if _, exists := s.state.active[job.ID]; exists {
+		return ErrDuplicateJob
 	}
-	cancelRequested := 0
-	if job.CancelRequested {
-		cancelRequested = 1
+	now := s.state.currentTime().Unix()
+	if job.CreatedAtUnix == 0 {
+		job.CreatedAtUnix = now
 	}
-	if _, err := tx.ExecContext(ctx, `
-insert into jobs(
-  id, type, status, actor_id, source_root_id, dest_root_id, plan_json, root_snapshot_json,
-  progress_total, progress_done, cancel_requested, error_message, event_version
-)
-values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		job.ID, job.Type, job.Status, job.ActorID, job.SourceRootID, nullEmpty(job.DestRootID),
-		job.PlanJSON, job.RootSnapshotJSON, job.ProgressTotal, job.ProgressDone, cancelRequested,
-		job.ErrorMessage, version); err != nil {
-		return err
-	}
-	created, err := loadJob(ctx, tx, job.ID)
-	if err != nil {
-		return err
-	}
-	return s.commitAndPublish(tx, Event{Job: created})
+	job.UpdatedAtUnix = now
+	job.FinishedAtUnix = 0
+	record := &jobRecord{job: job, items: make(map[int]ItemResult)}
+	s.state.active[job.ID] = record
+	s.state.emitLocked(record, nil, false)
+	return nil
 }
 
 func (s Store) Get(ctx context.Context, id string) (Job, []ItemResult, error) {
-	job, err := loadJob(ctx, s.DB, id)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return Job{}, nil, err
 	}
-	rows, err := s.DB.QueryContext(ctx, `
-select job_id, item_index, source_path, dest_path, status, error_code, error_message, undo_json
-from job_items where job_id = ? order by item_index`, id)
-	if err != nil {
-		return Job{}, nil, err
+	if s.state == nil {
+		return Job{}, nil, ErrJobNotFound
 	}
-	defer rows.Close()
-	var items []ItemResult
-	for rows.Next() {
-		var item ItemResult
-		var destPath sql.NullString
-		if err := rows.Scan(&item.JobID, &item.Index, &item.SourcePath, &destPath, &item.Status, &item.ErrorCode, &item.ErrorMessage, &item.UndoJSON); err != nil {
-			return Job{}, nil, err
-		}
-		item.DestPath = destPath.String
-		items = append(items, item)
+	s.state.mu.Lock()
+	defer s.state.mu.Unlock()
+	record, exists := s.state.active[id]
+	if !exists {
+		return Job{}, nil, ErrJobNotFound
 	}
-	return job, items, rows.Err()
+	return record.job, sortedItems(record.items), nil
 }
 
-func (s Store) List(ctx context.Context, limit int) ([]Job, error) {
-	if limit <= 0 {
-		limit = 50
-	}
-	rows, err := s.DB.QueryContext(ctx, `select `+jobColumns+` from jobs order by rowid desc limit ?`, limit)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	return scanJobs(rows)
-}
-
-func (s Store) CurrentEventVersion(ctx context.Context) (int64, error) {
-	var version int64
-	err := s.DB.QueryRowContext(ctx, `select version from job_event_clock where id = 1`).Scan(&version)
-	return version, err
-}
-
-// Snapshot returns a consistent job view and the event watermark represented by
-// that view. A valid cursor also includes terminal jobs beyond the normal list
-// limit when they changed while the client was disconnected.
-func (s Store) Snapshot(ctx context.Context, afterVersion *int64, terminalLimit int) (Snapshot, error) {
-	if terminalLimit <= 0 {
-		terminalLimit = 50
-	}
-	tx, err := s.DB.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
+func (s Store) Snapshot(ctx context.Context) (Snapshot, error) {
+	if err := ctx.Err(); err != nil {
 		return Snapshot{}, err
 	}
-	defer tx.Rollback()
-
-	var watermark int64
-	if err := tx.QueryRowContext(ctx, `select version from job_event_clock where id = 1`).Scan(&watermark); err != nil {
-		return Snapshot{}, err
+	if s.state == nil {
+		return Snapshot{}, errors.New("job store is unavailable")
 	}
-	includeChanged := 0
-	after := int64(0)
-	if afterVersion != nil && *afterVersion >= 0 && *afterVersion <= watermark {
-		includeChanged = 1
-		after = *afterVersion
-	}
-	terminal := []any{StatusCompleted, StatusCompletedWithErrors, StatusFailed, StatusCanceled}
-	args := append([]any{}, terminal...)
-	args = append(args, terminal...)
-	args = append(args, terminalLimit, includeChanged, after)
-	rows, err := tx.QueryContext(ctx, `
-select `+jobColumns+` from jobs
-where status not in (?, ?, ?, ?)
-   or id in (
-     select id from jobs where status in (?, ?, ?, ?) order by rowid desc limit ?
-   )
-   or (? = 1 and event_version > ?)
-order by rowid desc`, args...)
-	if err != nil {
-		return Snapshot{}, err
-	}
-	jobs, err := scanJobs(rows)
-	if err != nil {
-		return Snapshot{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return Snapshot{}, err
-	}
-	return Snapshot{Cursor: watermark, Jobs: jobs}, nil
+	s.state.mu.Lock()
+	defer s.state.mu.Unlock()
+	return s.state.snapshotLocked(false), nil
 }
 
 func (s Store) MarkRunning(ctx context.Context, id string) error {
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	defer tx.Rollback()
-
-	status, err := loadStatus(ctx, tx, id)
-	if errors.Is(err, sql.ErrNoRows) {
+	if s.state == nil {
 		return nil
 	}
-	if err != nil {
-		return err
-	}
-	if status != StatusPending {
+	s.state.mu.Lock()
+	defer s.state.mu.Unlock()
+	record, exists := s.state.active[id]
+	if !exists || record.job.Status != StatusPending {
 		return nil
 	}
-	version, err := nextEventVersion(ctx, tx)
-	if err != nil {
-		return err
-	}
-	result, err := tx.ExecContext(ctx, `
-update jobs set status = ?, updated_at = current_timestamp, event_version = ?
-where id = ? and status = ?`, StatusRunning, version, id, StatusPending)
-	if err != nil {
-		return err
-	}
-	changed, err := rowChanged(result)
-	if err != nil {
-		return err
-	}
-	if !changed {
-		return nil
-	}
-	job, err := loadJob(ctx, tx, id)
-	if err != nil {
-		return err
-	}
-	return s.commitAndPublish(tx, Event{Job: job})
+	record.job.Status = StatusRunning
+	record.job.UpdatedAtUnix = s.state.currentTime().Unix()
+	s.state.emitLocked(record, nil, false)
+	return nil
 }
 
-// RecordItemResult atomically appends the item result and advances job progress.
 func (s Store) RecordItemResult(ctx context.Context, result ItemResult) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if s.state == nil {
+		return ErrJobNotFound
+	}
 	if result.UndoJSON == "" {
 		result.UndoJSON = "{}"
 	}
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
-		return err
+	s.state.mu.Lock()
+	defer s.state.mu.Unlock()
+	record, exists := s.state.active[result.JobID]
+	if !exists {
+		return ErrJobNotFound
 	}
-	defer tx.Rollback()
-
-	status, err := loadStatus(ctx, tx, result.JobID)
-	if err != nil {
-		return err
+	if _, exists := record.items[result.Index]; exists {
+		return ErrDuplicateItem
 	}
-	if status.IsTerminal() {
-		return nil
-	}
-	if _, err := tx.ExecContext(ctx, `
-insert into job_items(job_id, item_index, source_path, dest_path, status, error_code, error_message, undo_json)
-values (?, ?, ?, ?, ?, ?, ?, ?)`,
-		result.JobID, result.Index, result.SourcePath, nullEmpty(result.DestPath), result.Status,
-		result.ErrorCode, result.ErrorMessage, result.UndoJSON); err != nil {
-		return err
-	}
-	version, err := nextEventVersion(ctx, tx)
-	if err != nil {
-		return err
-	}
-	if _, err := tx.ExecContext(ctx, `
-update jobs
-set progress_done = progress_done + 1, updated_at = current_timestamp, event_version = ?
-where id = ?`, version, result.JobID); err != nil {
-		return err
-	}
-	job, err := loadJob(ctx, tx, result.JobID)
-	if err != nil {
-		return err
-	}
-	return s.commitAndPublish(tx, Event{Job: job, Item: &result})
+	record.items[result.Index] = result
+	record.job.ProgressDone++
+	record.job.UpdatedAtUnix = s.state.currentTime().Unix()
+	s.state.emitLocked(record, &result, false)
+	return nil
 }
 
 func (s Store) RequestCancel(ctx context.Context, id string) error {
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	defer tx.Rollback()
-
-	status, err := loadStatus(ctx, tx, id)
-	if errors.Is(err, sql.ErrNoRows) {
+	if s.state == nil {
 		return nil
 	}
-	if err != nil {
-		return err
-	}
-	if status != StatusPending && status != StatusRunning {
+	s.state.mu.Lock()
+	defer s.state.mu.Unlock()
+	record, exists := s.state.active[id]
+	if !exists || (record.job.Status != StatusPending && record.job.Status != StatusRunning) {
 		return nil
 	}
-	version, err := nextEventVersion(ctx, tx)
-	if err != nil {
-		return err
-	}
-	result, err := tx.ExecContext(ctx, `
-update jobs
-set cancel_requested = 1, status = ?, updated_at = current_timestamp, event_version = ?
-where id = ? and status in (?, ?)`,
-		StatusCancelRequested, version, id, StatusPending, StatusRunning)
-	if err != nil {
-		return err
-	}
-	changed, err := rowChanged(result)
-	if err != nil {
-		return err
-	}
-	if !changed {
-		return nil
-	}
-	job, err := loadJob(ctx, tx, id)
-	if err != nil {
-		return err
-	}
-	return s.commitAndPublish(tx, Event{Job: job})
+	record.job.CancelRequested = true
+	record.job.Status = StatusCancelRequested
+	record.job.UpdatedAtUnix = s.state.currentTime().Unix()
+	s.state.emitLocked(record, nil, false)
+	return nil
 }
 
 func (s Store) IsCancelRequested(ctx context.Context, id string) (bool, error) {
-	var cancel int
-	err := s.DB.QueryRowContext(ctx, `select cancel_requested from jobs where id = ?`, id).Scan(&cancel)
-	return cancel != 0, err
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if s.state == nil {
+		return false, ErrJobNotFound
+	}
+	s.state.mu.Lock()
+	defer s.state.mu.Unlock()
+	record, exists := s.state.active[id]
+	if !exists {
+		return false, ErrJobNotFound
+	}
+	return record.job.CancelRequested, nil
 }
 
 func (s Store) Finish(ctx context.Context, id string, status Status, message string) error {
 	if !status.IsTerminal() {
 		return errors.New("finish status must be terminal")
 	}
-	tx, err := s.DB.BeginTx(ctx, nil)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return err
 	}
-	defer tx.Rollback()
-
-	current, err := loadStatus(ctx, tx, id)
-	if errors.Is(err, sql.ErrNoRows) {
+	if s.state == nil {
 		return nil
 	}
-	if err != nil {
-		return err
-	}
-	if current.IsTerminal() {
+	s.state.mu.Lock()
+	defer s.state.mu.Unlock()
+	record, exists := s.state.active[id]
+	if !exists {
 		return nil
 	}
-	version, err := nextEventVersion(ctx, tx)
-	if err != nil {
-		return err
-	}
-	result, err := tx.ExecContext(ctx, `
-update jobs
-set status = ?, error_message = ?, updated_at = current_timestamp, finished_at = ?, event_version = ?
-where id = ? and status not in (?, ?, ?, ?)`,
-		status, message, time.Now().UTC().Format(time.RFC3339Nano), version, id,
-		StatusCompleted, StatusCompletedWithErrors, StatusFailed, StatusCanceled)
-	if err != nil {
-		return err
-	}
-	changed, err := rowChanged(result)
-	if err != nil {
-		return err
-	}
-	if !changed {
-		return nil
-	}
-	job, err := loadJob(ctx, tx, id)
-	if err != nil {
-		return err
-	}
-	return s.commitAndPublish(tx, Event{Job: job})
-}
-
-func (s Store) commitAndPublish(tx *sql.Tx, event Event) error {
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	if s.Publisher != nil {
-		s.Publisher.Publish(event)
-	}
+	now := s.state.currentTime().Unix()
+	record.job.Status = status
+	record.job.ErrorMessage = message
+	record.job.UpdatedAtUnix = now
+	record.job.FinishedAtUnix = now
+	delete(s.state.active, id)
+	s.state.emitLocked(record, nil, true)
 	return nil
 }
 
-func nextEventVersion(ctx context.Context, tx *sql.Tx) (int64, error) {
-	if _, err := tx.ExecContext(ctx, `update job_event_clock set version = version + 1 where id = 1`); err != nil {
-		return 0, err
+func (state *storeState) emitLocked(record *jobRecord, item *ItemResult, terminal bool) {
+	state.cursor++
+	record.job.EventVersion = state.cursor
+	event := Event{
+		RuntimeID: state.runtimeID,
+		Cursor:    state.cursor,
+		Job:       record.job,
 	}
-	var version int64
-	err := tx.QueryRowContext(ctx, `select version from job_event_clock where id = 1`).Scan(&version)
-	return version, err
-}
-
-func rowChanged(result sql.Result) (bool, error) {
-	rows, err := result.RowsAffected()
-	return rows == 1, err
-}
-
-func loadStatus(ctx context.Context, tx *sql.Tx, id string) (Status, error) {
-	var status Status
-	err := tx.QueryRowContext(ctx, `select status from jobs where id = ?`, id).Scan(&status)
-	return status, err
-}
-
-type rowQueryer interface {
-	QueryRowContext(context.Context, string, ...any) *sql.Row
-}
-
-type rowScanner interface {
-	Scan(...any) error
-}
-
-func loadJob(ctx context.Context, queryer rowQueryer, id string) (Job, error) {
-	return scanJob(queryer.QueryRowContext(ctx, `select `+jobColumns+` from jobs where id = ?`, id))
-}
-
-func scanJob(scanner rowScanner) (Job, error) {
-	var job Job
-	var dest sql.NullString
-	var finished sql.NullString
-	var cancel int
-	err := scanner.Scan(
-		&job.ID, &job.Type, &job.Status, &job.ActorID, &job.SourceRootID, &dest,
-		&job.PlanJSON, &job.RootSnapshotJSON, &job.ProgressTotal, &job.ProgressDone,
-		&cancel, &job.ErrorMessage, &job.CreatedAtUnix, &job.UpdatedAtUnix, &finished,
-		&job.EventVersion,
-	)
-	if err != nil {
-		return Job{}, err
+	if item != nil {
+		cloned := *item
+		event.Item = &cloned
 	}
-	job.DestRootID = dest.String
-	job.CancelRequested = cancel != 0
-	if finished.Valid {
-		if ts, err := time.Parse(time.RFC3339Nano, finished.String); err == nil {
-			job.FinishedAtUnix = ts.Unix()
+	if terminal {
+		event.Items = sortedItems(record.items)
+	}
+	state.publishLocked(event)
+}
+
+func (state *storeState) snapshotLocked(reset bool) Snapshot {
+	jobs := make([]JobDetail, 0, len(state.active))
+	for _, record := range state.active {
+		jobs = append(jobs, JobDetail{Job: record.job, Items: sortedItems(record.items)})
+	}
+	sort.Slice(jobs, func(left, right int) bool {
+		if jobs[left].CreatedAtUnix != jobs[right].CreatedAtUnix {
+			return jobs[left].CreatedAtUnix > jobs[right].CreatedAtUnix
 		}
-	}
-	return job, nil
-}
-
-func scanJobs(rows *sql.Rows) ([]Job, error) {
-	defer rows.Close()
-	jobs := make([]Job, 0)
-	for rows.Next() {
-		job, err := scanJob(rows)
-		if err != nil {
-			return nil, err
+		if jobs[left].EventVersion != jobs[right].EventVersion {
+			return jobs[left].EventVersion > jobs[right].EventVersion
 		}
-		jobs = append(jobs, job)
-	}
-	return jobs, rows.Err()
+		return jobs[left].ID > jobs[right].ID
+	})
+	return Snapshot{RuntimeID: state.runtimeID, Cursor: state.cursor, Reset: reset, Jobs: jobs}
 }
 
-func nullEmpty(v string) any {
-	if v == "" {
-		return nil
+func (state *storeState) currentTime() time.Time {
+	if state.now == nil {
+		return time.Now().UTC()
 	}
-	return v
+	return state.now().UTC()
+}
+
+func sortedItems(items map[int]ItemResult) []ItemResult {
+	out := make([]ItemResult, 0, len(items))
+	for _, item := range items {
+		out = append(out, item)
+	}
+	sort.Slice(out, func(left, right int) bool { return out[left].Index < out[right].Index })
+	return out
+}
+
+func newRuntimeID() string {
+	buffer := make([]byte, 16)
+	if _, err := rand.Read(buffer); err == nil {
+		return hex.EncodeToString(buffer)
+	}
+	return fmt.Sprintf("runtime-%d", time.Now().UnixNano())
 }

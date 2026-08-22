@@ -1,11 +1,10 @@
-listen: "127.0.0.1:8080"
-database_path: "./data/filebutler.db"
+listen: "0.0.0.0:8080"
+auth_file: "./data/auth.json"
 job_concurrency: 2
 log_level: "info"
 session:
   cookie_name: "filebutler_session"
   secure: false
-  max_age_seconds: 86400
 roots:
   - id: "downloads"
     name: "Downloads"

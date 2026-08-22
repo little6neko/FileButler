@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"time"
 )
 
 type contextKey string
@@ -21,7 +20,7 @@ func ContextWithUser(ctx context.Context, user User) context.Context {
 	return context.WithValue(ctx, userContextKey, user)
 }
 
-func InitStatusHandler(service Service) http.HandlerFunc {
+func InitStatusHandler(service *Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		needs, err := service.NeedsInitialization(r.Context())
 		if err != nil {
@@ -32,7 +31,7 @@ func InitStatusHandler(service Service) http.HandlerFunc {
 	}
 }
 
-func CreateAdminHandler(service Service) http.HandlerFunc {
+func CreateAdminHandler(service *Service) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var payload struct {
 			Username string `json:"username"`
@@ -57,7 +56,7 @@ func CreateAdminHandler(service Service) http.HandlerFunc {
 	}
 }
 
-func LoginHandler(service Service, cookieName string, secure bool) http.HandlerFunc {
+func LoginHandler(service *Service, cookieName string, secure bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var payload struct {
 			Username string `json:"username"`
@@ -72,15 +71,11 @@ func LoginHandler(service Service, cookieName string, secure bool) http.HandlerF
 			writeError(w, http.StatusUnauthorized, "unauthorized", "invalid username or password")
 			return
 		}
-		maxAge := int(service.SessionMaxAge.Seconds())
-		if maxAge == 0 {
-			maxAge = int((24 * time.Hour).Seconds())
-		}
 		http.SetCookie(w, &http.Cookie{
 			Name:     cookieName,
 			Value:    sessionID,
 			Path:     "/",
-			MaxAge:   maxAge,
+			MaxAge:   int(SessionLifetime.Seconds()),
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
 			Secure:   secure,
@@ -89,17 +84,14 @@ func LoginHandler(service Service, cookieName string, secure bool) http.HandlerF
 	}
 }
 
-func LogoutHandler(service Service, cookieName string) http.HandlerFunc {
+func LogoutHandler(cookieName string, secure bool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if cookie, err := r.Cookie(cookieName); err == nil {
-			_ = service.DeleteSession(r.Context(), cookie.Value)
-		}
-		http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode})
+		http.SetCookie(w, &http.Cookie{Name: cookieName, Path: "/", MaxAge: -1, HttpOnly: true, SameSite: http.SameSiteLaxMode, Secure: secure})
 		writeData(w, http.StatusOK, map[string]bool{"ok": true})
 	}
 }
 
-func MeHandler(service Service, cookieName string) http.HandlerFunc {
+func MeHandler(service *Service, cookieName string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie(cookieName)
 		if err != nil {
@@ -115,7 +107,7 @@ func MeHandler(service Service, cookieName string) http.HandlerFunc {
 	}
 }
 
-func RequireAuth(service Service, cookieName string) func(http.Handler) http.Handler {
+func RequireAuth(service *Service, cookieName string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cookie, err := r.Cookie(cookieName)

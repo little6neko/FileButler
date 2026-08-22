@@ -42,6 +42,18 @@ type ItemResult struct {
 	UndoJSON     string `json:"-"`
 }
 
+type JobDetail struct {
+	Job
+	Items []ItemResult `json:"items"`
+}
+
+type Snapshot struct {
+	RuntimeID string      `json:"runtimeId"`
+	Cursor    int64       `json:"cursor"`
+	Reset     bool        `json:"reset"`
+	Jobs      []JobDetail `json:"jobs"`
+}
+
 func (s Status) IsTerminal() bool {
 	switch s {
 	case StatusCompleted, StatusCompletedWithErrors, StatusFailed, StatusCanceled:

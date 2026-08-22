@@ -19,13 +19,12 @@ func TestLoadConfigValidatesAndAbsolutizesRoots(t *testing.T) {
 	configPath := filepath.Join(dir, "filebutler.yaml")
 	body := []byte(`
 listen: "127.0.0.1:8080"
-database_path: "./filebutler.db"
+auth_file: "./auth.json"
 job_concurrency: 2
 log_level: "debug"
 session:
   cookie_name: "filebutler_session"
   secure: false
-  max_age_seconds: 3600
 roots:
   - id: "downloads"
     name: "Downloads"
@@ -48,8 +47,8 @@ roots:
 	if len(cfg.Roots) != 2 {
 		t.Fatalf("roots length = %d", len(cfg.Roots))
 	}
-	if !filepath.IsAbs(cfg.DatabasePath) {
-		t.Fatalf("database path is not absolute: %q", cfg.DatabasePath)
+	if cfg.AuthFile != filepath.Join(dir, "auth.json") {
+		t.Fatalf("auth file = %q", cfg.AuthFile)
 	}
 }
 
@@ -61,7 +60,7 @@ func TestLoadConfigRejectsDuplicateRootIDs(t *testing.T) {
 	}
 	configPath := filepath.Join(dir, "filebutler.yaml")
 	body := []byte(`
-database_path: "./filebutler.db"
+auth_file: "./auth.json"
 roots:
   - id: "data"
     name: "Data A"
@@ -77,5 +76,30 @@ roots:
 	_, err := Load(configPath)
 	if err == nil {
 		t.Fatal("expected duplicate root id error")
+	}
+}
+
+func TestLoadConfigDefaultsAuthenticationFileRelativeToConfig(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, "data")
+	if err := os.Mkdir(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(dir, "filebutler.yaml")
+	body := []byte(`
+roots:
+  - id: "data"
+    path: "` + root + `"
+`)
+	if err := os.WriteFile(configPath, body, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.AuthFile != filepath.Join(dir, "data", "auth.json") {
+		t.Fatalf("auth file = %q", cfg.AuthFile)
 	}
 }

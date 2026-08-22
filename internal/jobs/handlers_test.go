@@ -9,22 +9,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/little6neko/filebutler/internal/testutil"
+	"github.com/go-chi/chi/v5"
 )
 
-func TestEventsHandlerStreamsSnapshotAndLiveChanges(t *testing.T) {
-	db := testutil.OpenTestDB(t)
-	actorID := insertActor(t, db)
-	broker := NewBroker(1)
-	store := Store{DB: db, Publisher: broker}
-	if err := store.Create(context.Background(), Job{
-		ID: "job_1", Type: "copy", ActorID: actorID, SourceRootID: "a",
-		PlanJSON: "{}", RootSnapshotJSON: "{}", ProgressTotal: 1,
-	}); err != nil {
-		t.Fatal(err)
-	}
-
-	server := httptest.NewServer(EventsHandler(store, broker))
+func TestEventsHandlerStreamsActiveSnapshotAndLiveChanges(t *testing.T) {
+	store := newStore("runtime-a", 8, 8)
+	createTestJob(t, store, "job_1", 1)
+	server := httptest.NewServer(EventsHandler(store))
 	defer server.Close()
 	response, err := server.Client().Get(server.URL)
 	if err != nil {
@@ -42,19 +33,18 @@ func TestEventsHandlerStreamsSnapshotAndLiveChanges(t *testing.T) {
 	}
 
 	reader := bufio.NewReader(response.Body)
-	retry := readSSEBlock(t, reader)
-	if retry["retry"] != "2000" {
-		t.Fatalf("retry block=%v", retry)
+	if retry := readSSEBlock(t, reader); retry["retry"] != "2000" {
+		t.Fatalf("retry=%v", retry)
 	}
 	snapshotBlock := readSSEBlock(t, reader)
-	if snapshotBlock["event"] != "jobs.snapshot" || snapshotBlock["id"] != "1" {
+	if snapshotBlock["event"] != "jobs.snapshot" || snapshotBlock["id"] != "runtime-a:1" {
 		t.Fatalf("snapshot block=%v", snapshotBlock)
 	}
 	var snapshot Snapshot
 	if err := json.Unmarshal([]byte(snapshotBlock["data"]), &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Cursor != 1 || len(snapshot.Jobs) != 1 || snapshot.Jobs[0].Status != StatusPending {
+	if snapshot.RuntimeID != "runtime-a" || snapshot.Cursor != 1 || snapshot.Reset || len(snapshot.Jobs) != 1 || snapshot.Jobs[0].Items == nil {
 		t.Fatalf("snapshot=%+v", snapshot)
 	}
 
@@ -62,28 +52,101 @@ func TestEventsHandlerStreamsSnapshotAndLiveChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	changedBlock := readSSEBlock(t, reader)
-	if changedBlock["event"] != "job.changed" || changedBlock["id"] != "2" {
+	if changedBlock["event"] != "job.changed" || changedBlock["id"] != "runtime-a:2" {
 		t.Fatalf("changed block=%v", changedBlock)
 	}
 	var changed Event
 	if err := json.Unmarshal([]byte(changedBlock["data"]), &changed); err != nil {
 		t.Fatal(err)
 	}
-	if changed.Job.Status != StatusRunning || changed.Job.EventVersion != 2 {
+	if changed.Job.Status != StatusRunning || changed.Cursor != 2 {
 		t.Fatalf("changed=%+v", changed)
 	}
 }
 
+func TestEventsHandlerReplaysAValidCursorWithoutTerminalSnapshot(t *testing.T) {
+	store := newStore("runtime-a", 8, 8)
+	createTestJob(t, store, "job_1", 0)
+	if err := store.Finish(context.Background(), "job_1", StatusCompleted, ""); err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(EventsHandler(store))
+	defer server.Close()
+	request, err := http.NewRequest(http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Last-Event-ID", "runtime-a:1")
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	reader := bufio.NewReader(response.Body)
+	_ = readSSEBlock(t, reader)
+	replay := readSSEBlock(t, reader)
+	if replay["event"] != "job.changed" || replay["id"] != "runtime-a:2" {
+		t.Fatalf("replay=%v", replay)
+	}
+	var event Event
+	if err := json.Unmarshal([]byte(replay["data"]), &event); err != nil {
+		t.Fatal(err)
+	}
+	if event.Job.Status != StatusCompleted || event.Items == nil {
+		t.Fatalf("event=%+v", event)
+	}
+}
+
+func TestEventsHandlerSendsResetSnapshotForAnotherRuntime(t *testing.T) {
+	store := newStore("runtime-b", 8, 8)
+	server := httptest.NewServer(EventsHandler(store))
+	defer server.Close()
+	request, err := http.NewRequest(http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request.Header.Set("Last-Event-ID", "runtime-a:8")
+	response, err := server.Client().Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	reader := bufio.NewReader(response.Body)
+	_ = readSSEBlock(t, reader)
+	block := readSSEBlock(t, reader)
+	var snapshot Snapshot
+	if err := json.Unmarshal([]byte(block["data"]), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	if !snapshot.Reset || snapshot.RuntimeID != "runtime-b" || block["id"] != "runtime-b:0" {
+		t.Fatalf("block=%v snapshot=%+v", block, snapshot)
+	}
+}
+
+func TestCancelHandlerIsIdempotentForUnknownJob(t *testing.T) {
+	store := NewStore()
+	router := chi.NewRouter()
+	router.Post("/api/jobs/{id}/cancel", CancelHandler(store))
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/jobs/missing/cancel", nil))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestParseLastEventID(t *testing.T) {
-	for _, value := range []string{"", "-1", "1.5", "abc", "+2", " 2"} {
+	for _, value := range []string{"", "runtime", ":1", "runtime:", "runtime:-1", "runtime:1.5", "runtime:+2", "runtime: 2"} {
 		if got := parseLastEventID(value); got != nil {
-			t.Fatalf("parseLastEventID(%q)=%d, want nil", value, *got)
+			t.Fatalf("parseLastEventID(%q)=%+v, want nil", value, got)
 		}
 	}
-	for value, want := range map[string]int64{"0": 0, "42": 42} {
+	for value, want := range map[string]EventCursor{
+		"runtime-a:0":  {RuntimeID: "runtime-a", Cursor: 0},
+		"runtime-a:42": {RuntimeID: "runtime-a", Cursor: 42},
+	} {
 		got := parseLastEventID(value)
 		if got == nil || *got != want {
-			t.Fatalf("parseLastEventID(%q)=%v, want %d", value, got, want)
+			t.Fatalf("parseLastEventID(%q)=%+v, want %+v", value, got, want)
 		}
 	}
 }
@@ -109,4 +172,4 @@ func readSSEBlock(t *testing.T, reader *bufio.Reader) map[string]string {
 	}
 }
 
-var _ http.Handler = EventsHandler(Store{}, nil)
+var _ http.Handler = EventsHandler(Store{})

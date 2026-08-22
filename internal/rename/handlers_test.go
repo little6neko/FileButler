@@ -3,14 +3,12 @@ package rename
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
-	"github.com/little6neko/filebutler/internal/audit"
 	"github.com/little6neko/filebutler/internal/auth"
 	"github.com/little6neko/filebutler/internal/browser"
 	"github.com/little6neko/filebutler/internal/jobs"
@@ -41,15 +39,14 @@ func TestRenamePreviewReturnsNaturalSortedPlan(t *testing.T) {
 }
 
 func TestRenameCreateJobRejectsConflictingPlan(t *testing.T) {
-	db := testutil.OpenTestDB(t)
-	actor := insertUser(t, db)
 	root := t.TempDir()
 	testutil.WriteFile(t, filepath.Join(root, "a.txt"), "x")
 	testutil.WriteFile(t, filepath.Join(root, "b.txt"), "x")
 	svc := browser.Service{Resolver: roots.NewResolver([]roots.Root{{ID: "data", Name: "Data", Path: root}})}
-	handler := CreateJobHandler(svc, jobs.Store{DB: db}, jobs.Runner{Store: jobs.Store{DB: db}, Audit: audit.Store{DB: db}, Executor: Executor{Resolver: svc.Resolver}})
+	store := jobs.NewStore()
+	handler := CreateJobHandler(svc, store, jobs.Runner{Store: store, Executor: Executor{Resolver: svc.Resolver}})
 	req := renameReq(Request{RootID: "data", Paths: []string{"a.txt"}, Options: Options{Search: "a", Replace: "b", Target: TargetName, IncludeFiles: true}})
-	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.User{ID: actor, Username: "admin"}))
+	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.User{ID: 1, Username: "admin"}))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusConflict {
@@ -87,21 +84,71 @@ func TestRenamePreviewAcceptsPowerRenameOptionsFromJSON(t *testing.T) {
 }
 
 func TestSingleRenameCreateJobRejectsMultiplePaths(t *testing.T) {
-	db := testutil.OpenTestDB(t)
-	actor := insertUser(t, db)
 	root := t.TempDir()
 	testutil.WriteFile(t, filepath.Join(root, "a.txt"), "x")
 	testutil.WriteFile(t, filepath.Join(root, "b.txt"), "x")
 	svc := browser.Service{Resolver: roots.NewResolver([]roots.Root{{ID: "data", Name: "Data", Path: root}})}
-	handler := SingleRenameCreateJobHandler(svc, jobs.Store{DB: db}, jobs.Runner{Store: jobs.Store{DB: db}, Audit: audit.Store{DB: db}, Executor: Executor{Resolver: svc.Resolver}})
+	store := jobs.NewStore()
+	handler := SingleRenameCreateJobHandler(svc, store, jobs.Runner{Store: store, Executor: Executor{Resolver: svc.Resolver}})
 	req := renameReq(SingleRenameRequest{RootID: "data", Paths: []string{"a.txt", "b.txt"}, NewName: "next.txt"})
-	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.User{ID: actor, Username: "admin"}))
+	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.User{ID: 1, Username: "admin"}))
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestPowerRenameAndSingleRenameUseDistinctJobTypes(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		wantType string
+		build    func(browser.Service, jobs.Store, jobs.Runner) http.Handler
+		payload  any
+	}{
+		{
+			name:     "power rename",
+			wantType: "power_rename",
+			build: func(service browser.Service, store jobs.Store, runner jobs.Runner) http.Handler {
+				return CreateJobHandler(service, store, runner)
+			},
+			payload: Request{RootID: "data", Paths: []string{"a.txt"}, Options: Options{Search: "a", Replace: "b", Target: TargetName, IncludeFiles: true}},
+		},
+		{
+			name:     "ordinary rename",
+			wantType: "rename",
+			build: func(service browser.Service, store jobs.Store, runner jobs.Runner) http.Handler {
+				return SingleRenameCreateJobHandler(service, store, runner)
+			},
+			payload: SingleRenameRequest{RootID: "data", Paths: []string{"a.txt"}, NewName: "b.txt"},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			root := t.TempDir()
+			testutil.WriteFile(t, filepath.Join(root, "a.txt"), "x")
+			service := browser.Service{Resolver: roots.NewResolver([]roots.Root{{ID: "data", Name: "Data", Path: root}})}
+			store := jobs.NewStore()
+			executor := newBlockingRenameExecutor()
+			runner := jobs.Runner{Store: store, Executor: executor}
+			req := renameReq(test.payload)
+			req = req.WithContext(auth.ContextWithUser(req.Context(), auth.User{ID: 1, Username: "admin"}))
+			recorder := httptest.NewRecorder()
+			test.build(service, store, runner).ServeHTTP(recorder, req)
+			if recorder.Code != http.StatusCreated {
+				t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+			}
+			<-executor.started
+			snapshot, err := store.Snapshot(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(snapshot.Jobs) != 1 || snapshot.Jobs[0].Type != test.wantType {
+				t.Fatalf("snapshot=%+v", snapshot)
+			}
+			close(executor.release)
+		})
 	}
 }
 
@@ -114,15 +161,17 @@ func renameReq(payload any) *http.Request {
 	return req
 }
 
-func insertUser(t *testing.T, db *sql.DB) int64 {
-	t.Helper()
-	res, err := db.ExecContext(context.Background(), `insert into users(username, password_hash) values (?, ?)`, "admin-"+t.Name(), "hash")
-	if err != nil {
-		t.Fatal(err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return id
+type blockingRenameExecutor struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func newBlockingRenameExecutor() *blockingRenameExecutor {
+	return &blockingRenameExecutor{started: make(chan struct{}), release: make(chan struct{})}
+}
+
+func (executor *blockingRenameExecutor) ExecuteItem(context.Context, jobs.ExecutableItem) error {
+	close(executor.started)
+	<-executor.release
+	return nil
 }

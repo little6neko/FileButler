@@ -59,7 +59,7 @@ func CreateJobHandler(browser browser.Service, store jobs.Store, runner jobs.Run
 			writeData(w, http.StatusConflict, plan)
 			return
 		}
-		createRenameJob(w, r, store, runner, req.RootID, plan)
+		createRenameJob(w, r, store, runner, req.RootID, "power_rename", plan)
 	}
 }
 
@@ -84,7 +84,7 @@ func SingleRenameCreateJobHandler(browser browser.Service, store jobs.Store, run
 			writeData(w, http.StatusConflict, plan)
 			return
 		}
-		createRenameJob(w, r, store, runner, req.RootID, plan)
+		createRenameJob(w, r, store, runner, req.RootID, "rename", plan)
 	}
 }
 
@@ -185,7 +185,7 @@ func existingPathFunc(resolver roots.Resolver, rootID string) func(path string) 
 	}
 }
 
-func createRenameJob(w http.ResponseWriter, r *http.Request, store jobs.Store, runner jobs.Runner, rootID string, plan PlanResult) {
+func createRenameJob(w http.ResponseWriter, r *http.Request, store jobs.Store, runner jobs.Runner, rootID, jobType string, plan PlanResult) {
 	user, ok := auth.CurrentUser(r.Context())
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
@@ -193,7 +193,7 @@ func createRenameJob(w http.ResponseWriter, r *http.Request, store jobs.Store, r
 	}
 	planJSON, _ := json.Marshal(plan)
 	id := ops.NewJobID()
-	if err := store.Create(r.Context(), jobs.Job{ID: id, Type: "rename", Status: jobs.StatusPending, ActorID: user.ID, SourceRootID: rootID, PlanJSON: string(planJSON), RootSnapshotJSON: "{}", ProgressTotal: len(plan.Items)}); err != nil {
+	if err := store.Create(r.Context(), jobs.Job{ID: id, Type: jobType, Status: jobs.StatusPending, ActorID: user.ID, SourceRootID: rootID, PlanJSON: string(planJSON), RootSnapshotJSON: "{}", ProgressTotal: len(plan.Items)}); err != nil {
 		writeError(w, http.StatusInternalServerError, "operation_failed", err.Error())
 		return
 	}

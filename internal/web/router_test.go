@@ -2,16 +2,13 @@ package web
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
-	"github.com/little6neko/filebutler/internal/audit"
 	"github.com/little6neko/filebutler/internal/auth"
 	"github.com/little6neko/filebutler/internal/browser"
 	"github.com/little6neko/filebutler/internal/config"
@@ -52,6 +49,22 @@ func TestProtectedRoutesRequireLogin(t *testing.T) {
 		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, path, nil))
 		if rec.Code != http.StatusUnauthorized {
 			t.Fatalf("%s status=%d", path, rec.Code)
+		}
+	}
+}
+
+func TestRemovedHistoryAndAuditRoutesReturnNotFound(t *testing.T) {
+	router := testRouter(t)
+	cookies := loginCookies(t, router)
+	for _, path := range []string{"/api/jobs", "/api/jobs/job_1", "/api/audit"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		for _, cookie := range cookies {
+			req.AddCookie(cookie)
+		}
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, req)
+		if recorder.Code != http.StatusNotFound {
+			t.Fatalf("%s status=%d body=%s", path, recorder.Code, recorder.Body.String())
 		}
 	}
 }
@@ -176,12 +189,13 @@ func testRouter(t *testing.T) http.Handler {
 
 func testRouterWithRoot(t *testing.T, root string) http.Handler {
 	t.Helper()
-	db := testutil.OpenTestDB(t)
 	resolver := roots.NewResolver([]roots.Root{{ID: "data", Name: "Data", Path: root}})
 	cfg := config.Config{Session: config.SessionConfig{CookieName: "filebutler_session"}, Roots: []config.RootConfig{{ID: "data", Name: "Data", Path: root}}}
-	authSvc := auth.Service{DB: db, SessionMaxAge: time.Hour}
-	jobBroker := jobs.NewBroker(1)
-	jobStore := jobs.Store{DB: db, Publisher: jobBroker}
+	authSvc, err := auth.Open(filepath.Join(t.TempDir(), "auth.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	jobStore := jobs.NewStore()
 	return NewRouter(Deps{
 		Config:     cfg,
 		Auth:       authSvc,
@@ -189,8 +203,6 @@ func testRouterWithRoot(t *testing.T, root string) http.Handler {
 		Browser:    browser.Service{Resolver: resolver},
 		OpsPlanner: ops.Planner{Resolver: resolver},
 		JobStore:   jobStore,
-		AuditStore: audit.Store{DB: db},
-		JobBroker:  jobBroker,
 	})
 }
 
@@ -229,5 +241,3 @@ func decodeBody(t *testing.T, rec *httptest.ResponseRecorder, dst any) {
 		t.Fatal(err)
 	}
 }
-
-var _ = context.Background

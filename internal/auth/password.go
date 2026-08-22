@@ -34,24 +34,41 @@ func HashPassword(password string) (string, error) {
 }
 
 func VerifyPassword(encoded string, password string) bool {
+	memory, iterations, parallelism, salt, expected, ok := parsePasswordHash(encoded)
+	if !ok {
+		return false
+	}
+	actual := argon2.IDKey([]byte(password), salt, iterations, memory, parallelism, uint32(len(expected)))
+	return subtle.ConstantTimeCompare(actual, expected) == 1
+}
+
+func ValidPasswordHash(encoded string) bool {
+	_, _, _, _, _, ok := parsePasswordHash(encoded)
+	return ok
+}
+
+func parsePasswordHash(encoded string) (uint32, uint32, uint8, []byte, []byte, bool) {
 	parts := strings.Split(encoded, "$")
 	if len(parts) != 6 || parts[1] != "argon2id" || parts[2] != "v=19" {
-		return false
+		return 0, 0, 0, nil, nil, false
 	}
 	var memory uint32
 	var iterations uint32
 	var parallelism uint8
 	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &memory, &iterations, &parallelism); err != nil {
-		return false
+		return 0, 0, 0, nil, nil, false
+	}
+	if memory != argonMemory || iterations != argonIterations || parallelism != argonParallelism ||
+		parts[3] != fmt.Sprintf("m=%d,t=%d,p=%d", memory, iterations, parallelism) {
+		return 0, 0, 0, nil, nil, false
 	}
 	salt, err := base64.RawStdEncoding.DecodeString(parts[4])
-	if err != nil {
-		return false
+	if err != nil || len(salt) != argonSaltLength {
+		return 0, 0, 0, nil, nil, false
 	}
 	expected, err := base64.RawStdEncoding.DecodeString(parts[5])
-	if err != nil {
-		return false
+	if err != nil || len(expected) != argonKeyLength {
+		return 0, 0, 0, nil, nil, false
 	}
-	actual := argon2.IDKey([]byte(password), salt, iterations, memory, parallelism, uint32(len(expected)))
-	return subtle.ConstantTimeCompare(actual, expected) == 1
+	return memory, iterations, parallelism, salt, expected, true
 }

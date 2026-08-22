@@ -1,13 +1,10 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"log"
 	"net/http"
-	"time"
 
-	"github.com/little6neko/filebutler/internal/audit"
 	"github.com/little6neko/filebutler/internal/auth"
 	"github.com/little6neko/filebutler/internal/browser"
 	"github.com/little6neko/filebutler/internal/config"
@@ -15,7 +12,6 @@ import (
 	"github.com/little6neko/filebutler/internal/ops"
 	"github.com/little6neko/filebutler/internal/rename"
 	"github.com/little6neko/filebutler/internal/roots"
-	"github.com/little6neko/filebutler/internal/store"
 	"github.com/little6neko/filebutler/internal/web"
 )
 
@@ -27,46 +23,31 @@ func main() {
 	if err != nil {
 		log.Fatalf("load config: %v", err)
 	}
-
-	db, err := store.Open(context.Background(), cfg.DatabasePath)
+	authService, err := auth.Open(cfg.AuthFile)
 	if err != nil {
-		log.Fatalf("open database: %v", err)
+		log.Fatalf("load authentication: %v", err)
 	}
-	defer db.Close()
 
 	rootItems := make([]roots.Root, len(cfg.Roots))
 	for i, root := range cfg.Roots {
 		rootItems[i] = roots.Root{ID: root.ID, Name: root.Name, Path: root.Path}
 	}
 	resolver := roots.NewResolver(rootItems)
-	authService := auth.Service{
-		DB:            db,
-		SessionMaxAge: time.Duration(cfg.Session.MaxAgeSeconds) * time.Second,
-	}
-	baseJobStore := jobs.Store{DB: db}
-	currentEventVersion, err := baseJobStore.CurrentEventVersion(context.Background())
-	if err != nil {
-		log.Fatalf("read job event version: %v", err)
-	}
-	jobBroker := jobs.NewBroker(currentEventVersion + 1)
-	jobStore := jobs.Store{DB: db, Publisher: jobBroker}
-	auditStore := audit.Store{DB: db}
+	jobStore := jobs.NewStore()
 	opsExecutor := ops.Executor{Resolver: resolver}
-	r := web.NewRouter(web.Deps{
+	router := web.NewRouter(web.Deps{
 		Config:       cfg,
 		Auth:         authService,
 		Roots:        resolver,
 		Browser:      browser.Service{Resolver: resolver},
 		OpsPlanner:   ops.Planner{Resolver: resolver},
 		JobStore:     jobStore,
-		AuditStore:   auditStore,
-		OpsRunner:    jobs.Runner{Store: jobStore, Audit: auditStore, Executor: ops.JobExecutor{Executor: opsExecutor}},
-		RenameRunner: jobs.Runner{Store: jobStore, Audit: auditStore, Executor: rename.Executor{Resolver: resolver}},
-		JobBroker:    jobBroker,
+		OpsRunner:    jobs.Runner{Store: jobStore, Executor: ops.JobExecutor{Executor: opsExecutor}},
+		RenameRunner: jobs.Runner{Store: jobStore, Executor: rename.Executor{Resolver: resolver}},
 	})
 
 	log.Printf("FileButler listening on %s", cfg.Listen)
-	if err := http.ListenAndServe(cfg.Listen, r); err != nil {
+	if err := http.ListenAndServe(cfg.Listen, router); err != nil {
 		log.Fatal(err)
 	}
 }

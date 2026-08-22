@@ -2,8 +2,7 @@ package jobs
 
 import (
 	"context"
-
-	"github.com/little6neko/filebutler/internal/audit"
+	"errors"
 )
 
 type ExecutableItem struct {
@@ -22,7 +21,6 @@ type ItemExecutor interface {
 
 type Runner struct {
 	Store    Store
-	Audit    audit.Store
 	Executor ItemExecutor
 }
 
@@ -31,11 +29,11 @@ func (r Runner) Run(ctx context.Context, jobID string, items []ExecutableItem) e
 		return err
 	}
 	job, _, err := r.Store.Get(ctx, jobID)
+	if errors.Is(err, ErrJobNotFound) {
+		return nil
+	}
 	if err != nil {
 		return err
-	}
-	if job.Status.IsTerminal() {
-		return nil
 	}
 	if job.Status == StatusCancelRequested {
 		return r.Store.Finish(ctx, jobID, StatusCanceled, "")
@@ -45,17 +43,17 @@ func (r Runner) Run(ctx context.Context, jobID string, items []ExecutableItem) e
 	}
 	failures := 0
 	for _, item := range items {
+		if err := ctx.Err(); err != nil {
+			_ = r.Store.Finish(context.Background(), jobID, StatusCanceled, err.Error())
+			return err
+		}
 		cancel, err := r.Store.IsCancelRequested(ctx, jobID)
 		if err != nil {
-			_ = r.Store.Finish(ctx, jobID, StatusFailed, err.Error())
+			_ = r.Store.Finish(context.Background(), jobID, StatusFailed, err.Error())
 			return err
 		}
 		if cancel {
 			return r.Store.Finish(ctx, jobID, StatusCanceled, "")
-		}
-		if err := ctx.Err(); err != nil {
-			_ = r.Store.Finish(ctx, jobID, StatusCanceled, err.Error())
-			return err
 		}
 		execErr := r.Executor.ExecuteItem(ctx, item)
 		result := ItemResult{
@@ -76,27 +74,12 @@ func (r Runner) Run(ctx context.Context, jobID string, items []ExecutableItem) e
 			result.ErrorMessage = execErr.Error()
 		}
 		if err := r.Store.RecordItemResult(ctx, result); err != nil {
-			_ = r.Store.Finish(ctx, jobID, StatusFailed, err.Error())
+			_ = r.Store.Finish(context.Background(), jobID, StatusFailed, err.Error())
 			return err
-		}
-		if execErr == nil {
-			if err := r.Audit.Insert(ctx, audit.Record{
-				ActorID:      job.ActorID,
-				Action:       item.Action,
-				SourceRootID: item.SourceRoot,
-				SourcePath:   item.SourcePath,
-				DestRootID:   item.DestRoot,
-				DestPath:     item.DestPath,
-				JobID:        jobID,
-				DetailJSON:   "{}",
-			}); err != nil {
-				_ = r.Store.Finish(ctx, jobID, StatusFailed, err.Error())
-				return err
-			}
 		}
 	}
 	if failures > 0 {
-		return r.Store.Finish(ctx, jobID, StatusCompletedWithErrors, "")
+		return r.Store.Finish(context.Background(), jobID, StatusCompletedWithErrors, "")
 	}
-	return r.Store.Finish(ctx, jobID, StatusCompleted, "")
+	return r.Store.Finish(context.Background(), jobID, StatusCompleted, "")
 }

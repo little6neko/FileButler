@@ -4,7 +4,6 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/little6neko/filebutler/internal/audit"
 	"github.com/little6neko/filebutler/internal/auth"
 	"github.com/little6neko/filebutler/internal/browser"
 	"github.com/little6neko/filebutler/internal/config"
@@ -16,34 +15,31 @@ import (
 
 type Deps struct {
 	Config       config.Config
-	Auth         auth.Service
+	Auth         *auth.Service
 	Roots        roots.Resolver
 	Browser      browser.Service
 	OpsPlanner   ops.Planner
-	RenameStore  jobs.Store
 	JobStore     jobs.Store
-	AuditStore   audit.Store
 	OpsRunner    jobs.Runner
 	RenameRunner jobs.Runner
-	JobBroker    *jobs.Broker
 }
 
 func NewRouter(deps Deps) http.Handler {
-	r := chi.NewRouter()
+	router := chi.NewRouter()
 	cookieName := deps.Config.Session.CookieName
 	if cookieName == "" {
 		cookieName = "filebutler_session"
 	}
-	r.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {
+	router.Get("/api/health", func(w http.ResponseWriter, r *http.Request) {
 		Data(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	r.Get("/api/init/status", auth.InitStatusHandler(deps.Auth))
-	r.Post("/api/init/admin", auth.CreateAdminHandler(deps.Auth))
-	r.Post("/api/auth/login", auth.LoginHandler(deps.Auth, cookieName, deps.Config.Session.Secure))
-	r.Post("/api/auth/logout", auth.LogoutHandler(deps.Auth, cookieName))
-	r.Get("/api/auth/me", auth.MeHandler(deps.Auth, cookieName))
+	router.Get("/api/init/status", auth.InitStatusHandler(deps.Auth))
+	router.Post("/api/init/admin", auth.CreateAdminHandler(deps.Auth))
+	router.Post("/api/auth/login", auth.LoginHandler(deps.Auth, cookieName, deps.Config.Session.Secure))
+	router.Post("/api/auth/logout", auth.LogoutHandler(cookieName, deps.Config.Session.Secure))
+	router.Get("/api/auth/me", auth.MeHandler(deps.Auth, cookieName))
 
-	r.Group(func(protected chi.Router) {
+	router.Group(func(protected chi.Router) {
 		protected.Use(auth.RequireAuth(deps.Auth, cookieName))
 		protected.Get("/api/roots", rootsHandler(deps.Roots))
 		protected.Get("/api/browse", browseHandler(deps.Browser))
@@ -53,14 +49,11 @@ func NewRouter(deps Deps) http.Handler {
 		protected.Post("/api/rename/preview", rename.PreviewHandler(deps.Browser))
 		protected.Post("/api/rename/jobs", rename.CreateJobHandler(deps.Browser, deps.JobStore, deps.RenameRunner))
 		protected.Post("/api/rename/single/jobs", rename.SingleRenameCreateJobHandler(deps.Browser, deps.JobStore, deps.RenameRunner))
-		protected.Get("/api/jobs", jobs.ListHandler(deps.JobStore))
-		protected.Get("/api/jobs/events", jobs.EventsHandler(deps.JobStore, deps.JobBroker))
-		protected.Get("/api/jobs/{id}", jobs.GetHandler(deps.JobStore))
+		protected.Get("/api/jobs/events", jobs.EventsHandler(deps.JobStore))
 		protected.Post("/api/jobs/{id}/cancel", jobs.CancelHandler(deps.JobStore))
-		protected.Get("/api/audit", auditHandler(deps.AuditStore))
 	})
-	r.Handle("/*", StaticHandler(deps.Config.StaticDir))
-	return r
+	router.Handle("/*", StaticHandler(deps.Config.StaticDir))
+	return router
 }
 
 func rootsHandler(resolver roots.Resolver) http.HandlerFunc {
@@ -82,16 +75,5 @@ func browseHandler(service browser.Service) http.HandlerFunc {
 			return
 		}
 		Data(w, http.StatusOK, entries)
-	}
-}
-
-func auditHandler(store audit.Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		records, err := store.List(r.Context(), 50)
-		if err != nil {
-			Error(w, http.StatusInternalServerError, "operation_failed", err.Error())
-			return
-		}
-		Data(w, http.StatusOK, records)
 	}
 }

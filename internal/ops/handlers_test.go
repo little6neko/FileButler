@@ -3,14 +3,12 @@ package ops
 import (
 	"bytes"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
 
-	"github.com/little6neko/filebutler/internal/audit"
 	"github.com/little6neko/filebutler/internal/auth"
 	"github.com/little6neko/filebutler/internal/jobs"
 	"github.com/little6neko/filebutler/internal/testutil"
@@ -38,30 +36,31 @@ func TestOpsDryRunReturnsPlan(t *testing.T) {
 	}
 }
 
-func TestOpsCreateJobPersistsPendingJob(t *testing.T) {
-	db := testutil.OpenTestDB(t)
-	actor := insertUser(t, db)
+func TestOpsCreateJobRegistersActiveJob(t *testing.T) {
 	rootA := t.TempDir()
 	rootB := t.TempDir()
 	testutil.WriteFile(t, filepath.Join(rootA, "a.txt"), "x")
-	store := jobs.Store{DB: db}
-	runner := jobs.Runner{Store: store, Audit: audit.Store{DB: db}, Executor: JobExecutor{Executor: Executor{Resolver: testResolver(rootA, rootB)}}}
+	store := jobs.NewStore()
+	executor := newBlockingItemExecutor()
+	runner := jobs.Runner{Store: store, Executor: executor}
 	handler := CreateJobHandler(Planner{Resolver: testResolver(rootA, rootB)}, store, runner)
 
 	req := jsonReq(Request{Type: OpCopy, SourceRoot: "a", Sources: []string{"a.txt"}, DestRoot: "b", DestPath: "."})
-	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.User{ID: actor, Username: "admin"}))
+	req = req.WithContext(auth.ContextWithUser(req.Context(), auth.User{ID: 1, Username: "admin"}))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
 	}
-	var count int
-	if err := db.QueryRowContext(context.Background(), `select count(1) from jobs`).Scan(&count); err != nil {
+	<-executor.started
+	snapshot, err := store.Snapshot(context.Background())
+	if err != nil {
 		t.Fatal(err)
 	}
-	if count != 1 {
-		t.Fatalf("job count = %d", count)
+	if len(snapshot.Jobs) != 1 || snapshot.Jobs[0].Type != "copy" || snapshot.Jobs[0].Status != jobs.StatusRunning {
+		t.Fatalf("snapshot=%+v", snapshot)
 	}
+	close(executor.release)
 }
 
 func jsonReq(payload any) *http.Request {
@@ -71,15 +70,17 @@ func jsonReq(payload any) *http.Request {
 	return req
 }
 
-func insertUser(t *testing.T, db *sql.DB) int64 {
-	t.Helper()
-	res, err := db.ExecContext(context.Background(), `insert into users(username, password_hash) values (?, ?)`, "admin-"+t.Name(), "hash")
-	if err != nil {
-		t.Fatal(err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return id
+type blockingItemExecutor struct {
+	started chan struct{}
+	release chan struct{}
+}
+
+func newBlockingItemExecutor() *blockingItemExecutor {
+	return &blockingItemExecutor{started: make(chan struct{}), release: make(chan struct{})}
+}
+
+func (executor *blockingItemExecutor) ExecuteItem(context.Context, jobs.ExecutableItem) error {
+	close(executor.started)
+	<-executor.release
+	return nil
 }

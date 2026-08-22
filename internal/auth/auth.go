@@ -2,10 +2,19 @@ package auth
 
 import (
 	"context"
-	"database/sql"
+	"crypto/rand"
 	"errors"
+	"io"
 	"strings"
+	"sync"
 	"time"
+)
+
+const (
+	AuthenticationFileVersion = 1
+	SessionLifetime           = 24 * time.Hour
+	administratorID           = int64(1)
+	signingKeyLength          = 32
 )
 
 var (
@@ -20,71 +29,133 @@ type User struct {
 	Username string `json:"username"`
 }
 
-type Service struct {
-	DB            *sql.DB
-	SessionMaxAge time.Duration
+type credentials struct {
+	version      int
+	username     string
+	passwordHash string
+	signingKey   []byte
 }
 
-func (s Service) NeedsInitialization(ctx context.Context) (bool, error) {
-	var count int
-	if err := s.DB.QueryRowContext(ctx, `select count(1) from users`).Scan(&count); err != nil {
+type Service struct {
+	mu          sync.RWMutex
+	authFile    string
+	credentials *credentials
+	now         func() time.Time
+	random      io.Reader
+}
+
+func Open(authFile string) (*Service, error) {
+	service := &Service{
+		authFile: authFile,
+		now:      time.Now,
+		random:   rand.Reader,
+	}
+	loaded, err := loadAuthenticationFile(authFile)
+	if errors.Is(err, errAuthenticationFileMissing) {
+		return service, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	service.credentials = loaded
+	return service, nil
+}
+
+func (s *Service) NeedsInitialization(ctx context.Context) (bool, error) {
+	if err := ctx.Err(); err != nil {
 		return false, err
 	}
-	return count == 0, nil
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.credentials == nil, nil
 }
 
-func (s Service) CreateAdmin(ctx context.Context, username, password string) (User, error) {
+func (s *Service) CreateAdmin(ctx context.Context, username, password string) (User, error) {
 	username = strings.TrimSpace(username)
 	if username == "" || len(password) < 10 {
 		return User{}, ErrInvalidRequest
 	}
-	needs, err := s.NeedsInitialization(ctx)
-	if err != nil {
+	if err := ctx.Err(); err != nil {
 		return User{}, err
 	}
-	if !needs {
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.credentials != nil {
 		return User{}, ErrAlreadyInitialized
 	}
 	hash, err := HashPassword(password)
 	if err != nil {
 		return User{}, err
 	}
-	res, err := s.DB.ExecContext(ctx, `insert into users(username, password_hash) values (?, ?)`, username, hash)
-	if err != nil {
+	key := make([]byte, signingKeyLength)
+	if _, err := io.ReadFull(s.random, key); err != nil {
 		return User{}, err
 	}
-	id, err := res.LastInsertId()
-	if err != nil {
+	record := credentials{
+		version:      AuthenticationFileVersion,
+		username:     username,
+		passwordHash: hash,
+		signingKey:   key,
+	}
+	if err := createAuthenticationFile(s.authFile, record); err != nil {
+		if errors.Is(err, ErrAlreadyInitialized) {
+			return User{}, ErrAlreadyInitialized
+		}
 		return User{}, err
 	}
-	return User{ID: id, Username: username}, nil
+	s.credentials = &record
+	return User{ID: administratorID, Username: username}, nil
 }
 
-func (s Service) Login(ctx context.Context, username, password string) (string, User, error) {
+func (s *Service) Login(ctx context.Context, username, password string) (string, User, error) {
+	if err := ctx.Err(); err != nil {
+		return "", User{}, err
+	}
 	username = strings.TrimSpace(username)
-	var user User
-	var hash string
-	err := s.DB.QueryRowContext(ctx, `select id, username, password_hash from users where username = ?`, username).Scan(&user.ID, &user.Username, &hash)
-	if errors.Is(err, sql.ErrNoRows) {
+	s.mu.RLock()
+	record := cloneCredentials(s.credentials)
+	s.mu.RUnlock()
+	if record == nil || username != record.username || !VerifyPassword(record.passwordHash, password) {
 		return "", User{}, ErrInvalidCredentials
 	}
+	user := User{ID: administratorID, Username: record.username}
+	token, err := createSessionToken(*record, s.currentTime())
 	if err != nil {
 		return "", User{}, err
 	}
-	if !VerifyPassword(hash, password) {
-		return "", User{}, ErrInvalidCredentials
+	return token, user, nil
+}
+
+func (s *Service) LookupSession(ctx context.Context, token string) (User, error) {
+	if err := ctx.Err(); err != nil {
+		return User{}, err
 	}
-	sessionID, err := newSessionID()
-	if err != nil {
-		return "", User{}, err
+	s.mu.RLock()
+	record := cloneCredentials(s.credentials)
+	s.mu.RUnlock()
+	if record == nil {
+		return User{}, ErrUnauthorized
 	}
-	maxAge := s.SessionMaxAge
-	if maxAge == 0 {
-		maxAge = 24 * time.Hour
+	claims, err := verifySessionToken(token, *record, s.currentTime())
+	if err != nil || claims.Username != record.username {
+		return User{}, ErrUnauthorized
 	}
-	expires := time.Now().Add(maxAge).UTC()
-	if _, err := s.DB.ExecContext(ctx, `insert into sessions(id, user_id, expires_at) values (?, ?, ?)`, sessionID, user.ID, expires.Format(time.RFC3339Nano)); err != nil {
-		return "", User{}, err
+	return User{ID: administratorID, Username: record.username}, nil
+}
+
+func (s *Service) currentTime() time.Time {
+	if s.now == nil {
+		return time.Now().UTC()
 	}
-	return sessionID, user, nil
+	return s.now().UTC()
+}
+
+func cloneCredentials(value *credentials) *credentials {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	cloned.signingKey = append([]byte(nil), value.signingKey...)
+	return &cloned
 }

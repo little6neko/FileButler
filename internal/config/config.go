@@ -6,14 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"gopkg.in/yaml.v3"
 )
 
 type Config struct {
 	Listen         string        `yaml:"listen"`
-	DatabasePath   string        `yaml:"database_path"`
+	AuthFile       string        `yaml:"auth_file"`
 	JobConcurrency int           `yaml:"job_concurrency"`
 	LogLevel       string        `yaml:"log_level"`
 	Session        SessionConfig `yaml:"session"`
@@ -22,9 +21,8 @@ type Config struct {
 }
 
 type SessionConfig struct {
-	CookieName    string `yaml:"cookie_name"`
-	Secure        bool   `yaml:"secure"`
-	MaxAgeSeconds int    `yaml:"max_age_seconds"`
+	CookieName string `yaml:"cookie_name"`
+	Secure     bool   `yaml:"secure"`
 }
 
 type RootConfig struct {
@@ -44,14 +42,14 @@ func Load(path string) (Config, error) {
 	}
 	applyDefaults(&cfg)
 	baseDir := filepath.Dir(path)
-	if !filepath.IsAbs(cfg.DatabasePath) {
-		cfg.DatabasePath = filepath.Join(baseDir, cfg.DatabasePath)
+	if !filepath.IsAbs(cfg.AuthFile) {
+		cfg.AuthFile = filepath.Join(baseDir, cfg.AuthFile)
 	}
-	absDB, err := filepath.Abs(cfg.DatabasePath)
+	absAuthFile, err := filepath.Abs(cfg.AuthFile)
 	if err != nil {
 		return Config{}, err
 	}
-	cfg.DatabasePath = absDB
+	cfg.AuthFile = absAuthFile
 	if cfg.StaticDir != "" && !filepath.IsAbs(cfg.StaticDir) {
 		cfg.StaticDir = filepath.Join(baseDir, cfg.StaticDir)
 	}
@@ -96,8 +94,8 @@ func applyDefaults(cfg *Config) {
 	if cfg.Listen == "" {
 		cfg.Listen = "127.0.0.1:8080"
 	}
-	if cfg.DatabasePath == "" {
-		cfg.DatabasePath = "./filebutler.db"
+	if cfg.AuthFile == "" {
+		cfg.AuthFile = "./data/auth.json"
 	}
 	if cfg.JobConcurrency <= 0 {
 		cfg.JobConcurrency = 1
@@ -107,9 +105,6 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.Session.CookieName == "" {
 		cfg.Session.CookieName = "filebutler_session"
-	}
-	if cfg.Session.MaxAgeSeconds <= 0 {
-		cfg.Session.MaxAgeSeconds = int((24 * time.Hour).Seconds())
 	}
 	if cfg.StaticDir == "" {
 		cfg.StaticDir = "web/dist"

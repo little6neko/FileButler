@@ -2,125 +2,66 @@ package jobs
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"testing"
-
-	"github.com/little6neko/filebutler/internal/audit"
-	"github.com/little6neko/filebutler/internal/testutil"
 )
 
 func TestRunnerCompletesSuccessfulJob(t *testing.T) {
-	db, runner := runnerFixture(t, fakeExecutor{failIndex: -1})
-	createRunnerJob(t, db, "job_1", 1)
-	if err := runner.Run(context.Background(), "job_1", []ExecutableItem{{Index: 0, Action: "copy", SourceRoot: "a", SourcePath: "a.txt"}}); err != nil {
+	store, subscription := runnerStore(t)
+	createTestJob(t, store, "job_1", 1)
+	runner := Runner{Store: store, Executor: fakeExecutor{failIndex: -1}}
+	if err := runner.Run(context.Background(), "job_1", []ExecutableItem{{Index: 0, Action: "copy", SourcePath: "a.txt"}}); err != nil {
 		t.Fatal(err)
 	}
-	job, items, err := runner.Store.Get(context.Background(), "job_1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if job.Status != StatusCompleted || job.ProgressDone != 1 || len(items) != 1 || items[0].Status != "completed" {
-		t.Fatalf("job=%+v items=%+v", job, items)
+	terminal := readTerminalEvent(t, subscription.Events, 4)
+	if terminal.Job.Status != StatusCompleted || terminal.Job.ProgressDone != 1 || len(terminal.Items) != 1 || terminal.Items[0].Status != "completed" {
+		t.Fatalf("terminal=%+v", terminal)
 	}
 }
 
 func TestRunnerRecordsItemFailureAndContinues(t *testing.T) {
-	db, runner := runnerFixture(t, fakeExecutor{failIndex: 0})
-	createRunnerJob(t, db, "job_1", 2)
-	err := runner.Run(context.Background(), "job_1", []ExecutableItem{{Index: 0, Action: "copy", SourcePath: "bad"}, {Index: 1, Action: "copy", SourcePath: "ok"}})
+	store, subscription := runnerStore(t)
+	createTestJob(t, store, "job_1", 2)
+	runner := Runner{Store: store, Executor: fakeExecutor{failIndex: 0}}
+	err := runner.Run(context.Background(), "job_1", []ExecutableItem{{Index: 0, SourcePath: "bad"}, {Index: 1, SourcePath: "ok"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	job, items, err := runner.Store.Get(context.Background(), "job_1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if job.Status != StatusCompletedWithErrors || len(items) != 2 || items[0].Status != "failed" || items[1].Status != "completed" {
-		t.Fatalf("job=%+v items=%+v", job, items)
+	terminal := readTerminalEvent(t, subscription.Events, 5)
+	if terminal.Job.Status != StatusCompletedWithErrors || len(terminal.Items) != 2 || terminal.Items[0].Status != "failed" || terminal.Items[1].Status != "completed" {
+		t.Fatalf("terminal=%+v", terminal)
 	}
 }
 
 func TestRunnerStopsAfterCancelRequest(t *testing.T) {
-	db, runner := runnerFixture(t, fakeExecutor{failIndex: -1})
-	createRunnerJob(t, db, "job_1", 2)
-	if err := runner.Store.RequestCancel(context.Background(), "job_1"); err != nil {
+	store, subscription := runnerStore(t)
+	createTestJob(t, store, "job_1", 2)
+	if err := store.RequestCancel(context.Background(), "job_1"); err != nil {
 		t.Fatal(err)
 	}
+	runner := Runner{Store: store, Executor: fakeExecutor{failIndex: -1}}
 	if err := runner.Run(context.Background(), "job_1", []ExecutableItem{{Index: 0}, {Index: 1}}); err != nil {
 		t.Fatal(err)
 	}
-	job, items, err := runner.Store.Get(context.Background(), "job_1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if job.Status != StatusCanceled || len(items) != 0 {
-		t.Fatalf("job=%+v items=%+v", job, items)
+	terminal := readTerminalEvent(t, subscription.Events, 3)
+	if terminal.Job.Status != StatusCanceled || len(terminal.Items) != 0 {
+		t.Fatalf("terminal=%+v", terminal)
 	}
 }
 
-func TestRunnerWritesAuditRecordForCompletedItem(t *testing.T) {
-	db, runner := runnerFixture(t, fakeExecutor{failIndex: -1})
-	createRunnerJob(t, db, "job_1", 1)
-	if err := runner.Run(context.Background(), "job_1", []ExecutableItem{{Index: 0, Action: "copy", SourceRoot: "a", SourcePath: "a.txt", DestRoot: "b", DestPath: "a.txt"}}); err != nil {
-		t.Fatal(err)
-	}
-	records, err := runner.Audit.List(context.Background(), 10)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(records) != 1 || records[0].Action != "copy" || records[0].JobID != "job_1" {
-		t.Fatalf("records=%+v", records)
-	}
-}
-
-func TestRunnerPublishesLifecycleEvents(t *testing.T) {
-	db := testutil.OpenTestDB(t)
-	actorID := insertActor(t, db)
-	broker := NewBroker(1)
-	store := Store{DB: db, Publisher: broker}
-	events, unsubscribe := broker.Subscribe()
-	defer unsubscribe()
-	if err := store.Create(context.Background(), Job{
-		ID: "job_1", Type: "copy", ActorID: actorID, SourceRootID: "a",
-		PlanJSON: "{}", RootSnapshotJSON: "{}", ProgressTotal: 1,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	runner := Runner{Store: store, Audit: audit.Store{DB: db}, Executor: fakeExecutor{failIndex: -1}}
-	if err := runner.Run(context.Background(), "job_1", []ExecutableItem{{Index: 0, Action: "copy", SourceRoot: "a", SourcePath: "a.txt"}}); err != nil {
-		t.Fatal(err)
-	}
-
-	wantStatuses := []Status{StatusPending, StatusRunning, StatusRunning, StatusCompleted}
-	for index, want := range wantStatuses {
-		event, ok := <-events
-		if !ok {
-			t.Fatalf("event stream closed at index %d", index)
-		}
-		if event.Job.EventVersion != int64(index+1) || event.Job.Status != want {
-			t.Fatalf("event %d = %+v, want version=%d status=%s", index, event, index+1, want)
-		}
-	}
-}
-
-func TestRunnerDoesNotExecuteTerminalJobAgain(t *testing.T) {
-	db := testutil.OpenTestDB(t)
-	actorID := insertActor(t, db)
-	store := Store{DB: db}
-	if err := store.Create(context.Background(), Job{ID: "job_1", Type: "copy", ActorID: actorID, SourceRootID: "a", PlanJSON: "{}", RootSnapshotJSON: "{}"}); err != nil {
-		t.Fatal(err)
-	}
+func TestRunnerDoesNotExecuteRemovedTerminalJobAgain(t *testing.T) {
+	store := NewStore()
+	createTestJob(t, store, "job_1", 0)
 	if err := store.Finish(context.Background(), "job_1", StatusCompleted, ""); err != nil {
 		t.Fatal(err)
 	}
 	executor := &countingExecutor{}
-	runner := Runner{Store: store, Audit: audit.Store{DB: db}, Executor: executor}
+	runner := Runner{Store: store, Executor: executor}
 	if err := runner.Run(context.Background(), "job_1", []ExecutableItem{{Index: 0}}); err != nil {
 		t.Fatal(err)
 	}
 	if executor.calls != 0 {
-		t.Fatalf("executor called %d times for terminal job", executor.calls)
+		t.Fatalf("executor called %d times", executor.calls)
 	}
 }
 
@@ -128,33 +69,41 @@ type fakeExecutor struct {
 	failIndex int
 }
 
-type countingExecutor struct {
-	calls int
-}
-
-func (e *countingExecutor) ExecuteItem(context.Context, ExecutableItem) error {
-	e.calls++
-	return nil
-}
-
-func (f fakeExecutor) ExecuteItem(ctx context.Context, item ExecutableItem) error {
-	if f.failIndex == item.Index {
+func (executor fakeExecutor) ExecuteItem(_ context.Context, item ExecutableItem) error {
+	if executor.failIndex == item.Index {
 		return errors.New("boom")
 	}
 	return nil
 }
 
-func runnerFixture(t *testing.T, executor ItemExecutor) (*sql.DB, Runner) {
-	t.Helper()
-	db := testutil.OpenTestDB(t)
-	return db, Runner{Store: Store{DB: db}, Audit: audit.Store{DB: db}, Executor: executor}
+type countingExecutor struct {
+	calls int
 }
 
-func createRunnerJob(t *testing.T, db *sql.DB, id string, total int) {
+func (executor *countingExecutor) ExecuteItem(context.Context, ExecutableItem) error {
+	executor.calls++
+	return nil
+}
+
+func runnerStore(t *testing.T) (Store, Subscription) {
 	t.Helper()
-	actorID := insertActor(t, db)
-	store := Store{DB: db}
-	if err := store.Create(context.Background(), Job{ID: id, Type: "copy", Status: StatusPending, ActorID: actorID, SourceRootID: "a", DestRootID: "b", PlanJSON: "{}", RootSnapshotJSON: "{}", ProgressTotal: total}); err != nil {
+	store := newStore("runtime-a", 16, 16)
+	subscription, err := store.Subscribe(context.Background(), nil)
+	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(subscription.Unsubscribe)
+	return store, subscription
+}
+
+func readTerminalEvent(t *testing.T, events <-chan Event, count int) Event {
+	t.Helper()
+	var terminal Event
+	for index := 0; index < count; index++ {
+		event := <-events
+		if event.Job.Status.IsTerminal() {
+			terminal = event
+		}
+	}
+	return terminal
 }

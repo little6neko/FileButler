@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -14,31 +15,6 @@ const (
 	sseRetryDelay        = 2000
 	sseHeartbeatInterval = 15 * time.Second
 )
-
-func ListHandler(store Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		jobs, err := store.List(r.Context(), 50)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, "operation_failed", err.Error())
-			return
-		}
-		writeData(w, http.StatusOK, jobs)
-	}
-}
-
-func GetHandler(store Store) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		job, items, err := store.Get(r.Context(), chi.URLParam(r, "id"))
-		if err != nil {
-			writeError(w, http.StatusNotFound, "not_found", "job not found")
-			return
-		}
-		writeData(w, http.StatusOK, struct {
-			Job
-			Items []ItemResult `json:"items"`
-		}{Job: job, Items: items})
-	}
-}
 
 func CancelHandler(store Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
@@ -51,9 +27,9 @@ func CancelHandler(store Store) http.HandlerFunc {
 	}
 }
 
-func EventsHandler(store Store, broker *Broker) http.HandlerFunc {
+func EventsHandler(store Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if broker == nil {
+		if !store.Available() {
 			writeError(w, http.StatusServiceUnavailable, "events_unavailable", "job events are unavailable")
 			return
 		}
@@ -62,15 +38,13 @@ func EventsHandler(store Store, broker *Broker) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "streaming_unsupported", "streaming is not supported")
 			return
 		}
-
-		lastEventID := parseLastEventID(r.Header.Get("Last-Event-ID"))
-		events, unsubscribe := broker.Subscribe()
-		defer unsubscribe()
-		snapshot, err := store.Snapshot(r.Context(), lastEventID, 50)
+		cursor := parseLastEventID(r.Header.Get("Last-Event-ID"))
+		subscription, err := store.Subscribe(r.Context(), cursor)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, "operation_failed", err.Error())
 			return
 		}
+		defer subscription.Unsubscribe()
 
 		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 		w.Header().Set("Cache-Control", "no-cache, no-transform")
@@ -79,11 +53,18 @@ func EventsHandler(store Store, broker *Broker) http.HandlerFunc {
 			return
 		}
 		flusher.Flush()
-		if err := writeSSE(w, flusher, "jobs.snapshot", snapshot.Cursor, struct {
-			Cursor int64 `json:"cursor"`
-			Jobs   []Job `json:"jobs"`
-		}{Cursor: snapshot.Cursor, Jobs: snapshot.Jobs}); err != nil {
-			return
+		lastCursor := int64(-1)
+		if subscription.Snapshot != nil {
+			lastCursor = subscription.Snapshot.Cursor
+			if err := writeSSE(w, flusher, "jobs.snapshot", formatEventID(subscription.Snapshot.RuntimeID, subscription.Snapshot.Cursor), subscription.Snapshot); err != nil {
+				return
+			}
+		}
+		for _, event := range subscription.Replay {
+			lastCursor = event.Cursor
+			if err := writeSSE(w, flusher, "job.changed", formatEventID(event.RuntimeID, event.Cursor), event); err != nil {
+				return
+			}
 		}
 
 		heartbeat := time.NewTicker(sseHeartbeatInterval)
@@ -92,14 +73,15 @@ func EventsHandler(store Store, broker *Broker) http.HandlerFunc {
 			select {
 			case <-r.Context().Done():
 				return
-			case event, ok := <-events:
+			case event, ok := <-subscription.Events:
 				if !ok {
 					return
 				}
-				if event.Job.EventVersion <= snapshot.Cursor {
+				if event.Cursor <= lastCursor {
 					continue
 				}
-				if err := writeSSE(w, flusher, "job.changed", event.Job.EventVersion, event); err != nil {
+				lastCursor = event.Cursor
+				if err := writeSSE(w, flusher, "job.changed", formatEventID(event.RuntimeID, event.Cursor), event); err != nil {
 					return
 				}
 			case <-heartbeat.C:
@@ -112,28 +94,35 @@ func EventsHandler(store Store, broker *Broker) http.HandlerFunc {
 	}
 }
 
-func parseLastEventID(value string) *int64 {
-	if value == "" {
+func parseLastEventID(value string) *EventCursor {
+	separator := strings.LastIndexByte(value, ':')
+	if separator <= 0 || separator == len(value)-1 {
 		return nil
 	}
-	for _, char := range value {
-		if char < '0' || char > '9' {
+	runtimeID := value[:separator]
+	cursorValue := value[separator+1:]
+	for _, character := range cursorValue {
+		if character < '0' || character > '9' {
 			return nil
 		}
 	}
-	parsed, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || parsed < 0 {
+	cursor, err := strconv.ParseInt(cursorValue, 10, 64)
+	if err != nil || cursor < 0 {
 		return nil
 	}
-	return &parsed
+	return &EventCursor{RuntimeID: runtimeID, Cursor: cursor}
 }
 
-func writeSSE(w http.ResponseWriter, flusher http.Flusher, eventName string, id int64, value any) error {
+func formatEventID(runtimeID string, cursor int64) string {
+	return runtimeID + ":" + strconv.FormatInt(cursor, 10)
+}
+
+func writeSSE(w http.ResponseWriter, flusher http.Flusher, eventName, id string, value any) error {
 	payload, err := json.Marshal(value)
 	if err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", id, eventName, payload); err != nil {
+	if _, err := fmt.Fprintf(w, "id: %s\nevent: %s\ndata: %s\n\n", id, eventName, payload); err != nil {
 		return err
 	}
 	flusher.Flush()

@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { strings } from "../i18n";
@@ -16,9 +16,25 @@ type Props = {
 };
 
 export function MkdirDialog({ labels = strings.en, onClose, onSubmit }: Props) {
+  const titleId = useId();
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        aria-labelledby={titleId}
+        className="sm:max-w-md"
+        showCloseButton={false}
+      >
+        <MkdirContent titleId={titleId} labels={labels} onClose={onClose} onSubmit={onSubmit} />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function MkdirContent({ titleId, labels = strings.en, onClose, onSubmit }: Props & { titleId: string }) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const inputId = useId();
   const canSubmit = !submitting && name.trim().length > 0;
 
   async function submit() {
@@ -36,34 +52,29 @@ export function MkdirDialog({ labels = strings.en, onClose, onSubmit }: Props) {
   }
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!open && !submitting) onClose(); }}>
-      <DialogContent
-        className="sm:max-w-md"
-        showCloseButton={false}
-        onKeyDown={(event) => confirmDialogOnEnter(event, canSubmit, () => void submit())}
-      >
-        <DialogHeader>
-          <DialogTitle>{labels.directoryNamePrompt}</DialogTitle>
-        </DialogHeader>
-        <ErrorBanner message={error} />
-        <div className="grid gap-2">
-          <Label htmlFor="mkdir-name">{labels.directoryNamePrompt}</Label>
-          <Input
-            id="mkdir-name"
-            value={name}
-            autoFocus
-            onChange={(event) => setName(event.target.value)}
-            disabled={submitting}
-          />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={submitting}>{labels.cancel}</Button>
-          <Button onClick={submit} disabled={!canSubmit}>
-            {submitting ? <LoaderCircle className="animate-spin" /> : null}
-            {labels.confirm}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <div className="contents" onKeyDown={(event) => confirmDialogOnEnter(event, canSubmit, () => void submit())}>
+      <header className="flex flex-col gap-2">
+        <h2 id={titleId} className="font-heading text-base leading-none font-medium">{labels.directoryNamePrompt}</h2>
+      </header>
+      <ErrorBanner message={error} />
+      <div className="grid min-w-0 gap-2">
+        <Label htmlFor={inputId}>{labels.directoryNamePrompt}</Label>
+        <Input
+          id={inputId}
+          className="min-w-0"
+          value={name}
+          autoFocus
+          onChange={(event) => setName(event.target.value)}
+          disabled={submitting}
+        />
+      </div>
+      <footer className="-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end">
+        <Button variant="outline" onClick={onClose} disabled={submitting}>{labels.cancel}</Button>
+        <Button onClick={submit} disabled={!canSubmit}>
+          {submitting ? <LoaderCircle className="animate-spin" /> : null}
+          {labels.confirm}
+        </Button>
+      </footer>
+    </div>
   );
 }

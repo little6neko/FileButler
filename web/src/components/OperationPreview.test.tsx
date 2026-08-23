@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
 import { strings } from "../i18n";
-import { OperationPreview } from "./OperationPreview";
+import { OperationPreview, OperationPreviewContent } from "./OperationPreview";
 
 vi.mock("../api/client", () => ({
   api: {
@@ -15,6 +15,27 @@ vi.mock("../api/client", () => ({
 beforeEach(() => {
   vi.mocked(api.opsDryRun).mockReset();
   vi.mocked(api.opsCreateJob).mockReset();
+});
+
+it("renders reusable operation content and delegates the active request", async () => {
+  vi.mocked(api.opsDryRun).mockResolvedValue({ hasConflict: false, items: [] });
+  const onSubmit = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+
+  render(
+    <OperationPreviewContent
+      request={request()}
+      titleId="local-operation-title"
+      onSubmit={onSubmit}
+      onClose={vi.fn()}
+    />,
+  );
+
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "copy preview" })).toHaveAttribute("id", "local-operation-title");
+  await waitFor(() => expect(screen.getByRole("button", { name: "Start copy" })).toBeEnabled());
+  await userEvent.click(screen.getByRole("button", { name: "Start copy" }));
+
+  expect(onSubmit).toHaveBeenCalledWith(request());
 });
 
 it("shows conflicts in operation preview and disables confirmation", async () => {
@@ -107,6 +128,9 @@ it("keeps both path columns for copy previews", async () => {
   expect(await screen.findByRole("columnheader", { name: "Source" })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "Destination" })).toBeInTheDocument();
   expect(screen.getByRole("columnheader", { name: "Status" })).toBeInTheDocument();
+  expect(screen.getByTestId("operation-preview-scroll")).toHaveClass("overflow-auto", "min-w-0", "min-h-0");
+  expect(screen.getByRole("table")).toHaveClass("min-w-max");
+  expect(screen.getByRole("table").parentElement).toHaveClass("overflow-visible");
 });
 
 it("shows the destination root in operation preview paths", async () => {
@@ -251,9 +275,10 @@ it("focuses the popup and creates a job with Enter when the preview is ready", a
   const onJobCreated = vi.fn();
   render(<OperationPreview request={request()} onJobCreated={onJobCreated} onClose={vi.fn()} />);
 
-  const dialog = screen.getByRole("dialog", { name: "copy preview" });
+  screen.getByRole("dialog", { name: "copy preview" });
+  const content = screen.getByTestId("operation-preview-content");
   await waitFor(() => expect(screen.getByRole("button", { name: "Start copy" })).toBeEnabled());
-  await waitFor(() => expect(dialog).toHaveFocus());
+  await waitFor(() => expect(content).toHaveFocus());
   await userEvent.keyboard("{Enter}");
 
   expect(api.opsCreateJob).toHaveBeenCalledWith(request());

@@ -1,7 +1,19 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
-import { MkdirDialog } from "./MkdirDialog";
+import { MkdirContent, MkdirDialog } from "./MkdirDialog";
+
+it("renders reusable mkdir content without a page dialog portal", async () => {
+  const onSubmit = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+  render(<MkdirContent titleId="local-mkdir-title" onClose={vi.fn()} onSubmit={onSubmit} />);
+
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Directory name" })).toHaveAttribute("id", "local-mkdir-title");
+  await userEvent.type(screen.getByRole("textbox", { name: "Directory name" }), "assets");
+  await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
+  expect(onSubmit).toHaveBeenCalledWith("assets");
+});
 
 it("submits a trimmed directory name once and disables the dialog while pending", async () => {
   let resolveSubmit!: () => void;

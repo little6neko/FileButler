@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
-import { SingleRenameDialog } from "./SingleRenameDialog";
+import { SingleRenameContent, SingleRenameDialog } from "./SingleRenameDialog";
 
 vi.mock("../api/client", () => ({
   api: {
@@ -12,6 +12,27 @@ vi.mock("../api/client", () => ({
 
 beforeEach(() => {
   vi.mocked(api.singleRenameCreateJob).mockReset();
+});
+
+it("renders reusable rename content without creating its own page dialog", async () => {
+  const onSubmit = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+  render(
+    <SingleRenameContent
+      initialName="old.txt"
+      entryType="file"
+      titleId="local-rename-title"
+      onSubmit={onSubmit}
+      onClose={vi.fn()}
+    />,
+  );
+
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Rename" })).toHaveAttribute("id", "local-rename-title");
+  await userEvent.clear(screen.getByLabelText("New name"));
+  await userEvent.type(screen.getByLabelText("New name"), "new.txt");
+  await userEvent.click(screen.getByRole("button", { name: "Rename" }));
+
+  expect(onSubmit).toHaveBeenCalledWith("new.txt");
 });
 
 it("creates a single rename job with the new basename", async () => {

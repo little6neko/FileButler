@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { CircleAlert, LoaderCircle, TriangleAlert } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { api } from "../api/client";
@@ -21,6 +21,16 @@ type Props = {
   labels?: UIStrings;
 };
 
+type ContentProps = {
+  request: OpsRequest;
+  operationChoices?: readonly DragOperation[];
+  titleId: string;
+  descriptionId?: string;
+  onSubmit(request: OpsRequest): Promise<void>;
+  onClose(): void;
+  labels?: UIStrings;
+};
+
 type PreviewResult = {
   request: OpsRequest;
   items: PlanItem[];
@@ -29,7 +39,46 @@ type PreviewResult = {
 };
 
 export function OperationPreview({ request, operationChoices, onJobCreated, onClose, labels = strings.en }: Props) {
-  const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+
+  async function submit(activeRequest: OpsRequest) {
+    const job = await api.opsCreateJob(activeRequest);
+    onJobCreated(job.id);
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        className="flex max-h-[calc(100vh-2rem)] flex-col sm:max-w-3xl"
+        showCloseButton={false}
+      >
+        <OperationPreviewContent
+          request={request}
+          operationChoices={operationChoices}
+          titleId={titleId}
+          descriptionId={descriptionId}
+          labels={labels}
+          onSubmit={submit}
+          onClose={onClose}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function OperationPreviewContent({
+  request,
+  operationChoices,
+  titleId,
+  descriptionId,
+  onSubmit,
+  onClose,
+  labels = strings.en,
+}: ContentProps) {
+  const contentRef = useRef<HTMLDivElement>(null);
   const [selectedType, setSelectedType] = useState<OpsRequest["type"]>(request.type);
   const activeRequest = useMemo(
     () => (selectedType === request.type ? request : { ...request, type: selectedType }),
@@ -38,6 +87,10 @@ export function OperationPreview({ request, operationChoices, onJobCreated, onCl
   const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
   const [jobError, setJobError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    contentRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -67,11 +120,11 @@ export function OperationPreview({ request, operationChoices, onJobCreated, onCl
   }, [activeRequest, labels.previewFailed]);
 
   async function confirm() {
+    if (submitting) return;
     setSubmitting(true);
     setJobError(null);
     try {
-      const job = await api.opsCreateJob(activeRequest);
-      onJobCreated(job.id);
+      await onSubmit(activeRequest);
     } catch (err) {
       setJobError(err instanceof Error ? err.message : labels.jobCreationFailed);
     } finally {
@@ -92,94 +145,92 @@ export function OperationPreview({ request, operationChoices, onJobCreated, onCl
   const showDestinationColumn = activeRequest.type !== "delete";
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <DialogContent
-        ref={dialogRef}
-        initialFocus={dialogRef}
-        className="sm:max-w-3xl"
-        showCloseButton={false}
-        onKeyDown={(event) => confirmDialogOnEnter(event, canConfirm, () => void confirm())}
-      >
-        <DialogHeader>
-          <DialogTitle>{labels.operationPreview(activeRequest.type)}</DialogTitle>
-          <DialogDescription>{labels.operationDescription(activeRequest.type, itemCount)}</DialogDescription>
-        </DialogHeader>
-        {operationChoices?.length ? (
-          <div className="operation-type-switch" role="radiogroup" aria-label={labels.operationMode}>
-            {operationChoices.map((type) => (
-              <Button
-                key={type}
-                type="button"
-                size="sm"
-                variant="ghost"
-                role="radio"
-                aria-checked={activeRequest.type === type}
-                data-active={activeRequest.type === type ? "true" : "false"}
-                onClick={() => {
-                  setJobError(null);
-                  setSelectedType(type);
-                }}
-                disabled={submitting}
-              >
-                {labels.operationType(type)}
-              </Button>
-            ))}
-          </div>
-        ) : null}
-        <ErrorBanner message={error} />
-        {destructive ? (
-          <Alert variant="destructive">
-            <TriangleAlert />
-            <AlertDescription>{labels.deleteWarning}</AlertDescription>
-          </Alert>
-        ) : null}
-        {conflictCount ? (
-          <Alert>
-            <CircleAlert />
-            <AlertDescription>{labels.conflictsFound(conflictCount)}</AlertDescription>
-          </Alert>
-        ) : null}
-        {loading ? (
-          <div className="grid gap-2">
-            {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-7" />)}
-          </div>
-        ) : (
-          <div className="max-h-[420px] overflow-auto rounded-md border">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {showSourceColumn ? <TableHead>{labels.source}</TableHead> : null}
-                  {showDestinationColumn ? <TableHead>{labels.destination}</TableHead> : null}
-                  <TableHead>{labels.status}</TableHead>
+    <div
+      ref={contentRef}
+      tabIndex={-1}
+      data-testid="operation-preview-content"
+      className="operation-preview-content flex min-h-0 min-w-0 flex-1 flex-col gap-4 outline-none"
+      onKeyDown={(event) => confirmDialogOnEnter(event, canConfirm, () => void confirm())}
+    >
+      <header className="flex shrink-0 flex-col gap-2">
+        <h2 id={titleId} className="font-heading text-base leading-none font-medium">{labels.operationPreview(activeRequest.type)}</h2>
+        <p id={descriptionId} className="text-sm text-muted-foreground">{labels.operationDescription(activeRequest.type, itemCount)}</p>
+      </header>
+      {operationChoices?.length ? (
+        <div className="operation-type-switch shrink-0" role="radiogroup" aria-label={labels.operationMode}>
+          {operationChoices.map((type) => (
+            <Button
+              key={type}
+              type="button"
+              size="sm"
+              variant="ghost"
+              role="radio"
+              aria-checked={activeRequest.type === type}
+              data-active={activeRequest.type === type ? "true" : "false"}
+              onClick={() => {
+                setJobError(null);
+                setSelectedType(type);
+              }}
+              disabled={submitting}
+            >
+              {labels.operationType(type)}
+            </Button>
+          ))}
+        </div>
+      ) : null}
+      <ErrorBanner message={error} />
+      {destructive ? (
+        <Alert variant="destructive" className="shrink-0">
+          <TriangleAlert />
+          <AlertDescription>{labels.deleteWarning}</AlertDescription>
+        </Alert>
+      ) : null}
+      {conflictCount ? (
+        <Alert className="shrink-0">
+          <CircleAlert />
+          <AlertDescription>{labels.conflictsFound(conflictCount)}</AlertDescription>
+        </Alert>
+      ) : null}
+      {loading ? (
+        <div className="grid min-h-0 flex-1 gap-2 overflow-hidden">
+          {Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-7" />)}
+        </div>
+      ) : (
+        <div data-testid="operation-preview-scroll" className="min-h-0 min-w-0 flex-1 overflow-auto rounded-md border">
+          <Table containerClassName="overflow-visible" className="min-w-max">
+            <TableHeader>
+              <TableRow>
+                {showSourceColumn ? <TableHead>{labels.source}</TableHead> : null}
+                {showDestinationColumn ? <TableHead>{labels.destination}</TableHead> : null}
+                <TableHead>{labels.status}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {items.map((item) => (
+                <TableRow key={`${item.sourcePath}-${item.destPath ?? item.targetPath ?? ""}`}>
+                  {showSourceColumn ? <TableCell>{displaySource(item, activeRequest)}</TableCell> : null}
+                  {showDestinationColumn ? <TableCell>{displayDestination(item, activeRequest)}</TableCell> : null}
+                  <TableCell className={item.conflict ? "text-destructive" : "text-emerald-700"}>
+                    {item.conflict ? item.errorText || item.errorCode : labels.ready}
+                  </TableCell>
                 </TableRow>
-              </TableHeader>
-              <TableBody>
-                {items.map((item) => (
-                  <TableRow key={`${item.sourcePath}-${item.destPath ?? item.targetPath ?? ""}`}>
-                    {showSourceColumn ? <TableCell>{displaySource(item, activeRequest)}</TableCell> : null}
-                    {showDestinationColumn ? <TableCell>{displayDestination(item, activeRequest)}</TableCell> : null}
-                    <TableCell className={item.conflict ? "text-destructive" : "text-emerald-700"}>
-                      {item.conflict ? item.errorText || item.errorCode : labels.ready}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>{labels.cancel}</Button>
-          <Button
-            variant={destructive ? "destructive" : "default"}
-            onClick={confirm}
-            disabled={!canConfirm}
-          >
-            {submitting ? <LoaderCircle className="animate-spin" /> : null}
-            {labels.confirmOperation(activeRequest.type, itemCount)}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      )}
+      <footer className="-mx-4 -mb-4 flex shrink-0 flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end">
+        <Button variant="outline" onClick={onClose}>{labels.cancel}</Button>
+        <Button
+          variant={destructive ? "destructive" : "default"}
+          onClick={confirm}
+          disabled={!canConfirm}
+        >
+          {submitting ? <LoaderCircle className="animate-spin" /> : null}
+          {labels.confirmOperation(activeRequest.type, itemCount)}
+        </Button>
+      </footer>
+    </div>
   );
 }
 

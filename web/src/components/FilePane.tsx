@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { MenuItem, MenuPopup, MenuPortal, MenuPositioner, MenuRoot, MenuTrigger } from "@/components/ui/menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Entry, Root } from "../api/types";
+import { entryTypeLabel, type EntryTypeLabels } from "../entryType";
 import { paneDropId, type FileDropData, type FileDropFeedback, type PaneKey } from "../fileDrag";
 import type { FileSelectionModifiers } from "../fileSelection";
 import { createFileSelectionStore, type FileSelectionStore } from "../fileSelectionStore";
@@ -131,7 +132,7 @@ export function FilePane({
   const onViewStateChangeRef = useRef(onViewStateChange);
   const rowCallbacksRef = useRef({ onToggleSelection, onSelectEntry, onSelectAll, onPathChange, onOpenFile });
   const visibleOrderCallbackRef = useRef(onVisibleOrderChange);
-  const visibleEntries = useMemo(() => sortEntries(entries, sortState), [entries, sortState]);
+  const visibleEntries = useMemo(() => sortEntries(entries, sortState, labels), [entries, labels, sortState]);
   const contextActions = actionsForSelection?.(selection.getSummary().selectedCount) ?? actions;
   const suggestions = useMemo(
     () =>
@@ -815,12 +816,12 @@ const DragSelectionBox = memo(forwardRef<DragSelectionBoxHandle>(function DragSe
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
-function sortEntries(entries: Entry[], sortState: SortState) {
+function sortEntries(entries: Entry[], sortState: SortState, labels: EntryTypeLabels) {
   if (!sortState) return entries;
   const direction = sortState.direction === "asc" ? 1 : -1;
   return [...entries].sort((a, b) => {
     const groupOrder = compareEntryGroups(a, b, sortState);
-    return groupOrder || compareEntries(a, b, sortState.column) * direction;
+    return groupOrder || compareEntries(a, b, sortState.column, labels) * direction;
   });
 }
 
@@ -834,12 +835,12 @@ function compareEntryGroups(a: Entry, b: Entry, sortState: NonNullable<SortState
   return aIsDirectory ? -1 : 1;
 }
 
-function compareEntries(a: Entry, b: Entry, column: SortKey) {
+function compareEntries(a: Entry, b: Entry, column: SortKey, labels: EntryTypeLabels) {
   switch (column) {
     case "name":
       return collator.compare(a.name, b.name);
     case "type":
-      return collator.compare(a.type, b.type) || collator.compare(a.name, b.name);
+      return collator.compare(entryTypeLabel(a, labels), entryTypeLabel(b, labels)) || collator.compare(a.name, b.name);
     case "size":
       return a.size - b.size || collator.compare(a.name, b.name);
     case "modified":

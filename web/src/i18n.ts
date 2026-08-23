@@ -87,6 +87,10 @@ export type UIStrings = {
   browseFailed: string;
   name: string;
   type: string;
+  entryFolderType: string;
+  entryFileType: string;
+  entrySymlinkType: string;
+  entryOtherType: string;
   size: string;
   modified: string;
   close: string;
@@ -253,6 +257,10 @@ export const strings: Record<Language, UIStrings> = {
     browseFailed: "Unable to load this directory",
     name: "Name",
     type: "Type",
+    entryFolderType: "Folder",
+    entryFileType: "File",
+    entrySymlinkType: "Symbolic link",
+    entryOtherType: "Other",
     size: "Size",
     modified: "Modified",
     close: "Close",
@@ -434,6 +442,10 @@ export const strings: Record<Language, UIStrings> = {
     browseFailed: "无法加载当前文件夹",
     name: "名称",
     type: "类型",
+    entryFolderType: "文件夹",
+    entryFileType: "文件",
+    entrySymlinkType: "符号链接",
+    entryOtherType: "其他",
     size: "大小",
     modified: "修改时间",
     close: "关闭",

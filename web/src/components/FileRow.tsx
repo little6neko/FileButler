@@ -5,6 +5,7 @@ import type { Entry } from "../api/types";
 import type { FileSelectionModifiers } from "../fileSelection";
 import type { FileSelectionStore } from "../fileSelectionStore";
 import { formatBytes } from "../format";
+import { entryTypeLabel } from "../entryType";
 import type { UIStrings } from "../i18n";
 import {
   directoryDropId,
@@ -163,7 +164,7 @@ export const FileRow = memo(function FileRow({
           ) : null}
         </span>
       </td>
-      <td>{entry.type}</td>
+      <td>{entryTypeLabel(entry, labels)}</td>
       <td>{formatBytes(entry.size)}</td>
       <td>{entry.modifiedUnix ? new Date(entry.modifiedUnix * 1000).toLocaleString() : ""}</td>
     </tr>

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { paneDropId, type FileDropFeedback } from "../fileDrag";
 import { createFileSelectionStore } from "../fileSelectionStore";
+import { strings } from "../i18n";
 import { FilePane } from "./FilePane";
 
 const roots = [{ id: "data", name: "Data" }];
@@ -301,6 +302,60 @@ it("sorts visible entries when clicking a column header", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Size" }));
 
   expect(visibleEntryNames()).toEqual(["folder", "a.txt", "b.txt"]);
+});
+
+it("shows localized folders and special types while ordinary files show lowercase extensions", () => {
+  renderPane({
+    labels: strings["zh-CN"],
+    entries: [
+      entry("folder", "directory"),
+      entry("PHOTO.JPG"),
+      entry("archive.tar.gz"),
+      entry("LICENSE"),
+      entry(".gitignore"),
+      entry("shortcut.jpg", "symlink"),
+      entry("socket", "other"),
+    ],
+  });
+
+  expect(typeCellFor("folder")).toHaveTextContent("文件夹");
+  expect(typeCellFor("PHOTO.JPG")).toHaveTextContent("jpg");
+  expect(typeCellFor("archive.tar.gz")).toHaveTextContent("gz");
+  expect(typeCellFor("LICENSE")).toHaveTextContent("文件");
+  expect(typeCellFor(".gitignore")).toHaveTextContent("文件");
+  expect(typeCellFor("shortcut.jpg")).toHaveTextContent("符号链接");
+  expect(typeCellFor("socket")).toHaveTextContent("其他");
+});
+
+it("shows English fallback type labels", () => {
+  renderPane({
+    labels: strings.en,
+    entries: [entry("folder", "directory"), entry("LICENSE"), entry("shortcut", "symlink"), entry("socket", "other")],
+  });
+
+  expect(typeCellFor("folder")).toHaveTextContent("Folder");
+  expect(typeCellFor("LICENSE")).toHaveTextContent("File");
+  expect(typeCellFor("shortcut")).toHaveTextContent("Symbolic link");
+  expect(typeCellFor("socket")).toHaveTextContent("Other");
+});
+
+it("sorts the type column by displayed labels and then by name while keeping folders first", async () => {
+  renderPane({
+    labels: strings.en,
+    entries: [
+      entry("z.JPG"),
+      entry("a.mp4"),
+      entry("folder", "directory"),
+      entry("b.jpg"),
+      entry("a.txt"),
+      entry("shortcut", "symlink"),
+      entry("LICENSE"),
+    ],
+  });
+
+  await userEvent.click(screen.getByRole("button", { name: "Type" }));
+
+  expect(visibleEntryNames()).toEqual(["folder", "LICENSE", "b.jpg", "z.JPG", "a.mp4", "shortcut", "a.txt"]);
 });
 
 it("sorts by name ascending with directories first by default", () => {
@@ -874,6 +929,12 @@ function renderPane(overrides: Partial<Parameters<typeof FilePane>[0]> = {}) {
 function visibleEntryNames() {
   const rows = within(screen.getAllByRole("rowgroup")[1]).getAllByRole("row");
   return rows.map((row) => within(row).getAllByRole("cell")[1].textContent);
+}
+
+function typeCellFor(name: string) {
+  const row = screen.getByText(name).closest("tr");
+  if (!row) throw new Error(`row not found for ${name}`);
+  return within(row).getAllByRole("cell")[2];
 }
 
 function mockRect(element: Element, rect: Omit<DOMRect, "toJSON" | "x" | "y"> & Partial<Pick<DOMRect, "x" | "y">>) {

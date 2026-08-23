@@ -76,6 +76,20 @@ it("fades circular media navigation controls through window, hover, and disabled
   expect(disabled).toContain("cursor: not-allowed;");
 });
 
+it("fits full-mode media inside the window without changing compact preview overflow", () => {
+  expect(rule(".media-preview-content")).toContain("overflow: auto;");
+
+  const fullContent = rule(".media-preview-window-layout .media-preview-content");
+  expect(fullContent).toContain("overflow: hidden;");
+
+  const fullMedia = rule('.media-preview-window-layout .media-preview-content > :is(img, video)');
+  expect(fullMedia).toContain("width: 100%;");
+  expect(fullMedia).toContain("height: 100%;");
+  expect(fullMedia).toContain("min-width: 0;");
+  expect(fullMedia).toContain("min-height: 0;");
+  expect(fullMedia).toContain("object-fit: contain;");
+});
+
 it("keeps the breadcrumb row compact with matching pane dividers", () => {
   expect(rule(".file-pane")).toContain("grid-template-rows: 39px 29px minmax(0, 1fr) 28px;");
   expect(rule(".pane-header")).toContain("border-bottom: 1px solid var(--border);");

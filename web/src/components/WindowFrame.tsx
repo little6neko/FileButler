@@ -85,6 +85,7 @@ export function WindowFrame({
       aria-label={title}
       aria-current={active ? "true" : undefined}
       data-active={active ? "true" : "false"}
+      data-window-kind={window.kind}
       data-window-status={window.status}
       data-window-id={window.id}
       onPointerDown={onFocus}

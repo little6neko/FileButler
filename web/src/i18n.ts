@@ -65,6 +65,7 @@ export type UIStrings = {
   mkdir: string;
   rename: string;
   powerRename: string;
+  powerRenameWindowTitle(count: number): string;
   jobs: string;
   allJobs: string;
   runningJobs: string;
@@ -228,6 +229,7 @@ export const strings: Record<Language, UIStrings> = {
     mkdir: "mkdir",
     rename: "Rename",
     powerRename: "PowerRename",
+    powerRenameWindowTitle: (count) => `PowerRename — ${count} ${count === 1 ? "item" : "items"}`,
     jobs: "Jobs",
     allJobs: "All",
     runningJobs: "Running",
@@ -406,6 +408,7 @@ export const strings: Record<Language, UIStrings> = {
     mkdir: "新建文件夹",
     rename: "重命名",
     powerRename: "PowerRename",
+    powerRenameWindowTitle: (count) => `PowerRename — ${count} 项`,
     jobs: "任务",
     allJobs: "全部",
     runningJobs: "进行中",

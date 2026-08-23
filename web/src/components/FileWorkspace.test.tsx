@@ -44,6 +44,9 @@ beforeEach(() => {
   vi.mocked(api.opsDryRun).mockReset();
   vi.mocked(api.opsDryRun).mockResolvedValue({ hasConflict: false, items: [] });
   vi.mocked(api.opsCreateJob).mockReset();
+  vi.mocked(api.renamePreview).mockReset();
+  vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
+  vi.mocked(api.renameCreateJob).mockReset();
   vi.mocked(api.cancelJob).mockReset();
 });
 
@@ -177,6 +180,37 @@ it("opens a selected directory in a new independent window from its context menu
   expect(Number(secondWindow.style.zIndex)).toBeGreaterThan(Number(firstWindow.style.zIndex));
   expect(taskbarButtons[0]).not.toHaveAttribute("aria-current");
   expect(taskbarButtons[1]).toHaveAttribute("aria-current", "page");
+});
+
+it("opens a new focused PowerRename application window from each full-mode command", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
+  const fileWindow = container.querySelector<HTMLElement>(".desktop-window")!;
+  await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
+  await userEvent.click(await within(fileWindow).findByLabelText("Select a.txt"));
+
+  const toolbar = within(fileWindow).getByRole("navigation", { name: "File actions" });
+  await userEvent.click(within(toolbar).getByRole("button", { name: "PowerRename" }));
+
+  await waitFor(() => expect(screen.getAllByTestId("power-rename-content")).toHaveLength(1));
+  const firstWindows = container.querySelectorAll<HTMLElement>(".desktop-window");
+  const firstTaskbarButtons = container.querySelectorAll<HTMLElement>(".taskbar-window-button");
+  expect(firstWindows).toHaveLength(2);
+  expect(firstTaskbarButtons).toHaveLength(2);
+  expect(firstWindows[1].querySelector(".lucide-scan-text")).not.toBeNull();
+  expect(firstTaskbarButtons[1].querySelector(".lucide-scan-text")).not.toBeNull();
+  expect(container.querySelector<HTMLElement>(".desktop-window:last-of-type")).toHaveAttribute("data-active", "true");
+  expect(api.renamePreview).toHaveBeenCalledWith(expect.objectContaining({ rootId: "source", paths: ["a.txt"] }));
+
+  fireEvent.contextMenu(within(fileWindow).getByText("folder"), { clientX: 100, clientY: 100 });
+  const menu = await screen.findByRole("menu", { name: "File actions" });
+  await userEvent.click(within(menu).getByRole("menuitem", { name: "PowerRename" }));
+
+  await waitFor(() => expect(screen.getAllByTestId("power-rename-content")).toHaveLength(2));
+  expect(container.querySelectorAll(".desktop-window")).toHaveLength(3);
+  expect(container.querySelectorAll(".taskbar-window-button")).toHaveLength(3);
+  expect(container.querySelectorAll<HTMLElement>(".desktop-window")[2]).toHaveAttribute("data-active", "true");
+  expect(api.renamePreview).toHaveBeenCalledWith(expect.objectContaining({ rootId: "source", paths: ["folder"] }));
 });
 
 it("uses the active window for keyboard copy and paste and opens the fixed copy preview", async () => {

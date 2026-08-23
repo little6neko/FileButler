@@ -25,3 +25,9 @@ it("localizes drag summaries, destinations, and invalid targets", () => {
   expect(strings.en.dragDestination("move", "folder")).toBe("move to folder");
   expect(strings["zh-CN"].invalidDrop("inside-source")).toBe("不能将文件夹放入自身或其子文件夹");
 });
+
+it("formats PowerRename application window titles", () => {
+  expect(strings.en.powerRenameWindowTitle(1)).toBe("PowerRename — 1 item");
+  expect(strings.en.powerRenameWindowTitle(3)).toBe("PowerRename — 3 items");
+  expect(strings["zh-CN"].powerRenameWindowTitle(3)).toBe("PowerRename — 3 项");
+});

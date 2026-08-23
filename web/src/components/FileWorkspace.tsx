@@ -20,7 +20,7 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { Files } from "lucide-react";
+import { Files, ScanText } from "lucide-react";
 import { toast } from "sonner";
 import { buildClipboardRequest, createAppClipboard, isEditableShortcutTarget, type AppClipboard } from "../appClipboard";
 import { api } from "../api/client";
@@ -54,6 +54,7 @@ import {
   isFileWindow,
   minimizeWindow,
   openFileWindow,
+  openPowerRenameWindow,
   reconcileWindowBounds,
   restoreWindow,
   setWindowRect,
@@ -61,6 +62,7 @@ import {
   windowsByMostRecent,
   type DesktopBounds,
   type FileWindowRecord,
+  type PowerRenameWindowRecord,
   type WindowManagerState,
   type WindowRect,
 } from "../windowManager";
@@ -80,11 +82,12 @@ import { LanguageSelect } from "./LanguageSelect";
 import { MediaPreview } from "./MediaPreview";
 import { MkdirDialog } from "./MkdirDialog";
 import { OperationPreview } from "./OperationPreview";
-import { RenameDialog } from "./RenameDialog";
+import { defaultRenameOptions } from "./powerRenameOptions";
+import { PowerRenameContent, RenameDialog } from "./RenameDialog";
 import { SingleRenameDialog } from "./SingleRenameDialog";
 import { VirtualRootView } from "./VirtualRootView";
 import { WindowFrame } from "./WindowFrame";
-import { WorkspaceShell, type WorkspaceMode } from "./WorkspaceShell";
+import { WorkspaceShell, type TaskbarWindow, type WorkspaceMode } from "./WorkspaceShell";
 
 type DirectoryLocation = { kind: "directory"; rootId: string; path: string };
 type BrowserLocation = DirectoryLocation | { kind: "virtual-root" };
@@ -114,6 +117,16 @@ type PreviewState = {
   request: OpsRequest;
   operationChoices?: readonly DragOperation[];
   clearMoveClipboard?: boolean;
+};
+
+type PowerRenameInstance = {
+  id: string;
+  rootId: string;
+  paths: string[];
+  sourceTitle: string;
+  options: RenameOptions;
+  submitting: boolean;
+  submitError: string | null;
 };
 
 export const workspaceModeStorageKey = "filebutler.workspace-mode";
@@ -151,6 +164,8 @@ export function FileWorkspace({
   const [singleRenameSessionId, setSingleRenameSessionId] = useState<string | null>(null);
   const [powerRenameSessionId, setPowerRenameSessionId] = useState<string | null>(null);
   const [powerRenameOptions, setPowerRenameOptions] = useState<RenameOptions | undefined>();
+  const [powerRenameInstances, setPowerRenameInstancesState] = useState<Record<string, PowerRenameInstance>>({});
+  const powerRenameInstancesRef = useRef(powerRenameInstances);
   const [jobsOpen, setJobsOpen] = useState(false);
   const [leftPanePercent, setLeftPanePercent] = useState(50);
   const [clipboard, setClipboard] = useState<AppClipboard | null>(null);
@@ -162,6 +177,7 @@ export function FileWorkspace({
   const desktopRef = useRef<HTMLElement>(null);
   const sessionCounterRef = useRef(0);
   const windowCounterRef = useRef(0);
+  const powerRenameCounterRef = useRef(0);
   const contextTargetsRef = useRef<Record<string, string | null>>({});
   const visibleSessionIdsRef = useRef<string[]>([]);
   const activeSessionIdRef = useRef<string | null>(null);
@@ -189,6 +205,14 @@ export function FileWorkspace({
       return next === session ? current : { ...current, [id]: next };
     });
   }, [commitSessions]);
+
+  const commitPowerRenameInstances = useCallback((
+    update: (current: Record<string, PowerRenameInstance>) => Record<string, PowerRenameInstance>,
+  ) => {
+    const next = update(powerRenameInstancesRef.current);
+    powerRenameInstancesRef.current = next;
+    setPowerRenameInstancesState(next);
+  }, []);
 
   const loadSession = useCallback(async (id: string, force = false) => {
     const session = sessionsRef.current[id];
@@ -374,11 +398,27 @@ export function FileWorkspace({
     return () => document.removeEventListener("keydown", handleShortcut);
   });
 
-  const taskbarWindows = windowState.windows.filter(isFileWindow).map((window) => ({
-    id: window.id,
-    title: titleForSession(sessions[window.sessionId], roots, labels),
-    status: window.status,
-  }));
+  const taskbarWindows = windowState.windows.reduce<TaskbarWindow[]>((items, window) => {
+    if (isFileWindow(window)) {
+      items.push({
+        id: window.id,
+        kind: window.kind,
+        title: titleForSession(sessions[window.sessionId], roots, labels),
+        status: window.status,
+      });
+      return items;
+    }
+    const instance = powerRenameInstances[window.instanceId];
+    if (instance) {
+      items.push({
+        id: window.id,
+        kind: window.kind,
+        title: labels.powerRenameWindowTitle(instance.paths.length),
+        status: window.status,
+      });
+    }
+    return items;
+  }, []);
 
   return (
     <>
@@ -495,29 +535,65 @@ export function FileWorkspace({
         {rootsLoaded && roots.length === 0 && !rootsError ? (
           <div className="desktop-empty-roots">{labels.noMappedRoots}</div>
         ) : null}
-        {windowState.windows.filter(isFileWindow).filter((window) => window.status !== "minimized").map((window) => {
-          const session = sessions[window.sessionId];
-          if (!session) return null;
-          const title = titleForSession(session, roots, labels);
-          return (
-            <WindowFrame
-              key={window.id}
-              window={window}
-              bounds={desktopBounds}
-              title={title}
-              active={windowState.activeWindowId === window.id}
-              labels={labels}
-              onFocus={() => focusDesktopWindow(window.id)}
-              onRectChange={(rect) => updateWindowRect(window.id, rect)}
-              onMinimize={() => commitWindowState((current) => minimizeWindow(current, window.id))}
-              onToggleMaximize={() => commitWindowState((current) => toggleMaximizeWindow(current, window.id))}
-              onClose={() => closeDesktopWindow(window.id)}
-            >
-              {renderFileWindow(window, session)}
-            </WindowFrame>
-          );
-        })}
+        {windowState.windows.filter((window) => window.status !== "minimized").map(renderDesktopWindow)}
       </section>
+    );
+  }
+
+  function renderDesktopWindow(window: FileWindowRecord | PowerRenameWindowRecord) {
+    const active = windowState.activeWindowId === window.id;
+    const frameProps = {
+      window,
+      bounds: desktopBounds,
+      active,
+      labels,
+      onFocus: () => focusDesktopWindow(window.id),
+      onRectChange: (rect: WindowRect) => updateWindowRect(window.id, rect),
+      onMinimize: () => commitWindowState((current) => minimizeWindow(current, window.id)),
+      onToggleMaximize: () => commitWindowState((current) => toggleMaximizeWindow(current, window.id)),
+      onClose: () => closeDesktopWindow(window.id),
+    };
+
+    if (isFileWindow(window)) {
+      const session = sessions[window.sessionId];
+      if (!session) return null;
+      const title = titleForSession(session, roots, labels);
+      return (
+        <WindowFrame key={window.id} {...frameProps} title={title}>
+          {renderFileWindow(window, session)}
+        </WindowFrame>
+      );
+    }
+
+    const instance = powerRenameInstances[window.instanceId];
+    if (!instance) return null;
+    const title = labels.powerRenameWindowTitle(instance.paths.length);
+    return (
+      <WindowFrame
+        key={window.id}
+        {...frameProps}
+        title={title}
+        icon={<ScanText aria-hidden="true" />}
+        closeDisabled={instance.submitting}
+      >
+        <div className="power-rename-window-layout" data-source-title={instance.sourceTitle}>
+          <PowerRenameContent
+            rootId={instance.rootId}
+            paths={instance.paths}
+            options={instance.options}
+            submitting={instance.submitting}
+            submitError={instance.submitError}
+            labels={labels}
+            onOptionsChange={(options) => updatePowerRenameInstance(instance.id, (current) => ({
+              ...current,
+              options,
+              submitError: null,
+            }))}
+            onClose={() => closeDesktopWindow(window.id)}
+            onSubmit={() => void submitPowerRename(window.id, instance.id)}
+          />
+        </div>
+      </WindowFrame>
     );
   }
 
@@ -734,7 +810,10 @@ export function FileWorkspace({
       onOperation,
       onMkdir: () => setMkdirSessionId(sessionId),
       onRename: () => setSingleRenameSessionId(sessionId),
-      onPowerRename: () => setPowerRenameSessionId(sessionId),
+      onPowerRename: () => {
+        if (mode === "desktop") openPowerRenameForSession(sessionId);
+        else setPowerRenameSessionId(sessionId);
+      },
     };
   }
 
@@ -912,6 +991,32 @@ export function FileWorkspace({
     return id;
   }
 
+  function openPowerRenameForSession(sessionId: string) {
+    const session = sessionsRef.current[sessionId];
+    if (!session || session.location.kind !== "directory" || !session.location.rootId) return null;
+    const paths = [...session.selectionStore.getOrderedPaths()];
+    if (paths.length === 0) return null;
+    const instanceId = `power-rename-${++powerRenameCounterRef.current}`;
+    const instance: PowerRenameInstance = {
+      id: instanceId,
+      rootId: session.location.rootId,
+      paths,
+      sourceTitle: titleForSession(session, roots, labels),
+      options: { ...(powerRenameOptions ?? defaultRenameOptions) },
+      submitting: false,
+      submitError: null,
+    };
+    commitPowerRenameInstances((current) => ({ ...current, [instanceId]: instance }));
+    const windowId = `window-${++windowCounterRef.current}`;
+    commitWindowState((current) => openPowerRenameWindow(
+      current,
+      windowId,
+      instanceId,
+      desktopBoundsRef.current,
+    ));
+    return windowId;
+  }
+
   function openVirtualRootWindow() {
     openWindowForSession(createSession({ kind: "virtual-root" }));
   }
@@ -931,9 +1036,15 @@ export function FileWorkspace({
   function closeDesktopWindow(id: string) {
     const target = windowStateRef.current.windows.find((window) => window.id === id);
     if (!target) return;
+    if (!isFileWindow(target)) {
+      const instance = powerRenameInstancesRef.current[target.instanceId];
+      if (instance?.submitting) return;
+      commitWindowState((current) => closeWindow(current, id));
+      removePowerRenameInstance(target.instanceId);
+      return;
+    }
     const next = closeWindow(windowStateRef.current, id);
     commitWindowState(() => next);
-    if (!isFileWindow(target)) return;
     const retainedByCompact = Object.values(compactBindings).includes(target.sessionId);
     const retainedByWindow = next.windows.some((window) => isFileWindow(window) && window.sessionId === target.sessionId);
     if (retainedByCompact || retainedByWindow) return;
@@ -944,6 +1055,51 @@ export function FileWorkspace({
       delete remaining[target.sessionId];
       return remaining;
     });
+  }
+
+  function updatePowerRenameInstance(
+    id: string,
+    update: (instance: PowerRenameInstance) => PowerRenameInstance,
+  ) {
+    commitPowerRenameInstances((current) => {
+      const instance = current[id];
+      if (!instance) return current;
+      const next = update(instance);
+      return next === instance ? current : { ...current, [id]: next };
+    });
+  }
+
+  function removePowerRenameInstance(id: string) {
+    commitPowerRenameInstances((current) => {
+      if (!current[id]) return current;
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }
+
+  async function submitPowerRename(windowId: string, instanceId: string) {
+    const instance = powerRenameInstancesRef.current[instanceId];
+    if (!instance || instance.submitting) return;
+    const options = { ...instance.options };
+    updatePowerRenameInstance(instanceId, (current) => ({ ...current, submitting: true, submitError: null }));
+    try {
+      const job = await api.renameCreateJob({
+        rootId: instance.rootId,
+        paths: instance.paths,
+        options,
+      });
+      setPowerRenameOptions(options);
+      commitWindowState((current) => closeWindow(current, windowId));
+      removePowerRenameInstance(instanceId);
+      handleJobCreated(job.id);
+    } catch (error) {
+      updatePowerRenameInstance(instanceId, (current) => ({
+        ...current,
+        submitting: false,
+        submitError: error instanceof Error ? error.message : labels.renameFailed,
+      }));
+    }
   }
 
   function activateTaskbarWindow(id: string) {

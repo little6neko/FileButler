@@ -489,6 +489,16 @@ body {
   border-radius: 0;
 }
 
+.power-rename-window-layout {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+  padding: 14px;
+}
+
 .desktop-window-resize-handle {
   position: absolute;
   z-index: 5;

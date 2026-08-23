@@ -72,6 +72,10 @@ export function WorkspaceShell({
             );
           })}
         </nav>
+        <Button size="sm" variant="outline" onClick={onJobsToggle} aria-label={labels.jobs} aria-expanded={jobsOpen}>
+          <ListChecks />
+          <span>{labels.activeJobs(activeJobCount)}</span>
+        </Button>
         <Button
           size="sm"
           variant="outline"
@@ -81,10 +85,6 @@ export function WorkspaceShell({
         >
           {mode === "desktop" ? <Columns2 /> : <MonitorUp />}
           <span>{mode === "desktop" ? labels.compactMode : labels.desktopMode}</span>
-        </Button>
-        <Button size="sm" variant="ghost" onClick={onJobsToggle} aria-label={labels.jobs} aria-expanded={jobsOpen}>
-          <ListChecks />
-          <span>{labels.activeJobs(activeJobCount)}</span>
         </Button>
         <span className="taskbar-language-icon" aria-hidden="true"><Languages /></span>
         {languageControl}

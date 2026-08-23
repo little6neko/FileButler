@@ -191,15 +191,14 @@ func createRenameJob(w http.ResponseWriter, r *http.Request, store jobs.Store, r
 		writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
-	planJSON, _ := json.Marshal(plan)
 	id := ops.NewJobID()
-	if err := store.Create(r.Context(), jobs.Job{ID: id, Type: jobType, Status: jobs.StatusPending, ActorID: user.ID, SourceRootID: rootID, PlanJSON: string(planJSON), RootSnapshotJSON: "{}", ProgressTotal: len(plan.Items)}); err != nil {
+	if err := store.Create(r.Context(), jobs.Job{ID: id, Type: jobType, Status: jobs.StatusPending, ActorID: user.ID, SourceRootID: rootID, ProgressTotal: len(plan.Items)}); err != nil {
 		writeError(w, http.StatusInternalServerError, "operation_failed", err.Error())
 		return
 	}
 	items := make([]jobs.ExecutableItem, 0, len(plan.Items))
-	for i, item := range plan.Items {
-		items = append(items, jobs.ExecutableItem{Index: i, Action: "rename", SourceRoot: rootID, SourcePath: item.SourcePath, DestRoot: rootID, DestPath: item.TargetPath, UndoJSON: "{}"})
+	for _, item := range plan.Items {
+		items = append(items, jobs.ExecutableItem{Action: "rename", SourceRoot: rootID, SourcePath: item.SourcePath, DestRoot: rootID, DestPath: item.TargetPath})
 	}
 	go func() { _ = runner.Run(context.Background(), id, items) }()
 	writeData(w, http.StatusCreated, map[string]string{"id": id})

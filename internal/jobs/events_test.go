@@ -3,7 +3,50 @@ package jobs
 import (
 	"context"
 	"testing"
+	"time"
 )
+
+func TestFastBulkProgressDoesNotOverflowSubscriberOrReplay(t *testing.T) {
+	now := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)
+	store := newStore("runtime-a", 8, 4)
+	store.state.now = func() time.Time { return now }
+	subscription, err := store.Subscribe(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Unsubscribe()
+
+	createTestJob(t, store, "job_1", 300)
+	if err := store.MarkRunning(context.Background(), "job_1"); err != nil {
+		t.Fatal(err)
+	}
+	for range 300 {
+		if err := store.RecordProgress(context.Background(), "job_1", nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := store.Finish(context.Background(), "job_1", StatusCompleted, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	for index, want := range []Status{StatusPending, StatusRunning, StatusCompleted} {
+		event, open := <-subscription.Events
+		if !open || event.Job.Status != want {
+			t.Fatalf("event %d=%+v open=%v", index, event, open)
+		}
+		if want == StatusCompleted && event.Job.ProgressDone != 300 {
+			t.Fatalf("terminal=%+v", event)
+		}
+	}
+	select {
+	case event := <-subscription.Events:
+		t.Fatalf("unexpected per-item event: %+v", event)
+	default:
+	}
+	if got := replayEvents(store); len(got) != 3 {
+		t.Fatalf("replay contains %d events, want 3", len(got))
+	}
+}
 
 func TestValidCursorReplaysMissedEvents(t *testing.T) {
 	store := newStore("runtime-a", 4, 4)

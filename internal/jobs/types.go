@@ -13,45 +13,27 @@ const (
 )
 
 type Job struct {
-	ID               string `json:"id"`
-	Type             string `json:"type"`
-	Status           Status `json:"status"`
-	ActorID          int64  `json:"actorId"`
-	SourceRootID     string `json:"sourceRootId"`
-	DestRootID       string `json:"destRootId,omitempty"`
-	PlanJSON         string `json:"-"`
-	RootSnapshotJSON string `json:"-"`
-	ProgressTotal    int    `json:"progressTotal"`
-	ProgressDone     int    `json:"progressDone"`
-	CancelRequested  bool   `json:"cancelRequested"`
-	ErrorMessage     string `json:"errorMessage"`
-	CreatedAtUnix    int64  `json:"createdAtUnix"`
-	UpdatedAtUnix    int64  `json:"updatedAtUnix"`
-	FinishedAtUnix   int64  `json:"finishedAtUnix,omitempty"`
-	EventVersion     int64  `json:"eventVersion"`
+	ID              string `json:"id"`
+	Type            string `json:"type"`
+	Status          Status `json:"status"`
+	ActorID         int64  `json:"actorId"`
+	SourceRootID    string `json:"sourceRootId"`
+	DestRootID      string `json:"destRootId,omitempty"`
+	ProgressTotal   int    `json:"progressTotal"`
+	ProgressDone    int    `json:"progressDone"`
+	FailedCount     int    `json:"failedCount"`
+	CancelRequested bool   `json:"cancelRequested"`
+	ErrorMessage    string `json:"errorMessage"`
+	CreatedAtUnix   int64  `json:"createdAtUnix"`
+	UpdatedAtUnix   int64  `json:"updatedAtUnix"`
+	FinishedAtUnix  int64  `json:"finishedAtUnix,omitempty"`
+	EventVersion    int64  `json:"eventVersion"`
 }
-
-type ItemResult struct {
-	JobID        string `json:"-"`
-	Index        int    `json:"index"`
-	SourcePath   string `json:"sourcePath"`
-	DestPath     string `json:"destPath,omitempty"`
-	Status       string `json:"status"`
-	ErrorCode    string `json:"errorCode"`
-	ErrorMessage string `json:"errorMessage"`
-	UndoJSON     string `json:"-"`
-}
-
-type JobDetail struct {
-	Job
-	Items []ItemResult `json:"items"`
-}
-
 type Snapshot struct {
-	RuntimeID string      `json:"runtimeId"`
-	Cursor    int64       `json:"cursor"`
-	Reset     bool        `json:"reset"`
-	Jobs      []JobDetail `json:"jobs"`
+	RuntimeID string `json:"runtimeId"`
+	Cursor    int64  `json:"cursor"`
+	Reset     bool   `json:"reset"`
+	Jobs      []Job  `json:"jobs"`
 }
 
 func (s Status) IsTerminal() bool {

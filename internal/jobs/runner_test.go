@@ -9,12 +9,12 @@ import (
 func TestRunnerCompletesSuccessfulJob(t *testing.T) {
 	store, subscription := runnerStore(t)
 	createTestJob(t, store, "job_1", 1)
-	runner := Runner{Store: store, Executor: fakeExecutor{failIndex: -1}}
-	if err := runner.Run(context.Background(), "job_1", []ExecutableItem{{Index: 0, Action: "copy", SourcePath: "a.txt"}}); err != nil {
+	runner := Runner{Store: store, Executor: fakeExecutor{}}
+	if err := runner.Run(context.Background(), "job_1", []ExecutableItem{{Action: "copy", SourcePath: "a.txt"}}); err != nil {
 		t.Fatal(err)
 	}
-	terminal := readTerminalEvent(t, subscription.Events, 4)
-	if terminal.Job.Status != StatusCompleted || terminal.Job.ProgressDone != 1 || len(terminal.Items) != 1 || terminal.Items[0].Status != "completed" {
+	terminal := readTerminalEvent(t, subscription.Events, 3)
+	if terminal.Job.Status != StatusCompleted || terminal.Job.ProgressDone != 1 || terminal.Job.FailedCount != 0 {
 		t.Fatalf("terminal=%+v", terminal)
 	}
 }
@@ -22,13 +22,13 @@ func TestRunnerCompletesSuccessfulJob(t *testing.T) {
 func TestRunnerRecordsItemFailureAndContinues(t *testing.T) {
 	store, subscription := runnerStore(t)
 	createTestJob(t, store, "job_1", 2)
-	runner := Runner{Store: store, Executor: fakeExecutor{failIndex: 0}}
-	err := runner.Run(context.Background(), "job_1", []ExecutableItem{{Index: 0, SourcePath: "bad"}, {Index: 1, SourcePath: "ok"}})
+	runner := Runner{Store: store, Executor: fakeExecutor{failPath: "bad"}}
+	err := runner.Run(context.Background(), "job_1", []ExecutableItem{{SourcePath: "bad"}, {SourcePath: "ok"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	terminal := readTerminalEvent(t, subscription.Events, 5)
-	if terminal.Job.Status != StatusCompletedWithErrors || len(terminal.Items) != 2 || terminal.Items[0].Status != "failed" || terminal.Items[1].Status != "completed" {
+	terminal := readTerminalEvent(t, subscription.Events, 3)
+	if terminal.Job.Status != StatusCompletedWithErrors || terminal.Job.ProgressDone != 2 || terminal.Job.FailedCount != 1 || terminal.Job.ErrorMessage != "boom" {
 		t.Fatalf("terminal=%+v", terminal)
 	}
 }
@@ -39,12 +39,12 @@ func TestRunnerStopsAfterCancelRequest(t *testing.T) {
 	if err := store.RequestCancel(context.Background(), "job_1"); err != nil {
 		t.Fatal(err)
 	}
-	runner := Runner{Store: store, Executor: fakeExecutor{failIndex: -1}}
-	if err := runner.Run(context.Background(), "job_1", []ExecutableItem{{Index: 0}, {Index: 1}}); err != nil {
+	runner := Runner{Store: store, Executor: fakeExecutor{}}
+	if err := runner.Run(context.Background(), "job_1", []ExecutableItem{{SourcePath: "a"}, {SourcePath: "b"}}); err != nil {
 		t.Fatal(err)
 	}
 	terminal := readTerminalEvent(t, subscription.Events, 3)
-	if terminal.Job.Status != StatusCanceled || len(terminal.Items) != 0 {
+	if terminal.Job.Status != StatusCanceled || terminal.Job.ProgressDone != 0 {
 		t.Fatalf("terminal=%+v", terminal)
 	}
 }
@@ -57,7 +57,7 @@ func TestRunnerDoesNotExecuteRemovedTerminalJobAgain(t *testing.T) {
 	}
 	executor := &countingExecutor{}
 	runner := Runner{Store: store, Executor: executor}
-	if err := runner.Run(context.Background(), "job_1", []ExecutableItem{{Index: 0}}); err != nil {
+	if err := runner.Run(context.Background(), "job_1", []ExecutableItem{{SourcePath: "a"}}); err != nil {
 		t.Fatal(err)
 	}
 	if executor.calls != 0 {
@@ -66,11 +66,11 @@ func TestRunnerDoesNotExecuteRemovedTerminalJobAgain(t *testing.T) {
 }
 
 type fakeExecutor struct {
-	failIndex int
+	failPath string
 }
 
 func (executor fakeExecutor) ExecuteItem(_ context.Context, item ExecutableItem) error {
-	if executor.failIndex == item.Index {
+	if executor.failPath != "" && executor.failPath == item.SourcePath {
 		return errors.New("boom")
 	}
 	return nil

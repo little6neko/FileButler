@@ -81,6 +81,7 @@ export type Job = {
   destRootId?: string;
   progressTotal: number;
   progressDone: number;
+  failedCount: number;
   cancelRequested: boolean;
   errorMessage: string;
   createdAtUnix: number;
@@ -89,28 +90,15 @@ export type Job = {
   eventVersion: number;
 };
 
-export type JobItem = {
-  index: number;
-  sourcePath: string;
-  destPath?: string;
-  status: string;
-  errorCode: string;
-  errorMessage: string;
-};
-
-export type JobDetail = Job & { items: JobItem[] };
-
 export type JobEvent = {
   runtimeId: string;
   cursor: number;
   job: Job;
-  item?: JobItem;
-  items?: JobItem[] | null;
 };
 
 export type JobSnapshot = {
   runtimeId: string;
   cursor: number;
   reset: boolean;
-  jobs: JobDetail[];
+  jobs: Job[];
 };

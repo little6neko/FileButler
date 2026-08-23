@@ -6,13 +6,11 @@ import (
 )
 
 type ExecutableItem struct {
-	Index      int
 	Action     string
 	SourceRoot string
 	SourcePath string
 	DestRoot   string
 	DestPath   string
-	UndoJSON   string
 }
 
 type ItemExecutor interface {
@@ -28,7 +26,7 @@ func (r Runner) Run(ctx context.Context, jobID string, items []ExecutableItem) e
 	if err := r.Store.MarkRunning(ctx, jobID); err != nil {
 		return err
 	}
-	job, _, err := r.Store.Get(ctx, jobID)
+	job, err := r.Store.Get(ctx, jobID)
 	if errors.Is(err, ErrJobNotFound) {
 		return nil
 	}
@@ -56,24 +54,10 @@ func (r Runner) Run(ctx context.Context, jobID string, items []ExecutableItem) e
 			return r.Store.Finish(ctx, jobID, StatusCanceled, "")
 		}
 		execErr := r.Executor.ExecuteItem(ctx, item)
-		result := ItemResult{
-			JobID:      jobID,
-			Index:      item.Index,
-			SourcePath: item.SourcePath,
-			DestPath:   item.DestPath,
-			Status:     "completed",
-			UndoJSON:   item.UndoJSON,
-		}
-		if result.UndoJSON == "" {
-			result.UndoJSON = "{}"
-		}
 		if execErr != nil {
 			failures++
-			result.Status = "failed"
-			result.ErrorCode = "operation_failed"
-			result.ErrorMessage = execErr.Error()
 		}
-		if err := r.Store.RecordItemResult(ctx, result); err != nil {
+		if err := r.Store.RecordProgress(ctx, jobID, execErr); err != nil {
 			_ = r.Store.Finish(context.Background(), jobID, StatusFailed, err.Error())
 			return err
 		}

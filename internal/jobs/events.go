@@ -7,11 +7,9 @@ import (
 )
 
 type Event struct {
-	RuntimeID string       `json:"runtimeId"`
-	Cursor    int64        `json:"cursor"`
-	Job       Job          `json:"job"`
-	Item      *ItemResult  `json:"item,omitempty"`
-	Items     []ItemResult `json:"items"`
+	RuntimeID string `json:"runtimeId"`
+	Cursor    int64  `json:"cursor"`
+	Job       Job    `json:"job"`
 }
 
 type EventCursor struct {
@@ -51,7 +49,7 @@ func (s Store) Subscribe(ctx context.Context, cursor *EventCursor) (Subscription
 	default:
 		for _, event := range s.state.replay {
 			if event.Cursor > cursor.Cursor {
-				replay = append(replay, cloneEvent(event))
+				replay = append(replay, event)
 			}
 		}
 	}
@@ -85,28 +83,16 @@ func (state *storeState) canReplayLocked(cursor EventCursor) bool {
 }
 
 func (state *storeState) publishLocked(event Event) {
-	state.replay = append(state.replay, cloneEvent(event))
+	state.replay = append(state.replay, event)
 	if overflow := len(state.replay) - state.replayCapacity; overflow > 0 {
 		state.replay = append([]Event(nil), state.replay[overflow:]...)
 	}
 	for id, subscriber := range state.subscribers {
 		select {
-		case subscriber <- cloneEvent(event):
+		case subscriber <- event:
 		default:
 			delete(state.subscribers, id)
 			close(subscriber)
 		}
 	}
-}
-
-func cloneEvent(event Event) Event {
-	cloned := event
-	if event.Item != nil {
-		item := *event.Item
-		cloned.Item = &item
-	}
-	if event.Items != nil {
-		cloned.Items = append(make([]ItemResult, 0, len(event.Items)), event.Items...)
-	}
-	return cloned
 }

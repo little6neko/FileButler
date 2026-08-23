@@ -296,7 +296,6 @@ it("clears hidden selection after a rename job refreshes the pane", async () => 
       runtimeId: "runtime-a",
       cursor: 1,
       job: makeJob({ id: "job-rename", type: "rename", status: "completed", eventVersion: 1 }),
-      items: [],
     });
   });
 
@@ -359,7 +358,6 @@ it("refreshes both panes after an operation job reaches a terminal status", asyn
       runtimeId: "runtime-a",
       cursor: 1,
       job: makeJob({ id: "job-1", status: "running", eventVersion: 1 }),
-      items: null,
     });
   });
   expect(api.browse).not.toHaveBeenCalled();
@@ -369,7 +367,6 @@ it("refreshes both panes after an operation job reaches a terminal status", asyn
       runtimeId: "runtime-a",
       cursor: 2,
       job: makeJob({ id: "job-1", status: "completed", progressDone: 1, eventVersion: 2 }),
-      items: [],
     });
   });
   await waitFor(() => expect(api.browse).toHaveBeenCalledTimes(2));
@@ -536,6 +533,7 @@ function makeJob(overrides: Partial<Job> = {}): Job {
     sourceRootId: "root",
     progressTotal: 1,
     progressDone: 0,
+    failedCount: 0,
     cancelRequested: false,
     errorMessage: "",
     createdAtUnix: 1,

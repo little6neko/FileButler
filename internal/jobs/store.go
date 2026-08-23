@@ -14,12 +14,12 @@ import (
 const (
 	defaultReplayCapacity  = 256
 	defaultSubscriberQueue = 64
+	progressEventInterval  = 100 * time.Millisecond
 )
 
 var (
-	ErrJobNotFound   = errors.New("job not found")
-	ErrDuplicateJob  = errors.New("job already exists")
-	ErrDuplicateItem = errors.New("job item already exists")
+	ErrJobNotFound  = errors.New("job not found")
+	ErrDuplicateJob = errors.New("job already exists")
 )
 
 type Store struct {
@@ -40,8 +40,9 @@ type storeState struct {
 }
 
 type jobRecord struct {
-	job   Job
-	items map[int]ItemResult
+	job                 Job
+	firstItemError      string
+	lastProgressEventAt time.Time
 }
 
 func NewStore() Store {
@@ -100,26 +101,26 @@ func (s Store) Create(ctx context.Context, job Job) error {
 	}
 	job.UpdatedAtUnix = now
 	job.FinishedAtUnix = 0
-	record := &jobRecord{job: job, items: make(map[int]ItemResult)}
+	record := &jobRecord{job: job}
 	s.state.active[job.ID] = record
-	s.state.emitLocked(record, nil, false)
+	s.state.emitLocked(record)
 	return nil
 }
 
-func (s Store) Get(ctx context.Context, id string) (Job, []ItemResult, error) {
+func (s Store) Get(ctx context.Context, id string) (Job, error) {
 	if err := ctx.Err(); err != nil {
-		return Job{}, nil, err
+		return Job{}, err
 	}
 	if s.state == nil {
-		return Job{}, nil, ErrJobNotFound
+		return Job{}, ErrJobNotFound
 	}
 	s.state.mu.Lock()
 	defer s.state.mu.Unlock()
 	record, exists := s.state.active[id]
 	if !exists {
-		return Job{}, nil, ErrJobNotFound
+		return Job{}, ErrJobNotFound
 	}
-	return record.job, sortedItems(record.items), nil
+	return record.job, nil
 }
 
 func (s Store) Snapshot(ctx context.Context) (Snapshot, error) {
@@ -147,35 +148,40 @@ func (s Store) MarkRunning(ctx context.Context, id string) error {
 	if !exists || record.job.Status != StatusPending {
 		return nil
 	}
+	now := s.state.currentTime()
 	record.job.Status = StatusRunning
-	record.job.UpdatedAtUnix = s.state.currentTime().Unix()
-	s.state.emitLocked(record, nil, false)
+	record.job.UpdatedAtUnix = now.Unix()
+	record.lastProgressEventAt = now
+	s.state.emitLocked(record)
 	return nil
 }
 
-func (s Store) RecordItemResult(ctx context.Context, result ItemResult) error {
+func (s Store) RecordProgress(ctx context.Context, id string, itemErr error) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	if s.state == nil {
 		return ErrJobNotFound
 	}
-	if result.UndoJSON == "" {
-		result.UndoJSON = "{}"
-	}
 	s.state.mu.Lock()
 	defer s.state.mu.Unlock()
-	record, exists := s.state.active[result.JobID]
+	record, exists := s.state.active[id]
 	if !exists {
 		return ErrJobNotFound
 	}
-	if _, exists := record.items[result.Index]; exists {
-		return ErrDuplicateItem
-	}
-	record.items[result.Index] = result
 	record.job.ProgressDone++
-	record.job.UpdatedAtUnix = s.state.currentTime().Unix()
-	s.state.emitLocked(record, &result, false)
+	if itemErr != nil {
+		record.job.FailedCount++
+		if record.firstItemError == "" {
+			record.firstItemError = itemErr.Error()
+		}
+	}
+	now := s.state.currentTime()
+	record.job.UpdatedAtUnix = now.Unix()
+	if record.lastProgressEventAt.IsZero() || now.Sub(record.lastProgressEventAt) >= progressEventInterval {
+		record.lastProgressEventAt = now
+		s.state.emitLocked(record)
+	}
 	return nil
 }
 
@@ -195,7 +201,7 @@ func (s Store) RequestCancel(ctx context.Context, id string) error {
 	record.job.CancelRequested = true
 	record.job.Status = StatusCancelRequested
 	record.job.UpdatedAtUnix = s.state.currentTime().Unix()
-	s.state.emitLocked(record, nil, false)
+	s.state.emitLocked(record)
 	return nil
 }
 
@@ -233,15 +239,18 @@ func (s Store) Finish(ctx context.Context, id string, status Status, message str
 	}
 	now := s.state.currentTime().Unix()
 	record.job.Status = status
+	if message == "" && status == StatusCompletedWithErrors {
+		message = record.firstItemError
+	}
 	record.job.ErrorMessage = message
 	record.job.UpdatedAtUnix = now
 	record.job.FinishedAtUnix = now
 	delete(s.state.active, id)
-	s.state.emitLocked(record, nil, true)
+	s.state.emitLocked(record)
 	return nil
 }
 
-func (state *storeState) emitLocked(record *jobRecord, item *ItemResult, terminal bool) {
+func (state *storeState) emitLocked(record *jobRecord) {
 	state.cursor++
 	record.job.EventVersion = state.cursor
 	event := Event{
@@ -249,20 +258,13 @@ func (state *storeState) emitLocked(record *jobRecord, item *ItemResult, termina
 		Cursor:    state.cursor,
 		Job:       record.job,
 	}
-	if item != nil {
-		cloned := *item
-		event.Item = &cloned
-	}
-	if terminal {
-		event.Items = sortedItems(record.items)
-	}
 	state.publishLocked(event)
 }
 
 func (state *storeState) snapshotLocked(reset bool) Snapshot {
-	jobs := make([]JobDetail, 0, len(state.active))
+	jobs := make([]Job, 0, len(state.active))
 	for _, record := range state.active {
-		jobs = append(jobs, JobDetail{Job: record.job, Items: sortedItems(record.items)})
+		jobs = append(jobs, record.job)
 	}
 	sort.Slice(jobs, func(left, right int) bool {
 		if jobs[left].CreatedAtUnix != jobs[right].CreatedAtUnix {
@@ -281,15 +283,6 @@ func (state *storeState) currentTime() time.Time {
 		return time.Now().UTC()
 	}
 	return state.now().UTC()
-}
-
-func sortedItems(items map[int]ItemResult) []ItemResult {
-	out := make([]ItemResult, 0, len(items))
-	for _, item := range items {
-		out = append(out, item)
-	}
-	sort.Slice(out, func(left, right int) bool { return out[left].Index < out[right].Index })
-	return out
 }
 
 func newRuntimeID() string {

@@ -216,17 +216,15 @@ test("cancels from the overlaid task X and keeps terminal history only until ref
     cursor: 2,
     reset: false,
     jobs: [
-      { ...makeE2EJob({ id: "job-copy", type: "copy", createdAtUnix: 2, eventVersion: 1 }), items: [] },
-      { ...makeE2EJob({ id: "job-move", type: "move", createdAtUnix: 1, eventVersion: 2 }), items: [] },
+      makeE2EJob({ id: "job-copy", type: "copy", createdAtUnix: 2, eventVersion: 1 }),
+      makeE2EJob({ id: "job-move", type: "move", createdAtUnix: 1, eventVersion: 2 }),
     ],
   });
 
   await page.getByRole("button", { name: "Jobs" }).click();
-  const copyRow = page.getByRole("button", { name: /copy.*Running/i });
-  const moveRow = page.getByRole("button", { name: /move.*Running/i });
+  const copyRow = page.getByRole("article", { name: /copy.*Running/i });
+  const moveRow = page.getByRole("article", { name: /move.*Running/i });
   const cancelMove = page.getByRole("button", { name: "Cancel move job" });
-  await expect(copyRow).toHaveAttribute("aria-pressed", "true");
-  await expect(moveRow).toHaveAttribute("aria-pressed", "false");
   expect(await cancelMove.evaluate((button) => button.parentElement?.classList.contains("job-row-shell"))).toBe(true);
   expect(await cancelMove.evaluate((button) => button.parentElement?.querySelector(".job-row-main") !== null)).toBe(true);
   const activePadding = await moveRow.evaluate((row) => getComputedStyle(row).paddingRight);
@@ -239,16 +237,15 @@ test("cancels from the overlaid task X and keeps terminal history only until ref
 
   await expect.poll(() => canceledJobs).toContain("job-move");
   await expect(cancelMove).toBeDisabled();
-  await expect(page.getByRole("button", { name: /move.*Canceling/i })).toHaveAttribute("aria-pressed", "false");
-  await expect(copyRow).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("article", { name: /move.*Canceling/i })).toBeVisible();
+  await expect(copyRow).toBeVisible();
 
   await emitMockJobEvent(page, "job.changed", {
     runtimeId: "e2e-runtime",
     cursor: 3,
     job: makeE2EJob({ id: "job-move", type: "move", status: "canceled", createdAtUnix: 1, eventVersion: 3 }),
-    items: [],
   });
-  const canceledRow = page.getByRole("button", { name: /move.*Canceled/i });
+  const canceledRow = page.getByRole("article", { name: /move.*Canceled/i });
   await expect(canceledRow).toBeVisible();
   await expect(page.getByRole("button", { name: "Cancel move job" })).toHaveCount(0);
   const terminalPadding = await canceledRow.evaluate((row) => ({
@@ -762,6 +759,7 @@ function makeE2EJob(overrides: Record<string, unknown>) {
     sourceRootId: "data",
     progressTotal: 4,
     progressDone: 1,
+    failedCount: 0,
     cancelRequested: false,
     errorMessage: "",
     createdAtUnix: 1,

@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { api } from "../api/client";
-import type { Job, JobDetail } from "../api/types";
+import type { Job } from "../api/types";
 import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
 import { activeJobStatuses, JobEventsStore } from "../jobEvents";
@@ -29,14 +29,10 @@ export function JobsSheet({
   const [fallbackEventsStore] = useState(() => new JobEventsStore());
   const jobEvents = eventsStore ?? contextEventsStore ?? fallbackEventsStore;
   const eventState = useSyncExternalStore(jobEvents.subscribe, jobEvents.getSnapshot, jobEvents.getSnapshot);
-  const [requestedSelectedID, setRequestedSelectedID] = useState<string | null>(null);
   const [filter, setFilter] = useState<Filter>("all");
   const [cancelingJobIDs, setCancelingJobIDs] = useState(() => new Set<string>());
   const [cancelErrors, setCancelErrors] = useState<Record<string, string>>({});
   const jobs = eventState.jobs;
-  const selectedID = requestedSelectedID && jobs.some((job) => job.id === requestedSelectedID)
-    ? requestedSelectedID
-    : jobs[0]?.id ?? null;
 
   useEffect(() => {
     onActiveCountChange?.(eventState.activeCount);
@@ -51,8 +47,6 @@ export function JobsSheet({
       }),
     [filter, jobs],
   );
-  const displayedDetail = selectedID ? jobEvents.getDetail(selectedID) : null;
-
   function requestCancel(job: Job) {
     if (cancelingJobIDs.has(job.id) || job.status === "cancel_requested") return;
     setCancelingJobIDs((current) => new Set(current).add(job.id));
@@ -105,14 +99,13 @@ export function JobsSheet({
                 const cancelDisabled = canceling || job.status === "cancel_requested";
                 const displayedStatus = canceling ? "cancel_requested" : job.status;
                 const cancelLabel = labels.cancelJob(labels.operationType(job.type));
+                const summaryError = failureSummary(job, labels);
                 return (
                   <div key={job.id} className="grid gap-1">
                     <div className="job-row-shell">
-                      <button
-                        type="button"
+                      <article
                         className={`job-row-main${active ? " job-row-main--cancelable" : ""}`}
-                        aria-pressed={selectedID === job.id}
-                        onClick={() => setRequestedSelectedID(job.id)}
+                        aria-label={`${labels.operationType(job.type)} · ${labels.jobStatus(displayedStatus)}`}
                       >
                         <span className="flex items-center justify-between text-xs font-semibold">
                           <span>{labels.operationType(job.type)}</span>
@@ -123,7 +116,8 @@ export function JobsSheet({
                           <span>{job.progressDone}/{job.progressTotal}</span>
                           <span>{percent}%</span>
                         </span>
-                      </button>
+                        {summaryError ? <p className="mt-1 text-[11px] text-destructive">{summaryError}</p> : null}
+                      </article>
                       {active ? (
                         <button
                           type="button"
@@ -151,35 +145,9 @@ export function JobsSheet({
               <p className="py-10 text-center text-sm text-slate-500">{labels.emptyJobs}</p>
             )}
           </div>
-
-          {displayedDetail?.id === selectedID ? <JobDetails detail={displayedDetail} labels={labels} /> : null}
         </div>
       </SheetContent>
     </Sheet>
-  );
-}
-
-function JobDetails({ detail, labels }: { detail: JobDetail; labels: UIStrings }) {
-  return (
-    <section className="mt-5 border-t pt-4">
-      <h3 className="text-sm font-semibold">{labels.operationType(detail.type)}</h3>
-      <p className="mt-1 text-xs text-slate-500">
-        {labels.jobStatus(detail.status)} · {detail.progressDone}/{detail.progressTotal}
-      </p>
-      {detail.items.length ? (
-        <ul className="mt-3 grid gap-1 text-xs text-slate-600">
-          {detail.items.map((item) => (
-            <li key={item.index} className="rounded border bg-slate-50 px-2 py-1.5">
-              <span className="font-medium text-slate-800">{item.sourcePath}</span>
-              {item.destPath ? <span className="ml-2 text-slate-400">→ {item.destPath}</span> : null}
-              {item.status === "failed" ? (
-                <span className="ml-2 text-destructive">{item.errorMessage || item.errorCode}</span>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </section>
   );
 }
 
@@ -191,6 +159,13 @@ function filterLabel(filter: Filter, labels: UIStrings) {
 
 function progressPercent(job: Job) {
   return job.progressTotal ? Math.round((job.progressDone / job.progressTotal) * 100) : 0;
+}
+
+function failureSummary(job: Job, labels: UIStrings) {
+  const parts: string[] = [];
+  if (job.failedCount > 0) parts.push(labels.failedItems(job.failedCount));
+  if (job.errorMessage.trim()) parts.push(job.errorMessage.trim());
+  return parts.join(" · ");
 }
 
 function removeRecordKey(record: Record<string, string>, key: string) {

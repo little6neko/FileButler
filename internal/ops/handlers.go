@@ -47,25 +47,22 @@ func CreateJobHandler(planner Planner, store jobs.Store, runner jobs.Runner) htt
 			writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 			return
 		}
-		planJSON, _ := json.Marshal(plan)
 		id := NewJobID()
 		if err := store.Create(r.Context(), jobs.Job{
-			ID:               id,
-			Type:             string(req.Type),
-			Status:           jobs.StatusPending,
-			ActorID:          user.ID,
-			SourceRootID:     req.SourceRoot,
-			DestRootID:       req.DestRoot,
-			PlanJSON:         string(planJSON),
-			RootSnapshotJSON: "{}",
-			ProgressTotal:    len(plan.Items),
+			ID:            id,
+			Type:          string(req.Type),
+			Status:        jobs.StatusPending,
+			ActorID:       user.ID,
+			SourceRootID:  req.SourceRoot,
+			DestRootID:    req.DestRoot,
+			ProgressTotal: len(plan.Items),
 		}); err != nil {
 			writeError(w, http.StatusInternalServerError, "operation_failed", err.Error())
 			return
 		}
 		items := make([]jobs.ExecutableItem, 0, len(plan.Items))
-		for i, item := range plan.Items {
-			items = append(items, jobs.ExecutableItem{Index: i, Action: string(item.Operation), SourceRoot: item.SourceRoot, SourcePath: item.SourcePath, DestRoot: item.DestRoot, DestPath: item.DestPath, UndoJSON: "{}"})
+		for _, item := range plan.Items {
+			items = append(items, jobs.ExecutableItem{Action: string(item.Operation), SourceRoot: item.SourceRoot, SourcePath: item.SourcePath, DestRoot: item.DestRoot, DestPath: item.DestPath})
 		}
 		go func() { _ = runner.Run(context.Background(), id, items) }()
 		writeData(w, http.StatusCreated, map[string]string{"id": id})

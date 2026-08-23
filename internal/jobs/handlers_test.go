@@ -44,8 +44,11 @@ func TestEventsHandlerStreamsActiveSnapshotAndLiveChanges(t *testing.T) {
 	if err := json.Unmarshal([]byte(snapshotBlock["data"]), &snapshot); err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.RuntimeID != "runtime-a" || snapshot.Cursor != 1 || snapshot.Reset || len(snapshot.Jobs) != 1 || snapshot.Jobs[0].Items == nil {
+	if snapshot.RuntimeID != "runtime-a" || snapshot.Cursor != 1 || snapshot.Reset || len(snapshot.Jobs) != 1 {
 		t.Fatalf("snapshot=%+v", snapshot)
+	}
+	if strings.Contains(snapshotBlock["data"], `"item"`) || strings.Contains(snapshotBlock["data"], `"items"`) {
+		t.Fatalf("snapshot retained item payloads: %s", snapshotBlock["data"])
 	}
 
 	if err := store.MarkRunning(context.Background(), "job_1"); err != nil {
@@ -92,8 +95,11 @@ func TestEventsHandlerReplaysAValidCursorWithoutTerminalSnapshot(t *testing.T) {
 	if err := json.Unmarshal([]byte(replay["data"]), &event); err != nil {
 		t.Fatal(err)
 	}
-	if event.Job.Status != StatusCompleted || event.Items == nil {
+	if event.Job.Status != StatusCompleted {
 		t.Fatalf("event=%+v", event)
+	}
+	if strings.Contains(replay["data"], `"item"`) || strings.Contains(replay["data"], `"items"`) {
+		t.Fatalf("event retained item payloads: %s", replay["data"])
 	}
 }
 

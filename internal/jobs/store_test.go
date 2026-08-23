@@ -2,10 +2,13 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestCreateAndSnapshotActiveJob(t *testing.T) {
@@ -21,19 +24,30 @@ func TestCreateAndSnapshotActiveJob(t *testing.T) {
 	if snapshot.RuntimeID != "runtime-a" || snapshot.Cursor != 1 || snapshot.Reset || len(snapshot.Jobs) != 1 {
 		t.Fatalf("snapshot=%+v", snapshot)
 	}
-	if snapshot.Jobs[0].ID != job.ID || snapshot.Jobs[0].Status != StatusPending || snapshot.Jobs[0].Items == nil {
-		t.Fatalf("detail=%+v", snapshot.Jobs[0])
+	if snapshot.Jobs[0].ID != job.ID || snapshot.Jobs[0].Status != StatusPending || snapshot.Jobs[0].FailedCount != 0 {
+		t.Fatalf("job=%+v", snapshot.Jobs[0])
+	}
+	encoded, err := json.Marshal(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), `"item"`) || strings.Contains(string(encoded), `"items"`) {
+		t.Fatalf("snapshot retained item payloads: %s", encoded)
 	}
 }
 
-func TestSnapshotContainsAllAccumulatedItemResults(t *testing.T) {
-	store := NewStore()
-	createTestJob(t, store, "job_1", 2)
+func TestProgressEventsAreCoalescedWhileSnapshotsStayCurrent(t *testing.T) {
+	now := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)
+	store := newStore("runtime-a", 16, 16)
+	store.state.now = func() time.Time { return now }
+	createTestJob(t, store, "job_1", 4)
 	if err := store.MarkRunning(context.Background(), "job_1"); err != nil {
 		t.Fatal(err)
 	}
-	for index, path := range []string{"a.txt", "b.txt"} {
-		if err := store.RecordItemResult(context.Background(), ItemResult{JobID: "job_1", Index: index, SourcePath: path, Status: "completed"}); err != nil {
+
+	now = now.Add(99 * time.Millisecond)
+	for range 3 {
+		if err := store.RecordProgress(context.Background(), "job_1", nil); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -41,40 +55,48 @@ func TestSnapshotContainsAllAccumulatedItemResults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(snapshot.Jobs) != 1 || snapshot.Jobs[0].ProgressDone != 2 || len(snapshot.Jobs[0].Items) != 2 {
-		t.Fatalf("snapshot=%+v", snapshot)
+	if snapshot.Cursor != 2 || snapshot.Jobs[0].ProgressDone != 3 || snapshot.Jobs[0].EventVersion != 2 {
+		t.Fatalf("coalesced snapshot=%+v", snapshot)
 	}
-	if snapshot.Jobs[0].Items[0].SourcePath != "a.txt" || snapshot.Jobs[0].Items[1].SourcePath != "b.txt" {
-		t.Fatalf("items=%+v", snapshot.Jobs[0].Items)
-	}
-}
 
-func TestTerminalEventHasCompleteDetailAndRemovesActiveJob(t *testing.T) {
-	store := newStore("runtime-a", 16, 16)
-	subscription, err := store.Subscribe(context.Background(), nil)
+	now = now.Add(time.Millisecond)
+	if err := store.RecordProgress(context.Background(), "job_1", nil); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = store.Snapshot(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer subscription.Unsubscribe()
+	if snapshot.Cursor != 3 || snapshot.Jobs[0].ProgressDone != 4 || snapshot.Jobs[0].EventVersion != 3 {
+		t.Fatalf("published snapshot=%+v", snapshot)
+	}
+	if got := replayEvents(store); len(got) != 3 || got[2].Job.ProgressDone != 4 {
+		t.Fatalf("replay=%+v", got)
+	}
+}
+
+func TestTerminalEventFlushesLatestSummaryAndRemovesActiveJob(t *testing.T) {
+	now := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)
+	store := newStore("runtime-a", 16, 16)
+	store.state.now = func() time.Time { return now }
 	createTestJob(t, store, "job_1", 1)
 	if err := store.MarkRunning(context.Background(), "job_1"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.RecordItemResult(context.Background(), ItemResult{JobID: "job_1", Index: 0, SourcePath: "a.txt", DestPath: "b.txt", Status: "completed"}); err != nil {
+	now = now.Add(20 * time.Millisecond)
+	if err := store.RecordProgress(context.Background(), "job_1", nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Finish(context.Background(), "job_1", StatusCompleted, ""); err != nil {
 		t.Fatal(err)
 	}
 
-	var terminal Event
-	for index := 0; index < 4; index++ {
-		event := <-subscription.Events
-		if event.Job.Status.IsTerminal() {
-			terminal = event
-		}
+	events := replayEvents(store)
+	if len(events) != 3 {
+		t.Fatalf("events=%+v", events)
 	}
-	if terminal.Job.Status != StatusCompleted || len(terminal.Items) != 1 || terminal.Items[0].SourcePath != "a.txt" {
+	terminal := events[2]
+	if terminal.Job.Status != StatusCompleted || terminal.Job.ProgressDone != 1 || terminal.Cursor != 3 {
 		t.Fatalf("terminal=%+v", terminal)
 	}
 	snapshot, err := store.Snapshot(context.Background())
@@ -84,7 +106,7 @@ func TestTerminalEventHasCompleteDetailAndRemovesActiveJob(t *testing.T) {
 	if len(snapshot.Jobs) != 0 {
 		t.Fatalf("terminal job remained active: %+v", snapshot.Jobs)
 	}
-	if _, _, err := store.Get(context.Background(), "job_1"); !errors.Is(err, ErrJobNotFound) {
+	if _, err := store.Get(context.Background(), "job_1"); !errors.Is(err, ErrJobNotFound) {
 		t.Fatalf("get terminal error=%v", err)
 	}
 	if err := store.RequestCancel(context.Background(), "job_1"); err != nil {
@@ -92,7 +114,36 @@ func TestTerminalEventHasCompleteDetailAndRemovesActiveJob(t *testing.T) {
 	}
 }
 
-func TestRequestCancelIsIdempotent(t *testing.T) {
+func TestProgressAggregatesFailuresAndKeepsOnlyFirstErrorSummary(t *testing.T) {
+	now := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)
+	store := newStore("runtime-a", 16, 16)
+	store.state.now = func() time.Time { return now }
+	createTestJob(t, store, "job_1", 3)
+	if err := store.MarkRunning(context.Background(), "job_1"); err != nil {
+		t.Fatal(err)
+	}
+	for _, itemErr := range []error{errors.New("permission denied"), nil, errors.New("disk full")} {
+		if err := store.RecordProgress(context.Background(), "job_1", itemErr); err != nil {
+			t.Fatal(err)
+		}
+	}
+	job, err := store.Get(context.Background(), "job_1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if job.ProgressDone != 3 || job.FailedCount != 2 || job.ErrorMessage != "" {
+		t.Fatalf("active job=%+v", job)
+	}
+	if err := store.Finish(context.Background(), "job_1", StatusCompletedWithErrors, ""); err != nil {
+		t.Fatal(err)
+	}
+	terminal := replayEvents(store)[2]
+	if terminal.Job.FailedCount != 2 || terminal.Job.ErrorMessage != "permission denied" {
+		t.Fatalf("terminal=%+v", terminal)
+	}
+}
+
+func TestRequestCancelIsIdempotentAndImmediate(t *testing.T) {
 	store := NewStore()
 	createTestJob(t, store, "job_1", 1)
 	if err := store.RequestCancel(context.Background(), "job_1"); err != nil {
@@ -101,7 +152,7 @@ func TestRequestCancelIsIdempotent(t *testing.T) {
 	if err := store.RequestCancel(context.Background(), "job_1"); err != nil {
 		t.Fatal(err)
 	}
-	job, _, err := store.Get(context.Background(), "job_1")
+	job, err := store.Get(context.Background(), "job_1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -113,44 +164,26 @@ func TestRequestCancelIsIdempotent(t *testing.T) {
 	}
 }
 
-func TestDuplicateItemDoesNotAdvanceProgressOrCursor(t *testing.T) {
-	store := NewStore()
-	createTestJob(t, store, "job_1", 2)
-	item := ItemResult{JobID: "job_1", Index: 0, SourcePath: "a.txt", Status: "completed"}
-	if err := store.RecordItemResult(context.Background(), item); err != nil {
-		t.Fatal(err)
-	}
-	if err := store.RecordItemResult(context.Background(), item); !errors.Is(err, ErrDuplicateItem) {
-		t.Fatalf("duplicate error=%v", err)
-	}
-	job, items, err := store.Get(context.Background(), "job_1")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if job.ProgressDone != 1 || job.EventVersion != 2 || len(items) != 1 {
-		t.Fatalf("job=%+v items=%+v", job, items)
-	}
-}
-
-func TestConcurrentItemUpdatesRemainConsistent(t *testing.T) {
+func TestConcurrentProgressUpdatesRemainConsistent(t *testing.T) {
 	const itemCount = 100
 	store := newStore("runtime-a", 256, 256)
+	fixedNow := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)
+	store.state.now = func() time.Time { return fixedNow }
 	createTestJob(t, store, "job_1", itemCount)
 	if err := store.MarkRunning(context.Background(), "job_1"); err != nil {
 		t.Fatal(err)
 	}
 	var wait sync.WaitGroup
 	errorsByItem := make(chan error, itemCount)
-	for index := 0; index < itemCount; index++ {
+	for index := range itemCount {
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
-			errorsByItem <- store.RecordItemResult(context.Background(), ItemResult{
-				JobID:      "job_1",
-				Index:      index,
-				SourcePath: fmt.Sprintf("%03d.txt", index),
-				Status:     "completed",
-			})
+			var itemErr error
+			if index%10 == 0 {
+				itemErr = fmt.Errorf("failure %d", index)
+			}
+			errorsByItem <- store.RecordProgress(context.Background(), "job_1", itemErr)
 		}()
 	}
 	wait.Wait()
@@ -160,12 +193,12 @@ func TestConcurrentItemUpdatesRemainConsistent(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	job, items, err := store.Get(context.Background(), "job_1")
+	job, err := store.Get(context.Background(), "job_1")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if job.ProgressDone != itemCount || len(items) != itemCount || job.EventVersion != itemCount+2 {
-		t.Fatalf("progress=%d items=%d version=%d", job.ProgressDone, len(items), job.EventVersion)
+	if job.ProgressDone != itemCount || job.FailedCount != 10 || job.EventVersion != 2 {
+		t.Fatalf("job=%+v", job)
 	}
 }
 
@@ -176,4 +209,10 @@ func createTestJob(t *testing.T, store Store, id string, total int) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func replayEvents(store Store) []Event {
+	store.state.mu.Lock()
+	defer store.state.mu.Unlock()
+	return append([]Event(nil), store.state.replay...)
 }

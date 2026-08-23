@@ -1,4 +1,4 @@
-import type { Job, JobDetail, JobEvent, JobItem, JobSnapshot } from "./api/types";
+import type { Job, JobEvent, JobSnapshot } from "./api/types";
 
 export type JobConnectionState = "connecting" | "connected" | "reconnecting";
 
@@ -34,7 +34,6 @@ export const terminalJobStatuses = new Set([
 export class JobEventsStore {
   private readonly eventSourceFactory: EventSourceFactory;
   private readonly jobsByID = new Map<string, Job>();
-  private readonly itemsByJob = new Map<string, Map<number, JobItem>>();
   private readonly listeners = new Set<() => void>();
   private readonly terminalListeners = new Set<(jobs: Job[]) => void>();
   private readonly createdJobIDs = new Set<string>();
@@ -101,15 +100,6 @@ export class JobEventsStore {
 
   getSnapshot = () => this.state;
 
-  getItems(jobID: string): JobItem[] {
-    return [...(this.itemsByJob.get(jobID)?.values() ?? [])].sort((left, right) => left.index - right.index);
-  }
-
-  getDetail(jobID: string): JobDetail | null {
-    const job = this.jobsByID.get(jobID);
-    return job ? { ...job, items: this.getItems(jobID) } : null;
-  }
-
   registerCreatedJob(jobID: string) {
     this.createdJobIDs.add(jobID);
     const job = this.jobsByID.get(jobID);
@@ -125,7 +115,7 @@ export class JobEventsStore {
     const firstSnapshot = !this.hasBaseline;
     const runtimeChanged = this.state.runtimeId !== null && this.state.runtimeId !== payload.runtimeId;
     const authoritativeReset = payload.reset || runtimeChanged;
-    const activeIDs = new Set(payload.jobs.map((detail) => detail.id));
+    const activeIDs = new Set(payload.jobs.map((job) => job.id));
     const terminalChanges: Job[] = [];
 
     if (authoritativeReset) {
@@ -144,16 +134,14 @@ export class JobEventsStore {
       }
     }
 
-    for (const detail of payload.jobs) {
-      const previous = this.jobsByID.get(detail.id);
+    for (const job of payload.jobs) {
+      const previous = this.jobsByID.get(job.id);
       if (previous && terminalJobStatuses.has(previous.status)) continue;
-      const snapshotJob = jobFromDetail(detail);
-      const accepted = authoritativeReset ? true : this.mergeJob(snapshotJob);
-      if (authoritativeReset) this.jobsByID.set(detail.id, jobFromDetail(detail));
+      const accepted = authoritativeReset ? true : this.mergeJob(job);
+      if (authoritativeReset) this.jobsByID.set(job.id, job);
       if (!accepted) continue;
-      this.replaceItems(detail.id, detail.items);
-      if (terminalJobStatuses.has(detail.status)) {
-        if (!firstSnapshot || this.createdJobIDs.has(detail.id)) terminalChanges.push(detail);
+      if (terminalJobStatuses.has(job.status)) {
+        if (!firstSnapshot || this.createdJobIDs.has(job.id)) terminalChanges.push(job);
       }
     }
 
@@ -178,12 +166,6 @@ export class JobEventsStore {
     const accepted = this.mergeJob(payload.job);
     this.state = { ...this.state, runtimeId: payload.runtimeId, cursor: payload.cursor };
     if (!accepted) return;
-    if (payload.item) {
-      const byIndex = this.itemsByJob.get(payload.job.id) ?? new Map<number, JobItem>();
-      byIndex.set(payload.item.index, payload.item);
-      this.itemsByJob.set(payload.job.id, byIndex);
-    }
-    if (Array.isArray(payload.items)) this.replaceItems(payload.job.id, payload.items);
     this.rebuildState();
     this.emit();
     if (this.hasBaseline && terminalJobStatuses.has(payload.job.status)) {
@@ -196,10 +178,6 @@ export class JobEventsStore {
     if (previous && job.eventVersion <= previous.eventVersion) return false;
     this.jobsByID.set(job.id, job);
     return true;
-  }
-
-  private replaceItems(jobID: string, items: JobItem[]) {
-    this.itemsByJob.set(jobID, new Map(items.map((item) => [item.index, item])));
   }
 
   private rebuildState() {
@@ -266,12 +244,6 @@ function isJobEvent(value: JobEvent | null): value is JobEvent {
     value.runtimeId.length > 0 &&
     Number.isFinite(value.cursor),
   );
-}
-
-function jobFromDetail(detail: JobDetail): Job {
-  const { items, ...job } = detail;
-  void items;
-  return job;
 }
 
 function compareNewestJobs(left: Job, right: Job) {

@@ -74,6 +74,7 @@ export type UIStrings = {
   cancelJob(type: string): string;
   cancelJobFailed: string;
   jobProgress(type: string): string;
+  failedItems(count: number): string;
   refresh: string;
   resizePanes: string;
   selectAllVisible: string;
@@ -236,6 +237,7 @@ export const strings: Record<Language, UIStrings> = {
     cancelJob: (type) => `Cancel ${type} job`,
     cancelJobFailed: "Unable to cancel this job",
     jobProgress: (type) => `${strings.en.operationType(type)} progress`,
+    failedItems: (count) => `${count} ${count === 1 ? "item" : "items"} failed`,
     refresh: "Refresh",
     resizePanes: "Resize panes",
     selectAllVisible: "Select all visible",
@@ -413,6 +415,7 @@ export const strings: Record<Language, UIStrings> = {
     cancelJob: (type) => `取消${type}任务`,
     cancelJobFailed: "取消任务失败",
     jobProgress: (type) => `${strings["zh-CN"].operationType(type)}进度`,
+    failedItems: (count) => `${count} 项失败`,
     refresh: "刷新",
     resizePanes: "调整左右栏宽度",
     selectAllVisible: "全选可见文件",

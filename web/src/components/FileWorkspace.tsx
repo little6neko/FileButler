@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import { buildClipboardRequest, createAppClipboard, isEditableShortcutTarget, type AppClipboard } from "../appClipboard";
 import { api } from "../api/client";
 import type { Entry, OpsRequest, RenameOptions, Root } from "../api/types";
+import { powerRenameCoversPoint } from "../desktopWindowHitTest";
 import {
   buildDragRequest,
   buildFileDragSource,
@@ -1199,6 +1200,9 @@ export function FileWorkspace({
 const pointerSensorOptions = { activationConstraint: { distance: 6 } } as const;
 
 const fileCollisionDetection: CollisionDetection = (args) => {
+  if (args.pointerCoordinates && powerRenameCoversPoint(args.pointerCoordinates.x, args.pointerCoordinates.y)) {
+    return [];
+  }
   const collisions = pointerWithin(args);
   if (collisions.length === 0) return [];
   const highestLayer = Math.max(...collisions.map((collision) => Number(collision.data?.droppableContainer.data.current?.layer ?? 0)));

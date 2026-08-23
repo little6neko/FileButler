@@ -67,6 +67,12 @@ import {
   type WindowManagerState,
   type WindowRect,
 } from "../windowManager";
+import {
+  closeWindowDialog,
+  openWindowDialog,
+  type WindowDialogs,
+  type WindowDialogState,
+} from "../windowDialogs";
 import { ActionToolbar } from "./ActionToolbar";
 import {
   createClipboardActions,
@@ -81,13 +87,14 @@ import { FilePane } from "./FilePane";
 import { JobsSheet } from "./JobsSheet";
 import { LanguageSelect } from "./LanguageSelect";
 import { MediaPreview } from "./MediaPreview";
-import { MkdirDialog } from "./MkdirDialog";
-import { OperationPreview } from "./OperationPreview";
+import { MkdirContent, MkdirDialog } from "./MkdirDialog";
+import { OperationPreview, OperationPreviewContent } from "./OperationPreview";
 import { defaultRenameOptions } from "./powerRenameOptions";
 import { PowerRenameContent, RenameDialog } from "./RenameDialog";
-import { SingleRenameDialog } from "./SingleRenameDialog";
+import { SingleRenameContent, SingleRenameDialog } from "./SingleRenameDialog";
 import { VirtualRootView } from "./VirtualRootView";
 import { WindowFrame } from "./WindowFrame";
+import { WindowDialogLayer } from "./WindowDialogLayer";
 import { WorkspaceShell, type TaskbarWindow, type WorkspaceMode } from "./WorkspaceShell";
 
 type DirectoryLocation = { kind: "directory"; rootId: string; path: string };
@@ -163,6 +170,8 @@ export function FileWorkspace({
   const [mediaPreview, setMediaPreview] = useState<MediaPreviewState | null>(null);
   const [mkdirSessionId, setMkdirSessionId] = useState<string | null>(null);
   const [singleRenameSessionId, setSingleRenameSessionId] = useState<string | null>(null);
+  const [windowDialogs, setWindowDialogsState] = useState<WindowDialogs>({});
+  const windowDialogsRef = useRef(windowDialogs);
   const [powerRenameSessionId, setPowerRenameSessionId] = useState<string | null>(null);
   const [powerRenameOptions, setPowerRenameOptions] = useState<RenameOptions | undefined>();
   const [powerRenameInstances, setPowerRenameInstancesState] = useState<Record<string, PowerRenameInstance>>({});
@@ -179,6 +188,7 @@ export function FileWorkspace({
   const sessionCounterRef = useRef(0);
   const windowCounterRef = useRef(0);
   const powerRenameCounterRef = useRef(0);
+  const dialogCounterRef = useRef(0);
   const contextTargetsRef = useRef<Record<string, string | null>>({});
   const visibleSessionIdsRef = useRef<string[]>([]);
   const activeSessionIdRef = useRef<string | null>(null);
@@ -213,6 +223,12 @@ export function FileWorkspace({
     const next = update(powerRenameInstancesRef.current);
     powerRenameInstancesRef.current = next;
     setPowerRenameInstancesState(next);
+  }, []);
+
+  const commitWindowDialogs = useCallback((update: (current: WindowDialogs) => WindowDialogs) => {
+    const next = update(windowDialogsRef.current);
+    windowDialogsRef.current = next;
+    setWindowDialogsState(next);
   }, []);
 
   const loadSession = useCallback(async (id: string, force = false) => {
@@ -560,7 +576,12 @@ export function FileWorkspace({
       if (!session) return null;
       const title = titleForSession(session, roots, labels);
       return (
-        <WindowFrame key={window.id} {...frameProps} title={title}>
+        <WindowFrame
+          key={window.id}
+          {...frameProps}
+          title={title}
+          childDialog={renderWindowDialog(window)}
+        >
           {renderFileWindow(window, session)}
         </WindowFrame>
       );
@@ -609,7 +630,7 @@ export function FileWorkspace({
       <div className="file-window-layout">
         <SelectionActionToolbar
           selectionStore={session.selectionStore}
-          actionsForSelection={(selectedCount) => windowToolbarActions(session.id, selectedCount, locationReady)}
+          actionsForSelection={(selectedCount) => windowToolbarActions(window.id, session.id, selectedCount, locationReady)}
           labels={labels}
         />
         {session.location.kind === "virtual-root" ? (
@@ -632,10 +653,79 @@ export function FileWorkspace({
             pathRootLabel={rootName}
             rootCatalogLabel={labels.allLocations}
             onOpenRootCatalog={() => setSessionLocation(session.id, { kind: "virtual-root" })}
-            actionsForSelection={(selectedCount) => contextActions(session.id, selectedCount)}
+            actionsForSelection={(selectedCount) => contextActions(session.id, selectedCount, undefined, window.id)}
           />
         )}
       </div>
+    );
+  }
+
+  function renderWindowDialog(window: FileWindowRecord) {
+    const dialog = windowDialogs[window.id];
+    if (!dialog) return null;
+    const titleId = `window-dialog-title-${dialog.dialogId}`;
+    const close = () => dismissWindowDialog(dialog);
+
+    if (dialog.kind === "mkdir") {
+      return (
+        <WindowDialogLayer labelledBy={titleId} onClose={close}>
+          <MkdirContent
+            titleId={titleId}
+            labels={labels}
+            onClose={close}
+            onSubmit={(name) => submitWindowDialogJob(
+              dialog,
+              () => api.opsCreateJob({
+                type: "mkdir",
+                sourceRoot: dialog.rootId,
+                sources: [],
+                destRoot: dialog.rootId,
+                destPath: dialog.directoryPath,
+                newName: name,
+              }),
+              labels.jobCreationFailed,
+            )}
+          />
+        </WindowDialogLayer>
+      );
+    }
+
+    if (dialog.kind === "singleRename") {
+      return (
+        <WindowDialogLayer labelledBy={titleId} onClose={close}>
+          <SingleRenameContent
+            titleId={titleId}
+            initialName={dialog.initialName}
+            entryType={dialog.entryType}
+            labels={labels}
+            onClose={close}
+            onSubmit={(newName) => submitWindowDialogJob(
+              dialog,
+              () => api.singleRenameCreateJob({ rootId: dialog.rootId, paths: [dialog.path], newName }),
+              labels.renameFailed,
+            )}
+          />
+        </WindowDialogLayer>
+      );
+    }
+
+    const descriptionId = `window-dialog-description-${dialog.dialogId}`;
+    return (
+      <WindowDialogLayer labelledBy={titleId} describedBy={descriptionId} size="operation" onClose={close}>
+        <OperationPreviewContent
+          request={dialog.request}
+          operationChoices={dialog.operationChoices}
+          titleId={titleId}
+          descriptionId={descriptionId}
+          labels={labels}
+          onClose={close}
+          onSubmit={(request) => submitWindowDialogJob(
+            dialog,
+            () => api.opsCreateJob(request),
+            labels.jobCreationFailed,
+          )}
+        />
+      </WindowDialogLayer>
     );
   }
 
@@ -749,21 +839,23 @@ export function FileWorkspace({
     });
   }
 
-  function windowToolbarActions(sessionId: string, selectedCount: number, locationReady = true) {
+  function windowToolbarActions(windowId: string, sessionId: string, selectedCount: number, locationReady = true) {
     return createWindowFileActions({
       selectedCount,
       locationReady,
       labels,
-      commands: actionCommands(sessionId, (type) => openSingleSessionOperation(sessionId, type)),
+      commands: actionCommands(sessionId, (type) => openSingleSessionOperation(windowId, sessionId, type), windowId),
     });
   }
 
-  function contextActions(sessionId: string, selectedCount: number, compactPane?: CompactPane) {
+  function contextActions(sessionId: string, selectedCount: number, compactPane?: CompactPane, windowId?: string) {
     const session = sessionsRef.current[sessionId];
     const locationReady = session?.location.kind === "directory" && Boolean(session.location.rootId);
     const base = compactPane
       ? compactToolbarActions(compactPane, selectedCount)
-      : windowToolbarActions(sessionId, selectedCount, locationReady);
+      : windowId
+        ? windowToolbarActions(windowId, sessionId, selectedCount, locationReady)
+        : [];
     const targetPath = contextTargetsRef.current[sessionId] ?? null;
     const targetEntry = session?.entries.find((entry) => entry.relativePath === targetPath);
     const pasteTarget = resolveContextPasteTarget(session, targetEntry);
@@ -806,16 +898,86 @@ export function FileWorkspace({
     }).filter((action) => action.id === "clipboardPaste");
   }
 
-  function actionCommands(sessionId: string, onOperation: FileActionCommands["onOperation"]): FileActionCommands {
+  function actionCommands(
+    sessionId: string,
+    onOperation: FileActionCommands["onOperation"],
+    windowId?: string,
+  ): FileActionCommands {
     return {
       onOperation,
-      onMkdir: () => setMkdirSessionId(sessionId),
-      onRename: () => setSingleRenameSessionId(sessionId),
+      onMkdir: () => {
+        if (mode === "desktop" && windowId) openMkdirWindowDialog(windowId, sessionId);
+        else setMkdirSessionId(sessionId);
+      },
+      onRename: () => {
+        if (mode === "desktop" && windowId) openSingleRenameWindowDialog(windowId, sessionId);
+        else setSingleRenameSessionId(sessionId);
+      },
       onPowerRename: () => {
         if (mode === "desktop") openPowerRenameForSession(sessionId);
         else setPowerRenameSessionId(sessionId);
       },
     };
+  }
+
+  function nextDialogId() {
+    return `window-dialog-${++dialogCounterRef.current}`;
+  }
+
+  function openDialogForWindow(dialog: WindowDialogState) {
+    focusDesktopWindow(dialog.windowId);
+    commitWindowDialogs((current) => openWindowDialog(current, dialog));
+  }
+
+  function openMkdirWindowDialog(windowId: string, sessionId: string) {
+    const session = sessionsRef.current[sessionId];
+    if (!session || session.location.kind !== "directory" || !session.location.rootId) return;
+    openDialogForWindow({
+      dialogId: nextDialogId(),
+      windowId,
+      kind: "mkdir",
+      rootId: session.location.rootId,
+      directoryPath: session.location.path,
+    });
+  }
+
+  function openSingleRenameWindowDialog(windowId: string, sessionId: string) {
+    const session = sessionsRef.current[sessionId];
+    const path = session?.selectionStore.getOrderedPaths()[0];
+    if (!session || session.location.kind !== "directory" || !session.location.rootId || !path) return;
+    const entry = session.entries.find((item) => item.relativePath === path);
+    openDialogForWindow({
+      dialogId: nextDialogId(),
+      windowId,
+      kind: "singleRename",
+      rootId: session.location.rootId,
+      path,
+      initialName: basename(path),
+      entryType: entry?.type ?? "file",
+    });
+  }
+
+  function dismissWindowDialog(dialog: WindowDialogState) {
+    commitWindowDialogs((current) => closeWindowDialog(current, dialog.windowId, dialog.dialogId));
+  }
+
+  async function submitWindowDialogJob(
+    dialog: WindowDialogState,
+    createJob: () => Promise<{ id: string }>,
+    fallbackMessage: string,
+  ) {
+    try {
+      const job = await createJob();
+      dismissWindowDialog(dialog);
+      if (dialog.kind === "operation" && dialog.clearMoveClipboard) {
+        clipboardRef.current = null;
+        setClipboard(null);
+      }
+      handleJobCreated(job.id);
+    } catch (error) {
+      if (windowDialogsRef.current[dialog.windowId]?.dialogId === dialog.dialogId) throw error;
+      toast.error(error instanceof Error ? error.message : fallbackMessage);
+    }
   }
 
   function openCompactOperation(which: CompactPane, type: OpsRequest["type"]) {
@@ -834,10 +996,13 @@ export function FileWorkspace({
     });
   }
 
-  function openSingleSessionOperation(sessionId: string, type: OpsRequest["type"]) {
+  function openSingleSessionOperation(windowId: string, sessionId: string, type: OpsRequest["type"]) {
     const session = sessionsRef.current[sessionId];
     if (!session || session.location.kind !== "directory" || type !== "delete") return;
-    setPreviewState({
+    openDialogForWindow({
+      dialogId: nextDialogId(),
+      windowId,
+      kind: "operation",
       request: {
         type,
         sourceRoot: session.location.rootId,

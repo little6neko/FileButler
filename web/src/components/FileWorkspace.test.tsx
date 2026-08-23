@@ -47,6 +47,7 @@ beforeEach(() => {
   vi.mocked(api.renamePreview).mockReset();
   vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
   vi.mocked(api.renameCreateJob).mockReset();
+  vi.mocked(api.singleRenameCreateJob).mockReset();
   vi.mocked(api.cancelJob).mockReset();
 });
 
@@ -192,6 +193,84 @@ it("opens a selected directory in a new independent window from its context menu
   expect(Number(secondWindow.style.zIndex)).toBeGreaterThan(Number(firstWindow.style.zIndex));
   expect(taskbarButtons[0]).not.toHaveAttribute("aria-current");
   expect(taskbarButtons[1]).toHaveAttribute("aria-current", "page");
+});
+
+it("opens independent local rename dialogs without adding taskbar windows", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const icon = await screen.findByRole("button", { name: "Open File Manager" });
+  await userEvent.click(icon);
+  await userEvent.click(icon);
+  const windows = container.querySelectorAll<HTMLElement>("[data-window-kind='file']");
+  const firstWindow = windows[0];
+  const secondWindow = windows[1];
+  await userEvent.dblClick(within(firstWindow).getByRole("button", { name: /Source/ }));
+  await userEvent.dblClick(within(secondWindow).getByRole("button", { name: /Source/ }));
+  await userEvent.click(await within(firstWindow).findByLabelText("Select a.txt"));
+  await userEvent.click(await within(secondWindow).findByLabelText("Select a.txt"));
+
+  const firstRename = within(firstWindow).getByRole("button", { name: "Rename" });
+  const secondRename = within(secondWindow).getByRole("button", { name: "Rename" });
+  await userEvent.click(firstRename);
+  await userEvent.type(within(firstWindow).getByLabelText("New name"), "-draft");
+  fireEvent.click(firstRename);
+  await userEvent.click(secondRename);
+
+  expect(within(firstWindow).getAllByRole("dialog", { name: "Rename" })).toHaveLength(1);
+  expect(within(secondWindow).getAllByRole("dialog", { name: "Rename" })).toHaveLength(1);
+  expect(within(firstWindow).getByLabelText("New name")).toHaveValue("a.txt-draft");
+  expect(within(firstWindow).getByLabelText("New name")).not.toHaveAttribute("id", within(secondWindow).getByLabelText("New name").id);
+  expect(container.querySelectorAll(".window-dialog-layer")).toHaveLength(2);
+  expect(container.querySelectorAll(".taskbar-window-button")).toHaveLength(2);
+  expect(container.querySelector("[data-slot='dialog-content']")).toBeNull();
+});
+
+it("renders mkdir and delete inside the command's file window", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const icon = await screen.findByRole("button", { name: "Open File Manager" });
+  await userEvent.click(icon);
+  await userEvent.click(icon);
+  const windows = container.querySelectorAll<HTMLElement>("[data-window-kind='file']");
+  const sourceWindow = windows[0];
+  const otherWindow = windows[1];
+  await userEvent.dblClick(within(sourceWindow).getByRole("button", { name: /Source/ }));
+  await userEvent.dblClick(within(otherWindow).getByRole("button", { name: /Target/ }));
+
+  const toolbar = within(sourceWindow).getByRole("navigation", { name: "File actions" });
+  await userEvent.click(within(toolbar).getByRole("button", { name: "mkdir" }));
+  expect(within(sourceWindow).getByRole("dialog", { name: "Directory name" })).toBeInTheDocument();
+  expect(within(otherWindow).queryByRole("dialog")).not.toBeInTheDocument();
+  await userEvent.click(within(sourceWindow).getByRole("button", { name: "Cancel" }));
+
+  await userEvent.click(await within(sourceWindow).findByLabelText("Select a.txt"));
+  await userEvent.click(within(toolbar).getByRole("button", { name: "delete" }));
+  expect(await within(sourceWindow).findByRole("dialog", { name: "delete preview" })).toBeInTheDocument();
+  expect(within(otherWindow).queryByRole("dialog")).not.toBeInTheDocument();
+  expect(api.opsDryRun).toHaveBeenCalledWith({ type: "delete", sourceRoot: "source", sources: ["a.txt"] });
+  expect(container.querySelectorAll(".taskbar-window-button")).toHaveLength(2);
+});
+
+it("submits a local rename snapshot and closes only its child dialog", async () => {
+  vi.mocked(api.singleRenameCreateJob).mockResolvedValue({ id: "rename-job" });
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
+  const fileWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
+  await userEvent.click(await within(fileWindow).findByLabelText("Select a.txt"));
+  await userEvent.click(within(fileWindow).getByRole("button", { name: "Rename" }));
+  const dialog = within(fileWindow).getByRole("dialog", { name: "Rename" });
+  await userEvent.clear(within(dialog).getByLabelText("New name"));
+  await userEvent.type(within(dialog).getByLabelText("New name"), "renamed.txt");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Rename" }));
+
+  expect(api.singleRenameCreateJob).toHaveBeenCalledWith({
+    rootId: "source",
+    paths: ["a.txt"],
+    newName: "renamed.txt",
+  });
+  await waitFor(() => expect(within(fileWindow).queryByRole("dialog")).not.toBeInTheDocument());
+  expect(container.querySelectorAll("[data-window-kind='file']")).toHaveLength(1);
+  expect(container.querySelectorAll(".taskbar-window-button")).toHaveLength(1);
+  expect(toast.success).toHaveBeenCalledWith("Background job created");
 });
 
 it("opens a new focused PowerRename application window from each full-mode command", async () => {

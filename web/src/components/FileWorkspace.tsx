@@ -68,6 +68,8 @@ import {
   type WindowRect,
 } from "../windowManager";
 import {
+  clearAllWindowDialogs,
+  clearWindowDialog,
   closeWindowDialog,
   openWindowDialog,
   type WindowDialogs,
@@ -402,7 +404,9 @@ export function FileWorkspace({
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
       if (event.defaultPrevented || !(event.ctrlKey || event.metaKey) || event.altKey) return;
-      if (isEditableShortcutTarget(event.target) || document.querySelector("[role='dialog']")) return;
+      if (isEditableShortcutTarget(event.target) || document.querySelector("[role='dialog']:not(.window-dialog-panel)")) return;
+      const activeFileWindowId = activeFileWindowIdRef.current;
+      if (activeFileWindowId && windowDialogsRef.current[activeFileWindowId]) return;
       const key = event.key.toLowerCase();
       if ((key === "c" || key === "x") && !window.getSelection()?.toString()) {
         if (!copySessionSelection(activeSessionIdRef.current, key === "c" ? "copy" : "move")) {
@@ -571,7 +575,7 @@ export function FileWorkspace({
       labels,
       onFocus: () => focusDesktopWindow(window.id),
       onRectChange: (rect: WindowRect) => updateWindowRect(window.id, rect),
-      onMinimize: () => commitWindowState((current) => minimizeWindow(current, window.id)),
+      onMinimize: () => minimizeDesktopWindow(window.id),
       onToggleMaximize: () => commitWindowState((current) => toggleMaximizeWindow(current, window.id)),
       onClose: () => closeDesktopWindow(window.id),
     };
@@ -1233,6 +1237,11 @@ export function FileWorkspace({
     commitWindowState((current) => focusWindow(current, id));
   }
 
+  function minimizeDesktopWindow(id: string) {
+    commitWindowDialogs((current) => clearWindowDialog(current, id));
+    commitWindowState((current) => minimizeWindow(current, id));
+  }
+
   function updateWindowRect(id: string, rect: WindowRect) {
     commitWindowState((current) => setWindowRect(current, id, rect, desktopBoundsRef.current));
   }
@@ -1240,6 +1249,7 @@ export function FileWorkspace({
   function closeDesktopWindow(id: string) {
     const target = windowStateRef.current.windows.find((window) => window.id === id);
     if (!target) return;
+    commitWindowDialogs((current) => clearWindowDialog(current, id));
     if (!isFileWindow(target)) {
       const instance = powerRenameInstancesRef.current[target.instanceId];
       if (instance?.submitting) return;
@@ -1312,7 +1322,7 @@ export function FileWorkspace({
     const target = current.windows.find((window) => window.id === id);
     if (!target) return;
     if (current.activeWindowId === id && target.status !== "minimized") {
-      commitWindowState((state) => minimizeWindow(state, id));
+      minimizeDesktopWindow(id);
     } else if (target.status === "minimized") {
       commitWindowState((state) => restoreWindow(state, id));
     } else {
@@ -1323,6 +1333,7 @@ export function FileWorkspace({
   function switchWorkspaceMode(nextMode: WorkspaceMode) {
     if (nextMode === mode) return;
     setJobsOpen(false);
+    commitWindowDialogs(clearAllWindowDialogs);
     if (nextMode === "compact") switchToCompactMode();
     else switchToDesktopMode();
   }

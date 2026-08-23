@@ -130,9 +130,13 @@ body {
   border: 1px solid var(--border);
   border-radius: 0.5rem;
   background: var(--background);
-  padding: 0.75rem 3.25rem 0.75rem 0.75rem;
+  padding: 0.75rem;
   text-align: left;
   transition: background-color 120ms ease;
+}
+
+.job-row-main--cancelable {
+  padding-right: 3.25rem;
 }
 
 .job-row-main:hover {

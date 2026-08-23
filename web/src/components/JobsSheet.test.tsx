@@ -80,6 +80,8 @@ it("overlays a sibling cancel control without selecting its task row", async () 
   expect(cancel).toHaveClass("job-row-cancel");
   expect(cancel.parentElement).toBe(moveRow.parentElement);
   expect(moveRow.contains(cancel)).toBe(false);
+  expect(moveRow).toHaveClass("job-row-main--cancelable");
+  expect(copyRow).toHaveClass("job-row-main--cancelable");
   expect(copyRow).toHaveAttribute("aria-pressed", "true");
   expect(moveRow).toHaveAttribute("aria-pressed", "false");
 
@@ -99,7 +101,7 @@ it("overlays a sibling cancel control without selecting its task row", async () 
       items: [],
     });
   });
-  expect(screen.getByRole("button", { name: /move.*Canceled/i })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /move.*Canceled/i })).not.toHaveClass("job-row-main--cancelable");
   expect(screen.queryByRole("button", { name: "Cancel move job" })).not.toBeInTheDocument();
 });
 
@@ -125,6 +127,8 @@ it("keeps a disabled X for cancel-requested work and removes it for terminal wor
 
   expect(await screen.findByRole("button", { name: "Cancel move job" })).toBeDisabled();
   expect(screen.queryByRole("button", { name: "Cancel copy job" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /move.*Canceling/i })).toHaveClass("job-row-main--cancelable");
+  expect(screen.getByRole("button", { name: /copy.*Completed/i })).not.toHaveClass("job-row-main--cancelable");
   expect(within(screen.getByRole("dialog", { name: "Jobs" })).getAllByRole("button", { name: /Cancel .* job/ })).toHaveLength(1);
 });
 

@@ -26,7 +26,9 @@ it("keeps the jobs sheet below the shared system taskbar height", () => {
 
 it("overlays the job cancel button with file-row-like interaction feedback", () => {
   expect(rule(".job-row-shell")).toContain("position: relative;");
-  expect(rule(".job-row-main")).toContain("padding: 0.75rem 3.25rem 0.75rem 0.75rem;");
+  expect(rule(".job-row-main")).toContain("padding: 0.75rem;");
+  expect(rule(".job-row-main")).not.toContain("3.25rem");
+  expect(rule(".job-row-main--cancelable")).toContain("padding-right: 3.25rem;");
   expect(rule(".job-row-cancel")).toContain("position: absolute;");
   expect(rule(".job-row-cancel")).toContain("right: 0.625rem;");
   expect(rule(".job-row-cancel:hover:not(:disabled)")).toContain("background: var(--muted);");

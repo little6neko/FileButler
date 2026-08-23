@@ -100,6 +100,7 @@ export function JobsSheet({
             {filteredJobs.length ? (
               filteredJobs.map((job) => {
                 const percent = progressPercent(job);
+                const active = activeJobStatuses.has(job.status);
                 const canceling = cancelingJobIDs.has(job.id) && (job.status === "pending" || job.status === "running");
                 const cancelDisabled = canceling || job.status === "cancel_requested";
                 const displayedStatus = canceling ? "cancel_requested" : job.status;
@@ -109,7 +110,7 @@ export function JobsSheet({
                     <div className="job-row-shell">
                       <button
                         type="button"
-                        className="job-row-main"
+                        className={`job-row-main${active ? " job-row-main--cancelable" : ""}`}
                         aria-pressed={selectedID === job.id}
                         onClick={() => setRequestedSelectedID(job.id)}
                       >
@@ -123,7 +124,7 @@ export function JobsSheet({
                           <span>{percent}%</span>
                         </span>
                       </button>
-                      {activeJobStatuses.has(job.status) ? (
+                      {active ? (
                         <button
                           type="button"
                           className="job-row-cancel"

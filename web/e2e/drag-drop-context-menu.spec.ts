@@ -221,6 +221,7 @@ test("cancels from the overlaid task X and keeps terminal history only until ref
   await expect(moveRow).toHaveAttribute("aria-pressed", "false");
   expect(await cancelMove.evaluate((button) => button.parentElement?.classList.contains("job-row-shell"))).toBe(true);
   expect(await cancelMove.evaluate((button) => button.parentElement?.querySelector(".job-row-main") !== null)).toBe(true);
+  const activePadding = await moveRow.evaluate((row) => getComputedStyle(row).paddingRight);
   const restingBackground = await cancelMove.evaluate((button) => getComputedStyle(button).backgroundColor);
   await cancelMove.hover();
   const hoverBackground = await cancelMove.evaluate((button) => getComputedStyle(button).backgroundColor);
@@ -239,8 +240,15 @@ test("cancels from the overlaid task X and keeps terminal history only until ref
     job: makeE2EJob({ id: "job-move", type: "move", status: "canceled", createdAtUnix: 1, eventVersion: 3 }),
     items: [],
   });
-  await expect(page.getByRole("button", { name: /move.*Canceled/i })).toBeVisible();
+  const canceledRow = page.getByRole("button", { name: /move.*Canceled/i });
+  await expect(canceledRow).toBeVisible();
   await expect(page.getByRole("button", { name: "Cancel move job" })).toHaveCount(0);
+  const terminalPadding = await canceledRow.evaluate((row) => ({
+    left: getComputedStyle(row).paddingLeft,
+    right: getComputedStyle(row).paddingRight,
+  }));
+  expect(terminalPadding.right).toBe(terminalPadding.left);
+  expect(parseFloat(terminalPadding.right)).toBeLessThan(parseFloat(activePadding));
 
   await page.reload();
   await expect(page.getByRole("button", { name: "Open File Manager" })).toBeVisible();

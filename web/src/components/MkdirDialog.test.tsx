@@ -17,10 +17,11 @@ it("renders reusable mkdir content without a page dialog portal", async () => {
 
 it("submits a trimmed directory name once and disables the dialog while pending", async () => {
   let resolveSubmit!: () => void;
+  const onClose = vi.fn();
   const onSubmit = vi.fn(() => new Promise<void>((resolve) => {
     resolveSubmit = resolve;
   }));
-  render(<MkdirDialog onClose={vi.fn()} onSubmit={onSubmit} />);
+  render(<MkdirDialog onClose={onClose} onSubmit={onSubmit} />);
 
   const dialog = screen.getByRole("dialog", { name: "Directory name" });
   const input = within(dialog).getByRole("textbox", { name: "Directory name" });
@@ -35,6 +36,8 @@ it("submits a trimmed directory name once and disables the dialog while pending"
   expect(cancel).toBeDisabled();
   expect(confirm).toBeDisabled();
   expect(confirm.querySelector(".animate-spin")).toBeInTheDocument();
+  await userEvent.keyboard("{Escape}");
+  expect(onClose).not.toHaveBeenCalled();
 
   resolveSubmit();
   await waitFor(() => expect(input).not.toBeDisabled());

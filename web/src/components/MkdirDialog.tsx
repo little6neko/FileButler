@@ -15,22 +15,40 @@ type Props = {
   onSubmit(name: string): Promise<void>;
 };
 
+type ContentProps = Props & {
+  titleId: string;
+  onSubmittingChange?(submitting: boolean): void;
+};
+
 export function MkdirDialog({ labels = strings.en, onClose, onSubmit }: Props) {
   const titleId = useId();
+  const [submitting, setSubmitting] = useState(false);
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog open onOpenChange={(open) => { if (!open && !submitting) onClose(); }}>
       <DialogContent
         aria-labelledby={titleId}
         className="sm:max-w-md"
         showCloseButton={false}
       >
-        <MkdirContent titleId={titleId} labels={labels} onClose={onClose} onSubmit={onSubmit} />
+        <MkdirContent
+          titleId={titleId}
+          labels={labels}
+          onClose={onClose}
+          onSubmit={onSubmit}
+          onSubmittingChange={setSubmitting}
+        />
       </DialogContent>
     </Dialog>
   );
 }
 
-export function MkdirContent({ titleId, labels = strings.en, onClose, onSubmit }: Props & { titleId: string }) {
+export function MkdirContent({
+  titleId,
+  labels = strings.en,
+  onClose,
+  onSubmit,
+  onSubmittingChange,
+}: ContentProps) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -41,6 +59,7 @@ export function MkdirContent({ titleId, labels = strings.en, onClose, onSubmit }
     const nextName = name.trim();
     if (!nextName || submitting) return;
     setSubmitting(true);
+    onSubmittingChange?.(true);
     setError(null);
     try {
       await onSubmit(nextName);
@@ -48,6 +67,7 @@ export function MkdirContent({ titleId, labels = strings.en, onClose, onSubmit }
       setError(err instanceof Error ? err.message : labels.jobCreationFailed);
     } finally {
       setSubmitting(false);
+      onSubmittingChange?.(false);
     }
   }
 

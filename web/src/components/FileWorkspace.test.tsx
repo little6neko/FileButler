@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { toast } from "sonner";
@@ -49,6 +49,18 @@ beforeEach(() => {
   vi.mocked(api.renameCreateJob).mockReset();
   vi.mocked(api.cancelJob).mockReset();
 });
+
+async function launchPowerRename(container: HTMLElement) {
+  await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
+  const fileWindow = container.querySelector<HTMLElement>(".desktop-window")!;
+  await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
+  await userEvent.click(await within(fileWindow).findByLabelText("Select a.txt"));
+  const toolbar = within(fileWindow).getByRole("navigation", { name: "File actions" });
+  await userEvent.click(within(toolbar).getByRole("button", { name: "PowerRename" }));
+  await screen.findByTestId("power-rename-content");
+  const windows = container.querySelectorAll<HTMLElement>(".desktop-window");
+  return { fileWindow: windows[0], powerRenameWindow: windows[1] };
+}
 
 it("starts with an empty desktop and creates a separate taskbar item for every window", async () => {
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
@@ -211,6 +223,107 @@ it("opens a new focused PowerRename application window from each full-mode comma
   expect(container.querySelectorAll(".taskbar-window-button")).toHaveLength(3);
   expect(container.querySelectorAll<HTMLElement>(".desktop-window")[2]).toHaveAttribute("data-active", "true");
   expect(api.renamePreview).toHaveBeenCalledWith(expect.objectContaining({ rootId: "source", paths: ["folder"] }));
+});
+
+it("keeps a PowerRename snapshot usable after its source file window closes", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const { fileWindow, powerRenameWindow } = await launchPowerRename(container);
+
+  await userEvent.click(within(fileWindow).getByRole("button", { name: "Close window" }));
+  expect(container.querySelectorAll(".desktop-window")).toHaveLength(1);
+  expect(container.querySelector(".desktop-window")).toBe(powerRenameWindow);
+  expect(container.querySelectorAll(".taskbar-window-button")).toHaveLength(1);
+
+  vi.mocked(api.renamePreview).mockClear();
+  await userEvent.type(within(powerRenameWindow).getByLabelText("Search"), "still-independent");
+  await waitFor(() => expect(api.renamePreview).toHaveBeenLastCalledWith(expect.objectContaining({
+    rootId: "source",
+    paths: ["a.txt"],
+    options: expect.objectContaining({ search: "still-independent" }),
+  })));
+});
+
+it("does not paste into the previously active file window while PowerRename is focused", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const { powerRenameWindow } = await launchPowerRename(container);
+
+  const fileTaskbarButton = container.querySelectorAll<HTMLElement>(".taskbar-window-button")[0];
+  await userEvent.click(fileTaskbarButton);
+  fireEvent.keyDown(document, { key: "c", ctrlKey: true });
+  expect(toast.success).toHaveBeenCalledWith("Copied 1 item");
+  fireEvent.pointerDown(powerRenameWindow);
+  vi.mocked(api.opsDryRun).mockClear();
+
+  const pasteEvent = new KeyboardEvent("keydown", { key: "v", ctrlKey: true, bubbles: true, cancelable: true });
+  document.dispatchEvent(pasteEvent);
+
+  expect(pasteEvent.defaultPrevented).toBe(true);
+  expect(api.opsDryRun).not.toHaveBeenCalled();
+  expect(toast.error).toHaveBeenCalledWith("Choose a mapped location before pasting");
+});
+
+it("preserves a minimized PowerRename draft across compact mode round trips", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const { powerRenameWindow } = await launchPowerRename(container);
+  await userEvent.type(within(powerRenameWindow).getByLabelText("Search"), "draft");
+  await waitFor(() => expect(api.renamePreview).toHaveBeenLastCalledWith(expect.objectContaining({
+    options: expect.objectContaining({ search: "draft" }),
+  })));
+  await userEvent.click(within(powerRenameWindow).getByRole("button", { name: "Minimize window" }));
+
+  await userEvent.click(screen.getByRole("button", { name: "Switch to compact mode" }));
+  expect(await screen.findByTestId("workspace")).toBeVisible();
+  expect(container.querySelectorAll(".taskbar-window-button")).toHaveLength(1);
+  expect(screen.queryByTestId("power-rename-content")).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "Switch to full mode" }));
+  const powerRenameTaskbarButton = screen.getByRole("button", { name: "PowerRename — 1 item" });
+  expect(powerRenameTaskbarButton).toHaveAttribute("data-window-status", "minimized");
+  await userEvent.click(powerRenameTaskbarButton);
+
+  const restored = await screen.findByTestId("power-rename-content");
+  expect(within(restored).getByLabelText("Search")).toHaveValue("draft");
+});
+
+it("keeps one submission lock while a PowerRename window unmounts for a mode switch", async () => {
+  let resolveJob!: (job: { id: string }) => void;
+  vi.mocked(api.renameCreateJob).mockReturnValue(new Promise((resolve) => { resolveJob = resolve; }));
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  await launchPowerRename(container);
+  const renameButton = await screen.findByRole("button", { name: "Rename 1 item" });
+  await waitFor(() => expect(renameButton).toBeEnabled());
+
+  await userEvent.click(renameButton);
+  expect(api.renameCreateJob).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  expect(screen.getAllByRole("button", { name: "Close window" }).at(-1)).toBeDisabled();
+
+  await userEvent.click(screen.getByRole("button", { name: "Switch to compact mode" }));
+  await userEvent.click(screen.getByRole("button", { name: "Switch to full mode" }));
+  const restoredRenameButton = await screen.findByRole("button", { name: "Rename 1 item" });
+  expect(restoredRenameButton).toBeDisabled();
+  await userEvent.click(restoredRenameButton);
+  expect(api.renameCreateJob).toHaveBeenCalledTimes(1);
+
+  await act(async () => resolveJob({ id: "rename-job" }));
+  await waitFor(() => expect(screen.queryByTestId("power-rename-content")).not.toBeInTheDocument());
+  expect(screen.queryByRole("button", { name: "PowerRename — 1 item" })).not.toBeInTheDocument();
+  expect(toast.success).toHaveBeenCalledWith("Background job created");
+});
+
+it("keeps a PowerRename window open and retryable after task creation fails", async () => {
+  vi.mocked(api.renameCreateJob).mockRejectedValueOnce(new Error("rename unavailable"));
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const { powerRenameWindow } = await launchPowerRename(container);
+  const renameButton = within(powerRenameWindow).getByRole("button", { name: "Rename 1 item" });
+  await waitFor(() => expect(renameButton).toBeEnabled());
+
+  await userEvent.click(renameButton);
+
+  expect(await within(powerRenameWindow).findByText("rename unavailable")).toBeInTheDocument();
+  expect(container.querySelectorAll("[data-window-kind='powerRename']")).toHaveLength(1);
+  await waitFor(() => expect(renameButton).toBeEnabled());
+  expect(within(powerRenameWindow).getByRole("button", { name: "Close window" })).toBeEnabled();
 });
 
 it("uses the active window for keyboard copy and paste and opens the fixed copy preview", async () => {

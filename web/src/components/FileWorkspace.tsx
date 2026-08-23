@@ -51,6 +51,7 @@ import {
   closeWindow,
   createWindowManagerState,
   focusWindow,
+  isFileWindow,
   minimizeWindow,
   openFileWindow,
   reconcileWindowBounds,
@@ -225,12 +226,13 @@ export function FileWorkspace({
 
   const visibleSessionIds = useMemo(() => {
     if (mode === "compact") return unique([compactBindings.left, compactBindings.right]);
-    return unique(windowState.windows.filter((window) => window.status !== "minimized").map((window) => window.sessionId));
+    return unique(windowState.windows.filter(isFileWindow).filter((window) => window.status !== "minimized").map((window) => window.sessionId));
   }, [compactBindings, mode, windowState.windows]);
 
+  const activeWindow = windowState.windows.find((window) => window.id === windowState.activeWindowId);
   const activeSessionId = mode === "compact"
     ? compactBindings[activeCompactPane]
-    : windowState.windows.find((window) => window.id === windowState.activeWindowId)?.sessionId ?? null;
+    : activeWindow && isFileWindow(activeWindow) ? activeWindow.sessionId : null;
 
   useLayoutEffect(() => {
     visibleSessionIdsRef.current = visibleSessionIds;
@@ -372,7 +374,7 @@ export function FileWorkspace({
     return () => document.removeEventListener("keydown", handleShortcut);
   });
 
-  const taskbarWindows = windowState.windows.map((window) => ({
+  const taskbarWindows = windowState.windows.filter(isFileWindow).map((window) => ({
     id: window.id,
     title: titleForSession(sessions[window.sessionId], roots, labels),
     status: window.status,
@@ -493,7 +495,7 @@ export function FileWorkspace({
         {rootsLoaded && roots.length === 0 && !rootsError ? (
           <div className="desktop-empty-roots">{labels.noMappedRoots}</div>
         ) : null}
-        {windowState.windows.filter((window) => window.status !== "minimized").map((window) => {
+        {windowState.windows.filter(isFileWindow).filter((window) => window.status !== "minimized").map((window) => {
           const session = sessions[window.sessionId];
           if (!session) return null;
           const title = titleForSession(session, roots, labels);
@@ -865,7 +867,7 @@ export function FileWorkspace({
       else if (compactBindings.right === sessionId) setActiveCompactPane("right");
       return;
     }
-    const window = windowStateRef.current.windows.find((candidate) => candidate.sessionId === sessionId);
+    const window = windowStateRef.current.windows.find((candidate) => isFileWindow(candidate) && candidate.sessionId === sessionId);
     if (window) focusDesktopWindow(window.id);
   }
 
@@ -931,8 +933,9 @@ export function FileWorkspace({
     if (!target) return;
     const next = closeWindow(windowStateRef.current, id);
     commitWindowState(() => next);
+    if (!isFileWindow(target)) return;
     const retainedByCompact = Object.values(compactBindings).includes(target.sessionId);
-    const retainedByWindow = next.windows.some((window) => window.sessionId === target.sessionId);
+    const retainedByWindow = next.windows.some((window) => isFileWindow(window) && window.sessionId === target.sessionId);
     if (retainedByCompact || retainedByWindow) return;
     delete contextTargetsRef.current[target.sessionId];
     commitSessions((current) => {
@@ -966,10 +969,11 @@ export function FileWorkspace({
 
   function switchToCompactMode() {
     const currentWindows = windowStateRef.current;
-    const active = currentWindows.windows.find((window) => window.id === currentWindows.activeWindowId);
+    const fileWindows = windowsByMostRecent(currentWindows).filter(isFileWindow);
+    const active = fileWindows.find((window) => window.id === currentWindows.activeWindowId);
     const candidates = active
-      ? [active, ...windowsByMostRecent(currentWindows).filter((window) => window.id !== active.id)]
-      : windowsByMostRecent(currentWindows);
+      ? [active, ...fileWindows.filter((window) => window.id !== active.id)]
+      : fileWindows;
     const leftId = candidates[0]?.sessionId ?? compactBindings.left;
     let rightId = candidates.find((window) => window.sessionId !== leftId)?.sessionId ?? compactBindings.right;
     if (rightId === leftId) rightId = createSession(defaultDirectoryLocation(roots));
@@ -984,7 +988,7 @@ export function FileWorkspace({
     const sessionIds = unique([compactBindings.left, compactBindings.right]);
     const windowIds: string[] = [];
     for (const sessionId of sessionIds) {
-      const existing = windowStateRef.current.windows.find((window) => window.sessionId === sessionId);
+      const existing = windowStateRef.current.windows.find((window) => isFileWindow(window) && window.sessionId === sessionId);
       if (existing) {
         if (existing.status === "minimized") commitWindowState((current) => restoreWindow(current, existing.id));
         windowIds.push(existing.id);
@@ -993,7 +997,7 @@ export function FileWorkspace({
       }
     }
     const activeSession = compactBindings[activeCompactPane];
-    const activeWindow = windowStateRef.current.windows.find((window) => window.sessionId === activeSession);
+    const activeWindow = windowStateRef.current.windows.find((window) => isFileWindow(window) && window.sessionId === activeSession);
     const activeWindowId = activeWindow?.id ?? windowIds[0];
     if (activeWindowId) focusDesktopWindow(activeWindowId);
     setModeState("desktop");

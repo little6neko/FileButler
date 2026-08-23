@@ -5,6 +5,7 @@ import {
   focusWindow,
   minimizeWindow,
   openFileWindow,
+  openPowerRenameWindow,
   reconcileWindowBounds,
   renderedWindowRect,
   resizeWindowRect,
@@ -97,5 +98,34 @@ describe("window manager", () => {
 
     expect(state.activeWindowId).toBe("window-2");
     expect(state.windows.map((window) => window.id)).toEqual(["window-2"]);
+  });
+
+  it("preserves file and PowerRename identities through shared window transitions", () => {
+    let state = openFileWindow(createWindowManagerState(), "window-file", "session-1", bounds);
+    state = openPowerRenameWindow(state, "window-rename", "rename-1", bounds);
+
+    expect(state.windows).toMatchObject([
+      { id: "window-file", kind: "file", sessionId: "session-1" },
+      { id: "window-rename", kind: "powerRename", instanceId: "rename-1" },
+    ]);
+    expect(state.windows[1].rect).toMatchObject({ width: 720, height: 504 });
+
+    state = setWindowRect(state, "window-rename", { x: 0, y: 0, width: 100, height: 100 }, bounds);
+    state = toggleMaximizeWindow(state, "window-rename");
+    state = minimizeWindow(state, "window-rename");
+    state = restoreWindow(state, "window-rename");
+
+    expect(state.windows[1]).toMatchObject({
+      kind: "powerRename",
+      instanceId: "rename-1",
+      status: "maximized",
+      restoreRect: { width: 720, height: 480 },
+    });
+
+    state = closeWindow(state, "window-rename");
+    expect(state.activeWindowId).toBe("window-file");
+    expect(state.windows).toMatchObject([
+      { id: "window-file", kind: "file", sessionId: "session-1" },
+    ]);
   });
 });

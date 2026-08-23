@@ -7,9 +7,10 @@ import {
   renderedWindowRect,
   resizeWindowRect,
   type DesktopBounds,
-  type FileWindowRecord,
+  type DesktopWindowRecord,
   type ResizeDirection,
   type WindowRect,
+  windowMinimum,
 } from "../windowManager";
 
 const resizeDirections: ResizeDirection[] = ["n", "ne", "e", "se", "s", "sw", "w", "nw"];
@@ -18,6 +19,7 @@ export function WindowFrame({
   window,
   bounds,
   title,
+  icon,
   active,
   labels,
   onFocus,
@@ -25,11 +27,13 @@ export function WindowFrame({
   onMinimize,
   onToggleMaximize,
   onClose,
+  closeDisabled = false,
   children,
 }: {
-  window: FileWindowRecord;
+  window: DesktopWindowRecord;
   bounds: DesktopBounds;
   title: string;
+  icon?: ReactNode;
   active: boolean;
   labels: UIStrings;
   onFocus(): void;
@@ -37,6 +41,7 @@ export function WindowFrame({
   onMinimize(): void;
   onToggleMaximize(): void;
   onClose(): void;
+  closeDisabled?: boolean;
   children: ReactNode;
 }) {
   const gestureCleanupRef = useRef<(() => void) | null>(null);
@@ -67,7 +72,7 @@ export function WindowFrame({
     onFocus();
     gestureCleanupRef.current?.();
     gestureCleanupRef.current = bindPointerGesture(event, (deltaX, deltaY) => {
-      onRectChange(resizeWindowRect(window.rect, direction, deltaX, deltaY, bounds));
+      onRectChange(resizeWindowRect(window.rect, direction, deltaX, deltaY, bounds, windowMinimum(window)));
     });
   }
 
@@ -85,7 +90,7 @@ export function WindowFrame({
       onPointerDown={onFocus}
     >
       <div className="desktop-window-titlebar" onPointerDown={beginMove} onDoubleClick={onToggleMaximize}>
-        <Files aria-hidden="true" />
+        {icon ?? <Files aria-hidden="true" />}
         <strong title={title}>{title}</strong>
         <div className="desktop-window-controls">
           <Button size="icon-sm" variant="ghost" aria-label={labels.minimizeWindow} title={labels.minimizeWindow} onClick={onMinimize}>
@@ -100,7 +105,7 @@ export function WindowFrame({
           >
             {window.status === "maximized" ? <Shrink /> : <Maximize2 />}
           </Button>
-          <Button size="icon-sm" variant="ghost" aria-label={labels.closeWindow} title={labels.closeWindow} onClick={onClose}>
+          <Button size="icon-sm" variant="ghost" aria-label={labels.closeWindow} title={labels.closeWindow} onClick={onClose} disabled={closeDisabled}>
             <X />
           </Button>
         </div>

@@ -820,6 +820,19 @@ it("reports null when list whitespace is right-clicked", () => {
   expect(onContextTarget).toHaveBeenCalledWith(null);
 });
 
+it("marks pane and directory drops disabled under a local dialog", () => {
+  const { container } = renderPane({
+    entries: [entry("folder", "directory")],
+    dropWindowId: "window-1",
+    dropDisabled: true,
+  });
+
+  expect(container.querySelector(".file-pane")).toHaveAttribute("data-drop-disabled", "true");
+  expect(container.querySelector(".file-pane")).toHaveAttribute("data-drop-window-id", "window-1");
+  expect(screen.getByText("folder").closest("tr")).toHaveAttribute("data-drop-disabled", "true");
+  expect(screen.getByText("folder").closest("tr")).toHaveAttribute("data-drop-window-id", "window-1");
+});
+
 function entry(name: string, type: "file" | "directory" | "symlink" | "other" = "file", size = 1) {
   return {
     name,

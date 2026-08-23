@@ -66,6 +66,27 @@ it("keeps mapped-root drop feedback on the card", () => {
   expect(screen.getByRole("button", { name: /Data/ })).toHaveAttribute("data-drop-state", "valid");
 });
 
+it("marks root-card drops disabled while a local dialog covers the window", () => {
+  const { container } = render(
+    <VirtualRootView
+      roots={[root]}
+      surfaceId="session-1"
+      dropWindowId="window-1"
+      dropDisabled
+      dropFeedback={null}
+      labels={strings.en}
+      onActivate={vi.fn()}
+      onOpenRoot={vi.fn()}
+      actionsForRoot={() => []}
+    />,
+  );
+
+  expect(container.querySelector(".virtual-root")).toHaveAttribute("data-drop-disabled", "true");
+  expect(container.querySelector(".virtual-root")).toHaveAttribute("data-drop-window-id", "window-1");
+  expect(screen.getByRole("button", { name: /Data/ })).toHaveAttribute("data-drop-disabled", "true");
+  expect(screen.getByRole("button", { name: /Data/ })).toHaveAttribute("data-drop-window-id", "window-1");
+});
+
 function renderView(onOpenRoot: (selectedRoot: typeof root) => void) {
   render(
     <VirtualRootView

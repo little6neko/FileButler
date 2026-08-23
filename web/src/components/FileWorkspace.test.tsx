@@ -428,8 +428,91 @@ it("uses the active window for keyboard copy and paste and opens the fixed copy 
     destRoot: "target",
     destPath: ".",
   }));
-  expect(screen.getByRole("dialog", { name: "copy preview" })).toBeInTheDocument();
+  expect(within(secondWindow).getByRole("dialog", { name: "copy preview" })).toBeInTheDocument();
+  expect(within(firstWindow).queryByRole("dialog")).not.toBeInTheDocument();
+  expect(container.querySelector("[data-slot='dialog-content']")).toBeNull();
   expect(screen.queryByRole("radiogroup", { name: "Operation mode" })).not.toBeInTheDocument();
+});
+
+it("opens right-click paste inside the receiving file window", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const icon = await screen.findByRole("button", { name: "Open File Manager" });
+  await userEvent.click(icon);
+  const sourceWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  await userEvent.dblClick(within(sourceWindow).getByRole("button", { name: /Source/ }));
+  await userEvent.click(await within(sourceWindow).findByLabelText("Select a.txt"));
+  fireEvent.keyDown(document, { key: "c", ctrlKey: true });
+
+  await userEvent.click(icon);
+  const windows = container.querySelectorAll<HTMLElement>("[data-window-kind='file']");
+  const targetWindow = windows[windows.length - 1];
+  await userEvent.dblClick(within(targetWindow).getByRole("button", { name: /Target/ }));
+  fireEvent.contextMenu(targetWindow.querySelector(".file-list")!, { clientX: 200, clientY: 180 });
+  const menu = await screen.findByRole("menu", { name: "File actions" });
+  await userEvent.click(within(menu).getByRole("menuitem", { name: "Paste" }));
+
+  expect(await within(targetWindow).findByRole("dialog", { name: "copy preview" })).toBeInTheDocument();
+  expect(within(sourceWindow).queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+it("opens root-card paste inside its virtual-root file window", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const icon = await screen.findByRole("button", { name: "Open File Manager" });
+  await userEvent.click(icon);
+  const sourceWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  await userEvent.dblClick(within(sourceWindow).getByRole("button", { name: /Source/ }));
+  await userEvent.click(await within(sourceWindow).findByLabelText("Select a.txt"));
+  fireEvent.keyDown(document, { key: "c", ctrlKey: true });
+
+  await userEvent.click(icon);
+  const windows = container.querySelectorAll<HTMLElement>("[data-window-kind='file']");
+  const targetWindow = windows[windows.length - 1];
+  fireEvent.contextMenu(within(targetWindow).getByRole("button", { name: /Target/ }), { clientX: 200, clientY: 180 });
+  const menu = await screen.findByRole("menu", { name: "File actions" });
+  await userEvent.click(within(menu).getByRole("menuitem", { name: "Paste" }));
+
+  expect(await within(targetWindow).findByRole("dialog", { name: "copy preview" })).toBeInTheDocument();
+  expect(api.opsDryRun).toHaveBeenCalledWith({
+    type: "copy",
+    sourceRoot: "source",
+    sources: ["a.txt"],
+    destRoot: "target",
+    destPath: ".",
+  });
+});
+
+it("clears a cut clipboard only after the local move job is created", async () => {
+  vi.mocked(api.opsCreateJob).mockResolvedValue({ id: "move-job" });
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const icon = await screen.findByRole("button", { name: "Open File Manager" });
+  await userEvent.click(icon);
+  const sourceWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  await userEvent.dblClick(within(sourceWindow).getByRole("button", { name: /Source/ }));
+  const fileName = await within(sourceWindow).findByText("a.txt");
+  fireEvent.contextMenu(fileName, { clientX: 100, clientY: 100 });
+  let menu = await screen.findByRole("menu", { name: "File actions" });
+  await userEvent.click(within(menu).getByRole("menuitem", { name: "Cut" }));
+  expect(fileName.closest("tr")).toHaveAttribute("data-clipboard-cut", "true");
+
+  await userEvent.click(icon);
+  const windows = container.querySelectorAll<HTMLElement>("[data-window-kind='file']");
+  const targetWindow = windows[windows.length - 1];
+  await userEvent.dblClick(within(targetWindow).getByRole("button", { name: /Target/ }));
+  fireEvent.keyDown(document, { key: "v", ctrlKey: true });
+  const dialog = await within(targetWindow).findByRole("dialog", { name: "move preview" });
+  expect(fileName.closest("tr")).toHaveAttribute("data-clipboard-cut", "true");
+  await waitFor(() => expect(within(dialog).getByRole("button", { name: "Start move" })).toBeEnabled());
+  await userEvent.click(within(dialog).getByRole("button", { name: "Start move" }));
+
+  expect(api.opsCreateJob).toHaveBeenCalledWith({
+    type: "move",
+    sourceRoot: "source",
+    sources: ["a.txt"],
+    destRoot: "target",
+    destPath: ".",
+  });
+  await waitFor(() => expect(fileName.closest("tr")).not.toHaveAttribute("data-clipboard-cut"));
+  expect(within(targetWindow).queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 it("keeps right-click copy and cut commands and marks the current cut source", async () => {

@@ -67,6 +67,7 @@ it("normalizes dot segments before checking no-op and recursive destinations", (
 it("allows different roots and builds the existing OpsRequest shape", () => {
   const source = buildSource(entry("a.txt"));
   const target = drop("right", "root-b", "archive", "directory");
+  target.windowId = "window-2";
   expect(validateFileDrop(source, target)).toEqual({ valid: true });
   expect(buildDragRequest(source, target)).toEqual({
     type: "copy",

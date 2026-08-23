@@ -192,6 +192,7 @@ export function FileWorkspace({
   const contextTargetsRef = useRef<Record<string, string | null>>({});
   const visibleSessionIdsRef = useRef<string[]>([]);
   const activeSessionIdRef = useRef<string | null>(null);
+  const activeFileWindowIdRef = useRef<string | null>(null);
   const [dragSource, setDragSource] = useState<FileDragSource | null>(null);
   const [dropFeedback, setDropFeedback] = useState<FileDropFeedback | null>(null);
   const dragSourceRef = useRef<FileDragSource | null>(null);
@@ -274,12 +275,16 @@ export function FileWorkspace({
   const activeSessionId = mode === "compact"
     ? compactBindings[activeCompactPane]
     : activeWindow && isFileWindow(activeWindow) ? activeWindow.sessionId : null;
+  const activeFileWindowId = mode === "desktop" && activeWindow && isFileWindow(activeWindow)
+    ? activeWindow.id
+    : null;
 
   useLayoutEffect(() => {
     visibleSessionIdsRef.current = visibleSessionIds;
     activeSessionIdRef.current = activeSessionId;
+    activeFileWindowIdRef.current = activeFileWindowId;
     clipboardRef.current = clipboard;
-  }, [activeSessionId, clipboard, visibleSessionIds]);
+  }, [activeFileWindowId, activeSessionId, clipboard, visibleSessionIds]);
 
   useEffect(() => {
     for (const id of visibleSessionIds) {
@@ -637,18 +642,20 @@ export function FileWorkspace({
           <VirtualRootView
             roots={roots}
             surfaceId={session.id}
+            dropWindowId={window.id}
+            dropDisabled={Boolean(windowDialogs[window.id])}
             dropLayer={window.zOrder}
             dropFeedback={dropFeedback}
             labels={labels}
             onActivate={() => focusDesktopWindow(window.id)}
             onOpenRoot={(root) => setSessionLocation(session.id, { kind: "directory", rootId: root.id, path: "." })}
-            actionsForRoot={(root) => rootContextActions(session.id, root)}
+            actionsForRoot={(root) => rootContextActions(window.id, root)}
           />
         ) : (
           <FilePane
             title={titleForSession(session, roots, labels)}
             labels={labels}
-            {...filePaneProps(session.id, session, () => focusDesktopWindow(window.id), window.zOrder)}
+            {...filePaneProps(session.id, session, () => focusDesktopWindow(window.id), window.zOrder, window.id)}
             showRootSelector={false}
             pathRootLabel={rootName}
             rootCatalogLabel={labels.allLocations}
@@ -793,11 +800,19 @@ export function FileWorkspace({
     );
   }
 
-  function filePaneProps(sessionId: string, session: BrowserSession, onActivate: () => void, dropLayer: number) {
+  function filePaneProps(
+    sessionId: string,
+    session: BrowserSession,
+    onActivate: () => void,
+    dropLayer: number,
+    dropWindowId?: string,
+  ) {
     const location = session.location.kind === "directory" ? session.location : { kind: "directory" as const, rootId: "", path: "." };
     return {
       paneKey: sessionId,
       dropLayer,
+      dropWindowId,
+      dropDisabled: Boolean(dropWindowId && windowDialogs[dropWindowId]),
       onContextTarget: (path: string | null) => selectContextTarget(sessionId, path, onActivate),
       dropFeedback,
       roots,
@@ -869,7 +884,7 @@ export function FileWorkspace({
       commands: {
         onCopy: () => copySessionSelection(sessionId, "copy"),
         onCut: () => copySessionSelection(sessionId, "move"),
-        onPaste: () => pasteTarget && pasteClipboard(pasteTarget),
+        onPaste: () => pasteTarget && pasteClipboard(pasteTarget, windowId),
         onOpenInNewWindow: () => {
           if (session?.location.kind === "directory" && targetEntry?.type === "directory") {
             openDirectoryWindow(session.location.rootId, targetEntry.relativePath);
@@ -883,7 +898,7 @@ export function FileWorkspace({
     ];
   }
 
-  function rootContextActions(_sessionId: string, root: Root) {
+  function rootContextActions(windowId: string, root: Root) {
     return createClipboardActions({
       selectedCount: 0,
       canPaste: Boolean(clipboardRef.current),
@@ -892,7 +907,7 @@ export function FileWorkspace({
       commands: {
         onCopy: () => undefined,
         onCut: () => undefined,
-        onPaste: () => pasteClipboard({ rootId: root.id, path: "." }),
+        onPaste: () => pasteClipboard({ rootId: root.id, path: "." }, windowId),
         onOpenInNewWindow: () => undefined,
       },
     }).filter((action) => action.id === "clipboardPaste");
@@ -1035,10 +1050,13 @@ export function FileWorkspace({
       if (clipboardRef.current) toast.error(labels.pasteUnavailable);
       return false;
     }
-    return pasteClipboard({ rootId: session.location.rootId, path: session.location.path });
+    return pasteClipboard(
+      { rootId: session.location.rootId, path: session.location.path },
+      activeFileWindowIdRef.current ?? undefined,
+    );
   }
 
-  function pasteClipboard(target: { rootId: string; path: string }) {
+  function pasteClipboard(target: { rootId: string; path: string }, windowId?: string) {
     const currentClipboard = clipboardRef.current;
     if (!currentClipboard) return false;
     const source: FileDragSource = {
@@ -1060,10 +1078,20 @@ export function FileWorkspace({
       toast.error(labels.invalidDrop(feedback.reason ?? "inside-source"));
       return true;
     }
-    setPreviewState({
+    const preview = {
       request: buildClipboardRequest(currentClipboard, target),
       clearMoveClipboard: currentClipboard.operation === "move",
-    });
+    };
+    if (mode === "desktop" && windowId) {
+      openDialogForWindow({
+        dialogId: nextDialogId(),
+        windowId,
+        kind: "operation",
+        ...preview,
+      });
+    } else {
+      setPreviewState(preview);
+    }
     return true;
   }
 
@@ -1097,7 +1125,17 @@ export function FileWorkspace({
       toast.error(labels.invalidDrop(feedback.reason ?? "inside-source"));
       return;
     }
-    setPreviewState({ request: buildDragRequest(source, target), operationChoices: ["move", "copy"] });
+    const preview = { request: buildDragRequest(source, target), operationChoices: ["move", "copy"] as const };
+    if (mode === "desktop" && target.windowId) {
+      openDialogForWindow({
+        dialogId: nextDialogId(),
+        windowId: target.windowId,
+        kind: "operation",
+        ...preview,
+      });
+    } else {
+      setPreviewState(preview);
+    }
   }
 
   function clearFileDrag() {

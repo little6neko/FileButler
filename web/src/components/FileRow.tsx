@@ -19,6 +19,8 @@ import { FileIcon } from "./FileIcon";
 type Props = {
   paneKey: PaneKey;
   dropLayer?: number;
+  dropWindowId?: string;
+  dropDisabled?: boolean;
   rootId: string;
   parentPath: string;
   entry: Entry;
@@ -34,6 +36,8 @@ type Props = {
 export const FileRow = memo(function FileRow({
   paneKey,
   dropLayer = 0,
+  dropWindowId,
+  dropDisabled = false,
   rootId,
   parentPath,
   entry,
@@ -72,6 +76,7 @@ export const FileRow = memo(function FileRow({
     id: fileDragId(paneKey, entry.relativePath),
     data: dragData,
     attributes: { role: "button", tabIndex: -1 },
+    disabled: dropDisabled,
   });
   const directoryTarget = useMemo<FileDropData>(() => ({
     id: directoryDropId(paneKey, entry.relativePath),
@@ -81,11 +86,12 @@ export const FileRow = memo(function FileRow({
     path: entry.relativePath,
     label: entry.name,
     layer: dropLayer,
-  }), [dropLayer, entry.name, entry.relativePath, paneKey, rootId]);
+    windowId: dropWindowId,
+  }), [dropLayer, dropWindowId, entry.name, entry.relativePath, paneKey, rootId]);
   const drop = useDroppable({
     id: directoryTarget.id,
     data: directoryTarget,
-    disabled: entry.type !== "directory",
+    disabled: dropDisabled || entry.type !== "directory",
   });
   const setDropNodeRef = drop.setNodeRef;
   const setNodeRef = useCallback((node: HTMLTableRowElement | null) => {
@@ -116,6 +122,8 @@ export const FileRow = memo(function FileRow({
       data-dragging={isDragging ? "true" : "false"}
       data-clipboard-cut={isCut ? "true" : undefined}
       data-drop-kind={entry.type === "directory" ? "directory" : undefined}
+      data-drop-window-id={dropWindowId}
+      data-drop-disabled={dropDisabled ? "true" : undefined}
       data-drop-state={feedback ? (feedback.valid ? "valid" : "invalid") : undefined}
       aria-selected={selected}
       className={entry.type === "directory" ? "directory-row" : undefined}

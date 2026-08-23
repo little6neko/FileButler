@@ -10,6 +10,8 @@ import { PaneContextMenu } from "./PaneContextMenu";
 export function VirtualRootView({
   roots,
   surfaceId,
+  dropWindowId,
+  dropDisabled = false,
   dropFeedback,
   labels,
   onActivate,
@@ -19,6 +21,8 @@ export function VirtualRootView({
 }: {
   roots: Root[];
   surfaceId: string;
+  dropWindowId?: string;
+  dropDisabled?: boolean;
   dropFeedback: FileDropFeedback | null;
   labels: UIStrings;
   onActivate(): void;
@@ -27,7 +31,13 @@ export function VirtualRootView({
   dropLayer?: number;
 }) {
   return (
-    <section className="virtual-root" aria-label={labels.allLocations} onPointerDown={onActivate}>
+    <section
+      className="virtual-root"
+      aria-label={labels.allLocations}
+      data-drop-window-id={dropWindowId}
+      data-drop-disabled={dropDisabled ? "true" : undefined}
+      onPointerDown={onActivate}
+    >
       <header>
         <div>
           <strong>{labels.allLocations}</strong>
@@ -43,6 +53,8 @@ export function VirtualRootView({
               key={root.id}
               root={root}
               surfaceId={surfaceId}
+              dropWindowId={dropWindowId}
+              dropDisabled={dropDisabled}
               dropFeedback={dropFeedback}
               labels={labels}
               onOpen={() => onOpenRoot(root)}
@@ -60,6 +72,8 @@ export function VirtualRootView({
 function RootCard({
   root,
   surfaceId,
+  dropWindowId,
+  dropDisabled,
   dropFeedback,
   labels,
   onOpen,
@@ -68,6 +82,8 @@ function RootCard({
 }: {
   root: Root;
   surfaceId: string;
+  dropWindowId?: string;
+  dropDisabled: boolean;
   dropFeedback: FileDropFeedback | null;
   labels: UIStrings;
   onOpen(): void;
@@ -82,8 +98,9 @@ function RootCard({
     path: ".",
     label: root.name,
     layer: dropLayer,
+    windowId: dropWindowId,
   };
-  const drop = useDroppable({ id: target.id, data: target });
+  const drop = useDroppable({ id: target.id, data: target, disabled: dropDisabled });
   const setDropNodeRef = drop.setNodeRef;
   const setRootCardNode = useCallback((node: HTMLButtonElement | null) => {
     setDropNodeRef(node);
@@ -95,6 +112,8 @@ function RootCard({
         ref={setRootCardNode}
         type="button"
         className="virtual-root-card"
+        data-drop-window-id={dropWindowId}
+        data-drop-disabled={dropDisabled ? "true" : undefined}
         data-drop-state={feedback ? (feedback.valid ? "valid" : "invalid") : undefined}
         onClick={(event) => {
           if (event.detail === 0) onOpen();

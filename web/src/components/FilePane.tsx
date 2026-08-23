@@ -32,6 +32,8 @@ import { PaneStatusBar } from "./PaneStatusBar";
 type FilePaneProps = {
   paneKey?: PaneKey;
   dropLayer?: number;
+  dropWindowId?: string;
+  dropDisabled?: boolean;
   actions?: FileAction[];
   actionsForSelection?(selectedCount: number): FileAction[];
   onContextTarget?(path: string | null): void;
@@ -69,6 +71,8 @@ type FilePaneProps = {
 export function FilePane({
   paneKey = "left",
   dropLayer = 0,
+  dropWindowId,
+  dropDisabled = false,
   actions = [],
   actionsForSelection,
   onContextTarget = () => undefined,
@@ -155,11 +159,12 @@ export function FilePane({
     path: currentPath,
     label: labels.currentDirectory,
     layer: dropLayer,
+    windowId: dropWindowId,
   };
   const paneDrop = useDroppable({
     id: paneTarget.id,
     data: paneTarget,
-    disabled: loading || Boolean(error),
+    disabled: loading || Boolean(error) || dropDisabled,
   });
   const setPaneDropNodeRef = paneDrop.setNodeRef;
   const setFileListNode = useCallback((node: HTMLDivElement | null) => {
@@ -291,6 +296,8 @@ export function FilePane({
   return (
     <section
       className="file-pane"
+      data-drop-window-id={dropWindowId}
+      data-drop-disabled={dropDisabled ? "true" : undefined}
       aria-label={title}
       aria-current={isActive ? "true" : undefined}
       data-active={isActive ? "true" : "false"}
@@ -466,6 +473,8 @@ export function FilePane({
                 key={entry.relativePath}
                 paneKey={paneKey}
                 dropLayer={dropLayer}
+                dropWindowId={dropWindowId}
+                dropDisabled={dropDisabled}
                 rootId={selectedRootId}
                 parentPath={currentPath}
                 entry={entry}

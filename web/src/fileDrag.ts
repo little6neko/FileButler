@@ -27,6 +27,7 @@ export type FileDropData = {
   path: string;
   label: string;
   layer?: number;
+  windowId?: string;
 };
 
 export type FileDropFeedback = {

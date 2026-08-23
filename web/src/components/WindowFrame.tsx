@@ -28,6 +28,7 @@ export function WindowFrame({
   onToggleMaximize,
   onClose,
   closeDisabled = false,
+  childDialog,
   children,
 }: {
   window: DesktopWindowRecord;
@@ -42,6 +43,7 @@ export function WindowFrame({
   onToggleMaximize(): void;
   onClose(): void;
   closeDisabled?: boolean;
+  childDialog?: ReactNode;
   children: ReactNode;
 }) {
   const gestureCleanupRef = useRef<(() => void) | null>(null);
@@ -111,7 +113,10 @@ export function WindowFrame({
           </Button>
         </div>
       </div>
-      <div className="desktop-window-content">{children}</div>
+      <div className="desktop-window-content">
+        {children}
+        {childDialog}
+      </div>
       {window.status === "normal" ? resizeDirections.map((direction) => (
         <span
           key={direction}

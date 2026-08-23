@@ -11,6 +11,20 @@ type Props = {
   labels?: UIStrings;
 };
 
+type ContentProps = Pick<Props, "name" | "url" | "kind">;
+
+export function MediaPreviewContent({ name, url, kind }: ContentProps) {
+  return (
+    <div className="media-preview-content" data-testid="media-preview-content">
+      {kind === "image" ? (
+        <img src={url} alt={name} />
+      ) : (
+        <video src={url} controls aria-label={name} />
+      )}
+    </div>
+  );
+}
+
 export function MediaPreview({ name, url, kind, onClose, labels = strings.en }: Props) {
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -19,12 +33,8 @@ export function MediaPreview({ name, url, kind, onClose, labels = strings.en }: 
           <DialogTitle className="sr-only">{labels.mediaPreview}</DialogTitle>
           <p className="text-base font-medium leading-none">{name}</p>
         </DialogHeader>
-        <div className="grid max-h-[78vh] place-items-center overflow-auto rounded-md bg-slate-950/5 p-2">
-          {kind === "image" ? (
-            <img src={url} alt={name} className="max-h-[74vh] max-w-full object-contain" />
-          ) : (
-            <video src={url} controls aria-label={name} className="max-h-[74vh] max-w-full" />
-          )}
+        <div className="media-preview-dialog-viewport">
+          <MediaPreviewContent name={name} url={url} kind={kind} />
         </div>
       </DialogContent>
     </Dialog>

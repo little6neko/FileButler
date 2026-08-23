@@ -30,7 +30,12 @@ export type PowerRenameWindowRecord = BaseWindowRecord & {
   instanceId: string;
 };
 
-export type DesktopWindowRecord = FileWindowRecord | PowerRenameWindowRecord;
+export type MediaPreviewWindowRecord = BaseWindowRecord & {
+  kind: "mediaPreview";
+  instanceId: string;
+};
+
+export type DesktopWindowRecord = FileWindowRecord | PowerRenameWindowRecord | MediaPreviewWindowRecord;
 
 export type WindowManagerState = {
   windows: DesktopWindowRecord[];
@@ -41,6 +46,7 @@ export type WindowManagerState = {
 
 export const desktopWindowMinimum = { width: 560, height: 360 } as const;
 export const powerRenameWindowMinimum = { width: 720, height: 480 } as const;
+export const mediaPreviewWindowMinimum = { width: 420, height: 280 } as const;
 
 const desktopInset = 12;
 const cascadeOrigin = { x: 96, y: 40 } as const;
@@ -68,10 +74,22 @@ export function openPowerRenameWindow(
   return openWindow(state, id, { kind: "powerRename", instanceId }, bounds);
 }
 
+export function openMediaPreviewWindow(
+  state: WindowManagerState,
+  id: string,
+  instanceId: string,
+  bounds: DesktopBounds,
+): WindowManagerState {
+  return openWindow(state, id, { kind: "mediaPreview", instanceId }, bounds);
+}
+
 function openWindow(
   state: WindowManagerState,
   id: string,
-  identity: Pick<FileWindowRecord, "kind" | "sessionId"> | Pick<PowerRenameWindowRecord, "kind" | "instanceId">,
+  identity:
+    | Pick<FileWindowRecord, "kind" | "sessionId">
+    | Pick<PowerRenameWindowRecord, "kind" | "instanceId">
+    | Pick<MediaPreviewWindowRecord, "kind" | "instanceId">,
   bounds: DesktopBounds,
 ): WindowManagerState {
   const rect = cascadeRect(bounds, state.cascadeIndex, windowMinimum(identity));
@@ -291,11 +309,17 @@ function highestVisibleZ(windows: DesktopWindowRecord[]) {
 }
 
 export function windowMinimum(window: Pick<DesktopWindowRecord, "kind">) {
-  return window.kind === "powerRename" ? powerRenameWindowMinimum : desktopWindowMinimum;
+  if (window.kind === "powerRename") return powerRenameWindowMinimum;
+  if (window.kind === "mediaPreview") return mediaPreviewWindowMinimum;
+  return desktopWindowMinimum;
 }
 
 export function isFileWindow(window: DesktopWindowRecord): window is FileWindowRecord {
   return window.kind === "file";
+}
+
+export function isMediaPreviewWindow(window: DesktopWindowRecord): window is MediaPreviewWindowRecord {
+  return window.kind === "mediaPreview";
 }
 
 function sameRect(left: WindowRect, right: WindowRect) {

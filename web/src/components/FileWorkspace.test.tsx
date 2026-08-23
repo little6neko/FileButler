@@ -41,6 +41,7 @@ beforeEach(() => {
     if (rootId === "target" && path === ".") return [];
     return [];
   });
+  vi.mocked(api.mediaUrl).mockReset();
   vi.mocked(api.opsDryRun).mockReset();
   vi.mocked(api.opsDryRun).mockResolvedValue({ hasConflict: false, items: [] });
   vi.mocked(api.opsCreateJob).mockReset();
@@ -205,6 +206,110 @@ it("closes a compact media preview for a mode switch", async () => {
   fireEvent.click(modeButton);
   expect(await screen.findByTestId("desktop-workspace")).toBeVisible();
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Media preview" })).not.toBeInTheDocument());
+});
+
+it("opens reusable independent media windows for different files in full mode", async () => {
+  vi.mocked(api.browse).mockImplementation(async (rootId, path) => {
+    if (rootId === "source" && path === ".") {
+      return [...sourceEntries,
+        {
+          name: "photo.png",
+          relativePath: "photo.png",
+          type: "file",
+          size: 1,
+          mode: "",
+          modifiedUnix: 0,
+          isSymlink: false,
+        },
+        {
+          name: "clip.mp4",
+          relativePath: "clip.mp4",
+          type: "file",
+          size: 1,
+          mode: "",
+          modifiedUnix: 0,
+          isSymlink: false,
+        },
+      ];
+    }
+    return [];
+  });
+  vi.mocked(api.mediaUrl).mockImplementation((_rootId, path) => `/media/${path}`);
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const taskbar = screen.getByRole("navigation", { name: "System taskbar" });
+  await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
+  const fileWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
+
+  await userEvent.dblClick(await within(fileWindow).findByText("photo.png"));
+  let mediaWindows = container.querySelectorAll<HTMLElement>("[data-window-kind='mediaPreview']");
+  expect(mediaWindows).toHaveLength(1);
+  expect(within(mediaWindows[0]).getByRole("img", { name: "photo.png" })).toHaveAttribute("src", "/media/photo.png");
+  expect(within(mediaWindows[0]).getByRole("button", { name: "Minimize window" })).toBeInTheDocument();
+  expect(mediaWindows[0].querySelector(".lucide-file-image")).not.toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Media preview" })).not.toBeInTheDocument();
+  expect(within(taskbar).getByRole("button", { name: "photo.png" }).querySelector(".lucide-file-image")).not.toBeNull();
+
+  await userEvent.click(within(mediaWindows[0]).getByRole("button", { name: "Minimize window" }));
+  expect(container.querySelectorAll("[data-window-kind='mediaPreview']")).toHaveLength(0);
+  expect(within(taskbar).getByRole("button", { name: "photo.png" })).toHaveAttribute("data-window-status", "minimized");
+
+  await userEvent.dblClick(within(fileWindow).getByText("photo.png"));
+  mediaWindows = container.querySelectorAll<HTMLElement>("[data-window-kind='mediaPreview']");
+  expect(mediaWindows).toHaveLength(1);
+  expect(within(taskbar).getAllByRole("button", { name: "photo.png" })).toHaveLength(1);
+  expect(mediaWindows[0]).toHaveAttribute("data-active", "true");
+
+  await userEvent.dblClick(within(fileWindow).getByText("clip.mp4"));
+  mediaWindows = container.querySelectorAll<HTMLElement>("[data-window-kind='mediaPreview']");
+  expect(mediaWindows).toHaveLength(2);
+  expect(within(mediaWindows[1]).getByLabelText("clip.mp4")).toHaveAttribute("controls");
+  expect(mediaWindows[1].querySelector(".lucide-file-play")).not.toBeNull();
+  expect(within(taskbar).getByRole("button", { name: "clip.mp4" }).querySelector(".lucide-file-play")).not.toBeNull();
+  expect(api.mediaUrl).toHaveBeenCalledTimes(2);
+});
+
+it("keeps full-mode media windows independent from their source window and across mode switches", async () => {
+  vi.mocked(api.browse).mockImplementation(async (rootId, path) => {
+    if (rootId === "source" && path === ".") {
+      return [...sourceEntries, {
+        name: "photo.png",
+        relativePath: "photo.png",
+        type: "file",
+        size: 1,
+        mode: "",
+        modifiedUnix: 0,
+        isSymlink: false,
+      }];
+    }
+    return [];
+  });
+  vi.mocked(api.mediaUrl).mockReturnValue("/media/photo.png");
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const taskbar = screen.getByRole("navigation", { name: "System taskbar" });
+  await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
+  const fileWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
+  await userEvent.dblClick(await within(fileWindow).findByText("photo.png"));
+  expect(container.querySelectorAll("[data-window-kind='mediaPreview']")).toHaveLength(1);
+
+  await userEvent.click(within(fileWindow).getByRole("button", { name: "Close window" }));
+  expect(container.querySelector("[data-window-kind='file']")).toBeNull();
+  expect(container.querySelectorAll("[data-window-kind='mediaPreview']")).toHaveLength(1);
+  expect(within(taskbar).getByRole("button", { name: "photo.png" })).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "Switch to compact mode" }));
+  expect(container.querySelector("[data-window-kind='mediaPreview']")).toBeNull();
+  expect(within(taskbar).queryByRole("button", { name: "photo.png" })).not.toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "Switch to full mode" }));
+  expect(container.querySelectorAll("[data-window-kind='mediaPreview']")).toHaveLength(1);
+  expect(within(taskbar).getByRole("button", { name: "photo.png" })).toBeInTheDocument();
+
+  const mediaWindow = container.querySelector<HTMLElement>("[data-window-kind='mediaPreview']")!;
+  await userEvent.click(within(mediaWindow).getByRole("button", { name: "Close window" }));
+  expect(container.querySelector("[data-window-kind='mediaPreview']")).toBeNull();
+  expect(within(taskbar).queryByRole("button", { name: "photo.png" })).not.toBeInTheDocument();
 });
 
 it("enters a mapped root and returns to the virtual root from the breadcrumb", async () => {

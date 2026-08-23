@@ -20,7 +20,7 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { Files, ScanText } from "lucide-react";
+import { FileImage, FileVideo, Files, ScanText } from "lucide-react";
 import { toast } from "sonner";
 import { buildClipboardRequest, createAppClipboard, isEditableShortcutTarget, type AppClipboard } from "../appClipboard";
 import { api } from "../api/client";
@@ -53,8 +53,10 @@ import {
   createWindowManagerState,
   focusWindow,
   isFileWindow,
+  isMediaPreviewWindow,
   minimizeWindow,
   openFileWindow,
+  openMediaPreviewWindow,
   openPowerRenameWindow,
   reconcileWindowBounds,
   restoreWindow,
@@ -62,8 +64,8 @@ import {
   toggleMaximizeWindow,
   windowsByMostRecent,
   type DesktopBounds,
+  type DesktopWindowRecord,
   type FileWindowRecord,
-  type PowerRenameWindowRecord,
   type WindowManagerState,
   type WindowRect,
 } from "../windowManager";
@@ -88,7 +90,7 @@ import { FileDragOverlay } from "./FileDragOverlay";
 import { FilePane } from "./FilePane";
 import { JobsSheet } from "./JobsSheet";
 import { LanguageSelect } from "./LanguageSelect";
-import { MediaPreview } from "./MediaPreview";
+import { MediaPreview, MediaPreviewContent } from "./MediaPreview";
 import { MkdirContent, MkdirDialog } from "./MkdirDialog";
 import { OperationPreview, OperationPreviewContent } from "./OperationPreview";
 import { defaultRenameOptions } from "./powerRenameOptions";
@@ -121,6 +123,12 @@ type MediaPreviewState = {
   name: string;
   url: string;
   kind: MediaKind;
+};
+
+type MediaPreviewInstance = MediaPreviewState & {
+  id: string;
+  rootId: string;
+  relativePath: string;
 };
 
 type PreviewState = {
@@ -178,6 +186,8 @@ export function FileWorkspace({
   const [powerRenameOptions, setPowerRenameOptions] = useState<RenameOptions | undefined>();
   const [powerRenameInstances, setPowerRenameInstancesState] = useState<Record<string, PowerRenameInstance>>({});
   const powerRenameInstancesRef = useRef(powerRenameInstances);
+  const [mediaPreviewInstances, setMediaPreviewInstancesState] = useState<Record<string, MediaPreviewInstance>>({});
+  const mediaPreviewInstancesRef = useRef(mediaPreviewInstances);
   const [jobsOpen, setJobsOpen] = useState(false);
   const [leftPanePercent, setLeftPanePercent] = useState(50);
   const [clipboard, setClipboard] = useState<AppClipboard | null>(null);
@@ -190,6 +200,7 @@ export function FileWorkspace({
   const sessionCounterRef = useRef(0);
   const windowCounterRef = useRef(0);
   const powerRenameCounterRef = useRef(0);
+  const mediaPreviewCounterRef = useRef(0);
   const dialogCounterRef = useRef(0);
   const contextTargetsRef = useRef<Record<string, string | null>>({});
   const visibleSessionIdsRef = useRef<string[]>([]);
@@ -226,6 +237,14 @@ export function FileWorkspace({
     const next = update(powerRenameInstancesRef.current);
     powerRenameInstancesRef.current = next;
     setPowerRenameInstancesState(next);
+  }, []);
+
+  const commitMediaPreviewInstances = useCallback((
+    update: (current: Record<string, MediaPreviewInstance>) => Record<string, MediaPreviewInstance>,
+  ) => {
+    const next = update(mediaPreviewInstancesRef.current);
+    mediaPreviewInstancesRef.current = next;
+    setMediaPreviewInstancesState(next);
   }, []);
 
   const commitWindowDialogs = useCallback((update: (current: WindowDialogs) => WindowDialogs) => {
@@ -434,6 +453,19 @@ export function FileWorkspace({
       });
       return items;
     }
+    if (isMediaPreviewWindow(window)) {
+      const instance = mediaPreviewInstances[window.instanceId];
+      if (instance) {
+        items.push({
+          id: window.id,
+          kind: window.kind,
+          mediaKind: instance.kind,
+          title: instance.name,
+          status: window.status,
+        });
+      }
+      return items;
+    }
     const instance = powerRenameInstances[window.instanceId];
     if (instance) {
       items.push({
@@ -566,7 +598,7 @@ export function FileWorkspace({
     );
   }
 
-  function renderDesktopWindow(window: FileWindowRecord | PowerRenameWindowRecord) {
+  function renderDesktopWindow(window: DesktopWindowRecord) {
     const active = windowState.activeWindowId === window.id;
     const frameProps = {
       window,
@@ -592,6 +624,23 @@ export function FileWorkspace({
           childDialog={renderWindowDialog(window)}
         >
           {renderFileWindow(window, session)}
+        </WindowFrame>
+      );
+    }
+
+    if (isMediaPreviewWindow(window)) {
+      const instance = mediaPreviewInstances[window.instanceId];
+      if (!instance) return null;
+      return (
+        <WindowFrame
+          key={window.id}
+          {...frameProps}
+          title={instance.name}
+          icon={instance.kind === "video" ? <FileVideo aria-hidden="true" /> : <FileImage aria-hidden="true" />}
+        >
+          <div className="media-preview-window-layout">
+            <MediaPreviewContent name={instance.name} url={instance.url} kind={instance.kind} />
+          </div>
         </WindowFrame>
       );
     }
@@ -1225,6 +1274,41 @@ export function FileWorkspace({
     return windowId;
   }
 
+  function openMediaPreviewWindowForEntry(rootId: string, entry: Entry, kind: MediaKind) {
+    const existingInstance = Object.values(mediaPreviewInstancesRef.current).find((instance) =>
+      instance.rootId === rootId && instance.relativePath === entry.relativePath,
+    );
+    if (existingInstance) {
+      const existingWindow = windowStateRef.current.windows.find((window) =>
+        isMediaPreviewWindow(window) && window.instanceId === existingInstance.id,
+      );
+      if (existingWindow) {
+        focusDesktopWindow(existingWindow.id);
+        return existingWindow.id;
+      }
+      removeMediaPreviewInstance(existingInstance.id);
+    }
+
+    const instanceId = `media-preview-${++mediaPreviewCounterRef.current}`;
+    const instance: MediaPreviewInstance = {
+      id: instanceId,
+      rootId,
+      relativePath: entry.relativePath,
+      name: entry.name,
+      url: api.mediaUrl(rootId, entry.relativePath),
+      kind,
+    };
+    commitMediaPreviewInstances((current) => ({ ...current, [instanceId]: instance }));
+    const windowId = `window-${++windowCounterRef.current}`;
+    commitWindowState((current) => openMediaPreviewWindow(
+      current,
+      windowId,
+      instanceId,
+      desktopBoundsRef.current,
+    ));
+    return windowId;
+  }
+
   function openVirtualRootWindow() {
     openWindowForSession(createSession({ kind: "virtual-root" }));
   }
@@ -1250,6 +1334,11 @@ export function FileWorkspace({
     const target = windowStateRef.current.windows.find((window) => window.id === id);
     if (!target) return;
     commitWindowDialogs((current) => clearWindowDialog(current, id));
+    if (isMediaPreviewWindow(target)) {
+      commitWindowState((current) => closeWindow(current, id));
+      removeMediaPreviewInstance(target.instanceId);
+      return;
+    }
     if (!isFileWindow(target)) {
       const instance = powerRenameInstancesRef.current[target.instanceId];
       if (instance?.submitting) return;
@@ -1285,6 +1374,15 @@ export function FileWorkspace({
 
   function removePowerRenameInstance(id: string) {
     commitPowerRenameInstances((current) => {
+      if (!current[id]) return current;
+      const next = { ...current };
+      delete next[id];
+      return next;
+    });
+  }
+
+  function removeMediaPreviewInstance(id: string) {
+    commitMediaPreviewInstances((current) => {
       if (!current[id]) return current;
       const next = { ...current };
       delete next[id];
@@ -1399,6 +1497,10 @@ export function FileWorkspace({
   function openMediaPreview(rootId: string, entry: Entry) {
     const kind = mediaKindForPath(entry.name);
     if (!kind) return;
+    if (mode === "desktop") {
+      openMediaPreviewWindowForEntry(rootId, entry, kind);
+      return;
+    }
     setMediaPreview({ name: entry.name, url: api.mediaUrl(rootId, entry.relativePath), kind });
   }
 

@@ -73,6 +73,16 @@ it("isolates options and control IDs across simultaneous PowerRename bodies", as
   expect(new Set(controlIDs).size).toBe(controlIDs.length);
 });
 
+it("reserves left-side space for both PowerRename input focus rings", () => {
+  vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
+  render(<PowerRenameHarness rootId="root-a" paths={["a.txt"]} />);
+
+  const optionsColumn = screen.getByTestId("rename-options-column");
+  expect(optionsColumn).toHaveClass("overflow-auto", "pl-1");
+  expect(within(optionsColumn).getByLabelText("Search")).toBeInTheDocument();
+  expect(within(optionsColumn).getByLabelText("Replace")).toBeInTheDocument();
+});
+
 it("keeps close and submit disabled while an external rename submission is pending", async () => {
   vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
   const onClose = vi.fn();

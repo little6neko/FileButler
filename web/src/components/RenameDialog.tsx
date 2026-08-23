@@ -148,7 +148,7 @@ export function PowerRenameContent({
       </header>
       <ErrorBanner message={previewError ?? submitError} />
       <div className="grid min-h-0 flex-1 grid-cols-[340px_minmax(0,1fr)] gap-4">
-        <section data-testid="rename-options-column" className="min-h-0 space-y-4 overflow-auto border-r pr-4">
+        <section data-testid="rename-options-column" className="min-h-0 space-y-4 overflow-auto border-r pr-4 pl-1">
           <div className="grid gap-2">
             <Label id={id("search-label")} htmlFor={id("search")}>{labels.search}</Label>
             <PresetInput

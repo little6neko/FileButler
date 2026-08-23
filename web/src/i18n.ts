@@ -98,6 +98,8 @@ export type UIStrings = {
   confirm: string;
   previewFailed: string;
   mediaPreview: string;
+  previousMedia: string;
+  nextMedia: string;
   jobCreationFailed: string;
   batchRename: string;
   renameDialog: string;
@@ -262,6 +264,8 @@ export const strings: Record<Language, UIStrings> = {
     confirm: "Confirm",
     previewFailed: "Preview failed",
     mediaPreview: "Media preview",
+    previousMedia: "Previous media",
+    nextMedia: "Next media",
     jobCreationFailed: "Job creation failed",
     batchRename: "Batch rename",
     renameDialog: "Rename dialog",
@@ -441,6 +445,8 @@ export const strings: Record<Language, UIStrings> = {
     confirm: "确认",
     previewFailed: "预览失败",
     mediaPreview: "媒体预览",
+    previousMedia: "上一个媒体",
+    nextMedia: "下一个媒体",
     jobCreationFailed: "创建任务失败",
     batchRename: "批量重命名",
     renameDialog: "重命名窗口",

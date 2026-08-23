@@ -46,8 +46,14 @@ import { strings } from "../i18n";
 import type { LanguageMode, UIStrings } from "../i18n";
 import { JobEventsStore } from "../jobEvents";
 import { useOptionalJobEventsStore } from "../jobEventsContext";
-import { mediaKindForPath } from "../media";
-import type { MediaKind } from "../media";
+import {
+  canMoveMedia,
+  createMediaGallerySnapshot,
+  currentMediaItem,
+  moveMedia,
+  type MediaDirection,
+  type MediaGallerySnapshot,
+} from "../mediaGallery";
 import {
   closeWindow,
   createWindowManagerState,
@@ -119,16 +125,10 @@ type BrowserSession = {
 type CompactPane = "left" | "right";
 type CompactBindings = Record<CompactPane, string>;
 
-type MediaPreviewState = {
-  name: string;
-  url: string;
-  kind: MediaKind;
-};
+type MediaPreviewState = MediaGallerySnapshot;
 
-type MediaPreviewInstance = MediaPreviewState & {
+type MediaPreviewInstance = MediaGallerySnapshot & {
   id: string;
-  rootId: string;
-  relativePath: string;
 };
 
 type PreviewState = {
@@ -455,12 +455,13 @@ export function FileWorkspace({
     }
     if (isMediaPreviewWindow(window)) {
       const instance = mediaPreviewInstances[window.instanceId];
-      if (instance) {
+      const item = instance ? currentMediaItem(instance) : null;
+      if (instance && item) {
         items.push({
           id: window.id,
           kind: window.kind,
-          mediaKind: instance.kind,
-          title: instance.name,
+          mediaKind: item.kind,
+          title: item.name,
           status: window.status,
         });
       }
@@ -477,6 +478,7 @@ export function FileWorkspace({
     }
     return items;
   }, []);
+  const compactMediaItem = mediaPreview ? currentMediaItem(mediaPreview) : null;
 
   return (
     <>
@@ -521,12 +523,17 @@ export function FileWorkspace({
           }}
         />
       ) : null}
-      {mediaPreview ? (
+      {mediaPreview && compactMediaItem ? (
         <MediaPreview
-          name={mediaPreview.name}
-          url={mediaPreview.url}
-          kind={mediaPreview.kind}
+          name={compactMediaItem.name}
+          url={api.mediaUrl(mediaPreview.rootId, compactMediaItem.relativePath)}
+          kind={compactMediaItem.kind}
+          mediaKey={compactMediaItem.relativePath}
+          canPrevious={canMoveMedia(mediaPreview, "previous")}
+          canNext={canMoveMedia(mediaPreview, "next")}
           labels={labels}
+          onPrevious={() => setMediaPreview((current) => current ? moveMedia(current, "previous") : current)}
+          onNext={() => setMediaPreview((current) => current ? moveMedia(current, "next") : current)}
           onClose={() => setMediaPreview(null)}
         />
       ) : null}
@@ -630,16 +637,28 @@ export function FileWorkspace({
 
     if (isMediaPreviewWindow(window)) {
       const instance = mediaPreviewInstances[window.instanceId];
-      if (!instance) return null;
+      const item = instance ? currentMediaItem(instance) : null;
+      if (!instance || !item) return null;
       return (
         <WindowFrame
           key={window.id}
           {...frameProps}
-          title={instance.name}
-          icon={instance.kind === "video" ? <FileVideo aria-hidden="true" /> : <FileImage aria-hidden="true" />}
+          title={item.name}
+          icon={item.kind === "video" ? <FileVideo aria-hidden="true" /> : <FileImage aria-hidden="true" />}
         >
           <div className="media-preview-window-layout">
-            <MediaPreviewContent name={instance.name} url={instance.url} kind={instance.kind} />
+            <MediaPreviewContent
+              name={item.name}
+              url={api.mediaUrl(instance.rootId, item.relativePath)}
+              kind={item.kind}
+              mediaKey={item.relativePath}
+              canPrevious={canMoveMedia(instance, "previous")}
+              canNext={canMoveMedia(instance, "next")}
+              previousLabel={labels.previousMedia}
+              nextLabel={labels.nextMedia}
+              onPrevious={() => moveMediaPreviewInstance(instance.id, "previous")}
+              onNext={() => moveMediaPreviewInstance(instance.id, "next")}
+            />
           </div>
         </WindowFrame>
       );
@@ -888,7 +907,7 @@ export function FileWorkspace({
       onSelectEntry: (path: string, modifiers: FileSelectionModifiers) => session.selectionStore.select(path, fileSelectionMode(modifiers)),
       onSelectAll: (checked: boolean) => session.selectionStore.selectAll(checked),
       onSelectPaths: (paths: string[]) => session.selectionStore.replace(paths),
-      onOpenFile: (entry: Entry) => openMediaPreview(location.rootId, entry),
+      onOpenFile: (entry: Entry) => openMediaPreview(sessionId, entry),
       onRefresh: () => void loadSession(sessionId, true),
       onActivate,
       isActive: activeSessionId === sessionId,
@@ -1274,30 +1293,22 @@ export function FileWorkspace({
     return windowId;
   }
 
-  function openMediaPreviewWindowForEntry(rootId: string, entry: Entry, kind: MediaKind) {
-    const existingInstance = Object.values(mediaPreviewInstancesRef.current).find((instance) =>
-      instance.rootId === rootId && instance.relativePath === entry.relativePath,
-    );
-    if (existingInstance) {
-      const existingWindow = windowStateRef.current.windows.find((window) =>
-        isMediaPreviewWindow(window) && window.instanceId === existingInstance.id,
-      );
-      if (existingWindow) {
-        focusDesktopWindow(existingWindow.id);
-        return existingWindow.id;
-      }
-      removeMediaPreviewInstance(existingInstance.id);
+  function openMediaPreviewWindowForSnapshot(snapshot: MediaGallerySnapshot) {
+    const item = currentMediaItem(snapshot);
+    if (!item) return null;
+    const existingWindow = windowsByMostRecent(windowStateRef.current).find((window) => {
+      if (!isMediaPreviewWindow(window)) return false;
+      const instance = mediaPreviewInstancesRef.current[window.instanceId];
+      const existingItem = instance ? currentMediaItem(instance) : null;
+      return instance?.rootId === snapshot.rootId && existingItem?.relativePath === item.relativePath;
+    });
+    if (existingWindow) {
+      focusDesktopWindow(existingWindow.id);
+      return existingWindow.id;
     }
 
     const instanceId = `media-preview-${++mediaPreviewCounterRef.current}`;
-    const instance: MediaPreviewInstance = {
-      id: instanceId,
-      rootId,
-      relativePath: entry.relativePath,
-      name: entry.name,
-      url: api.mediaUrl(rootId, entry.relativePath),
-      kind,
-    };
+    const instance: MediaPreviewInstance = { id: instanceId, ...snapshot };
     commitMediaPreviewInstances((current) => ({ ...current, [instanceId]: instance }));
     const windowId = `window-${++windowCounterRef.current}`;
     commitWindowState((current) => openMediaPreviewWindow(
@@ -1387,6 +1398,15 @@ export function FileWorkspace({
       const next = { ...current };
       delete next[id];
       return next;
+    });
+  }
+
+  function moveMediaPreviewInstance(id: string, direction: MediaDirection) {
+    commitMediaPreviewInstances((current) => {
+      const instance = current[id];
+      if (!instance) return current;
+      const next = moveMedia(instance, direction);
+      return next === instance ? current : { ...current, [id]: next };
     });
   }
 
@@ -1494,14 +1514,22 @@ export function FileWorkspace({
     jobEvents.registerCreatedJob(id);
   }
 
-  function openMediaPreview(rootId: string, entry: Entry) {
-    const kind = mediaKindForPath(entry.name);
-    if (!kind) return;
+  function openMediaPreview(sessionId: string, entry: Entry) {
+    const session = sessionsRef.current[sessionId];
+    if (!session || session.location.kind !== "directory" || !session.location.rootId) return;
+    const snapshot = createMediaGallerySnapshot(
+      session.location.rootId,
+      session.location.path,
+      session.entries,
+      session.selectionStore.getVisibleOrder(),
+      entry.relativePath,
+    );
+    if (!snapshot) return;
     if (mode === "desktop") {
-      openMediaPreviewWindowForEntry(rootId, entry, kind);
+      openMediaPreviewWindowForSnapshot(snapshot);
       return;
     }
-    setMediaPreview({ name: entry.name, url: api.mediaUrl(rootId, entry.relativePath), kind });
+    setMediaPreview(snapshot);
   }
 
   function startPaneResize(event: ReactMouseEvent<HTMLDivElement>) {

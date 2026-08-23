@@ -27,6 +27,10 @@ const sourceEntries: Entry[] = [
   { name: "a.txt", relativePath: "a.txt", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
 ];
 
+function mediaEntry(name: string, size = 1): Entry {
+  return { name, relativePath: name, type: "file", size, mode: "", modifiedUnix: 0, isSymlink: false };
+}
+
 beforeEach(() => {
   vi.mocked(toast.success).mockClear();
   vi.mocked(toast.error).mockClear();
@@ -208,6 +212,35 @@ it("closes a compact media preview for a mode switch", async () => {
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Media preview" })).not.toBeInTheDocument());
 });
 
+it("navigates a compact media snapshot and disables the first and last directions", async () => {
+  vi.mocked(api.browse).mockImplementation(async (rootId, path) => {
+    if (rootId === "source" && path === ".") {
+      return [...sourceEntries, mediaEntry("alpha.png"), mediaEntry("beta.mp4"), mediaEntry("gamma.jpg")];
+    }
+    return [];
+  });
+  vi.mocked(api.mediaUrl).mockImplementation((_rootId, path) => `/media/${path}`);
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+
+  await userEvent.dblClick(await within(leftPane).findByText("beta.mp4"));
+  const dialog = await screen.findByRole("dialog", { name: "Media preview" });
+  expect(within(dialog).getByLabelText("beta.mp4")).toHaveAttribute("src", "/media/beta.mp4");
+  expect(within(dialog).getByRole("button", { name: "Previous media" })).toBeEnabled();
+  expect(within(dialog).getByRole("button", { name: "Next media" })).toBeEnabled();
+
+  await userEvent.click(within(dialog).getByRole("button", { name: "Next media" }));
+  expect(within(dialog).getByRole("img", { name: "gamma.jpg" })).toHaveAttribute("src", "/media/gamma.jpg");
+  expect(within(dialog).getByRole("button", { name: "Previous media" })).toBeEnabled();
+  expect(within(dialog).getByRole("button", { name: "Next media" })).toBeDisabled();
+
+  await userEvent.click(within(dialog).getByRole("button", { name: "Previous media" }));
+  await userEvent.click(within(dialog).getByRole("button", { name: "Previous media" }));
+  expect(within(dialog).getByRole("img", { name: "alpha.png" })).toHaveAttribute("src", "/media/alpha.png");
+  expect(within(dialog).getByRole("button", { name: "Previous media" })).toBeDisabled();
+  expect(within(dialog).getByRole("button", { name: "Next media" })).toBeEnabled();
+});
+
 it("opens reusable independent media windows for different files in full mode", async () => {
   vi.mocked(api.browse).mockImplementation(async (rootId, path) => {
     if (rootId === "source" && path === ".") {
@@ -266,7 +299,41 @@ it("opens reusable independent media windows for different files in full mode", 
   expect(within(mediaWindows[1]).getByLabelText("clip.mp4")).toHaveAttribute("controls");
   expect(mediaWindows[1].querySelector(".lucide-file-play")).not.toBeNull();
   expect(within(taskbar).getByRole("button", { name: "clip.mp4" }).querySelector(".lucide-file-play")).not.toBeNull();
-  expect(api.mediaUrl).toHaveBeenCalledTimes(2);
+  expect(api.mediaUrl).toHaveBeenCalledWith("source", "photo.png");
+  expect(api.mediaUrl).toHaveBeenCalledWith("source", "clip.mp4");
+});
+
+it("updates a full media window and taskbar while keeping its snapshot after the source closes", async () => {
+  vi.mocked(api.browse).mockImplementation(async (rootId, path) => {
+    if (rootId === "source" && path === ".") {
+      return [...sourceEntries, mediaEntry("alpha.png"), mediaEntry("beta.mp4"), mediaEntry("gamma.jpg")];
+    }
+    return [];
+  });
+  vi.mocked(api.mediaUrl).mockImplementation((_rootId, path) => `/media/${path}`);
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const taskbar = screen.getByRole("navigation", { name: "System taskbar" });
+  await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
+  const fileWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
+
+  await userEvent.dblClick(await within(fileWindow).findByText("beta.mp4"));
+  const mediaWindow = container.querySelector<HTMLElement>("[data-window-kind='mediaPreview']")!;
+  expect(within(mediaWindow).getByLabelText("beta.mp4")).toBeInTheDocument();
+  expect(within(taskbar).getByRole("button", { name: "beta.mp4" }).querySelector(".lucide-file-play")).not.toBeNull();
+
+  await userEvent.click(within(mediaWindow).getByRole("button", { name: "Next media" }));
+  expect(mediaWindow).toHaveAttribute("aria-label", "gamma.jpg");
+  expect(within(mediaWindow).getByRole("img", { name: "gamma.jpg" })).toHaveAttribute("src", "/media/gamma.jpg");
+  expect(within(taskbar).getByRole("button", { name: "gamma.jpg" }).querySelector(".lucide-file-image")).not.toBeNull();
+  expect(within(mediaWindow).getByRole("button", { name: "Next media" })).toBeDisabled();
+
+  await userEvent.click(within(fileWindow).getByRole("button", { name: "Close window" }));
+  expect(container.querySelector("[data-window-kind='file']")).toBeNull();
+  await userEvent.click(within(mediaWindow).getByRole("button", { name: "Previous media" }));
+  expect(mediaWindow).toHaveAttribute("aria-label", "beta.mp4");
+  expect(within(mediaWindow).getByLabelText("beta.mp4")).toHaveAttribute("src", "/media/beta.mp4");
+  expect(within(taskbar).getByRole("button", { name: "beta.mp4" }).querySelector(".lucide-file-play")).not.toBeNull();
 });
 
 it("keeps full-mode media windows independent from their source window and across mode switches", async () => {

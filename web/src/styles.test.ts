@@ -52,6 +52,30 @@ it("keeps compact sticky file headers and an active-pane ring", () => {
   expect(rule('.file-pane[data-active="true"]')).toContain("box-shadow:");
 });
 
+it("fades circular media navigation controls through window, hover, and disabled states", () => {
+  const button = rule(".media-preview-navigation-button");
+  expect(button).toContain("position: absolute;");
+  expect(button).toContain("border-radius: 999px;");
+  expect(button).toContain("opacity: 0;");
+  expect(button).toContain("pointer-events: none;");
+  expect(button).toContain("transition: opacity 180ms ease");
+  expect(rule('.media-preview-navigation-button[data-direction="previous"]')).toContain("left: 12px;");
+  expect(rule('.media-preview-navigation-button[data-direction="next"]')).toContain("right: 12px;");
+
+  const windowHover = rule('.desktop-window[data-window-kind="mediaPreview"]:hover .media-preview-navigation-button');
+  expect(windowHover).toContain("opacity: 0.58;");
+  expect(windowHover).toContain("pointer-events: auto;");
+  const dialogHover = rule(".media-preview-dialog:hover .media-preview-navigation-button");
+  expect(dialogHover).toContain("opacity: 0.58;");
+  expect(dialogHover).toContain("pointer-events: auto;");
+
+  expect(rule('.desktop-window[data-window-kind="mediaPreview"]:hover .media-preview-navigation-button:hover:not(:disabled)')).toContain("opacity: 1;");
+  expect(rule(".media-preview-navigation-button:hover:not(:disabled)")).toContain("background: rgb(255 255 255 / 98%);");
+  const disabled = rule(".media-preview-navigation-button:disabled");
+  expect(disabled).toContain("color: #94a3b8;");
+  expect(disabled).toContain("cursor: not-allowed;");
+});
+
 it("keeps the breadcrumb row compact with matching pane dividers", () => {
   expect(rule(".file-pane")).toContain("grid-template-rows: 39px 29px minmax(0, 1fr) 28px;");
   expect(rule(".pane-header")).toContain("border-bottom: 1px solid var(--border);");

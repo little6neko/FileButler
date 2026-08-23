@@ -160,7 +160,7 @@ it("resizes the left and right panes by dragging the pane divider", async () => 
 it("opens an image media preview from a double-clicked file", async () => {
   vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
   vi.mocked(api.browse).mockResolvedValue([
-    { name: "photo.jpg", relativePath: "photos/photo.jpg", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+    { name: "photo.jpg", relativePath: "photo.jpg", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
   ]);
   render(<DualPane />);
 
@@ -168,13 +168,13 @@ it("opens an image media preview from a double-clicked file", async () => {
   await userEvent.dblClick(await within(leftPane).findByText("photo.jpg"));
 
   const preview = await screen.findByRole("img", { name: "photo.jpg" });
-  expect(preview).toHaveAttribute("src", "/api/media?rootId=root&path=photos%2Fphoto.jpg");
+  expect(preview).toHaveAttribute("src", "/api/media?rootId=root&path=photo.jpg");
 });
 
 it("opens a video media preview from a double-clicked file", async () => {
   vi.mocked(api.roots).mockResolvedValue([{ id: "root", name: "Root" }]);
   vi.mocked(api.browse).mockResolvedValue([
-    { name: "clip.mp4", relativePath: "videos/clip.mp4", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
+    { name: "clip.mp4", relativePath: "clip.mp4", type: "file", size: 1, mode: "", modifiedUnix: 0, isSymlink: false },
   ]);
   render(<DualPane />);
 
@@ -184,7 +184,7 @@ it("opens a video media preview from a double-clicked file", async () => {
   const preview = await screen.findByLabelText("clip.mp4");
   expect(preview.tagName).toBe("VIDEO");
   expect(preview).toHaveAttribute("controls");
-  expect(preview).toHaveAttribute("src", "/api/media?rootId=root&path=videos%2Fclip.mp4");
+  expect(preview).toHaveAttribute("src", "/api/media?rootId=root&path=clip.mp4");
 });
 
 it("enables ordinary rename only for one selected item and keeps PowerRename for batch selection", async () => {

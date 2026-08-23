@@ -41,6 +41,14 @@ test("opens independent full-mode windows and pastes between their active locati
   await expect(windows).toHaveCount(2);
   const taskButtons = page.getByRole("navigation", { name: "System taskbar" }).locator(".taskbar-window-button");
   await expect(taskButtons).toHaveCount(2);
+  await expect(taskButtons.nth(0)).toHaveAttribute("data-variant", "ghost");
+  await expect(taskButtons.nth(1)).toHaveAttribute("data-variant", "ghost");
+  await expect(taskButtons.nth(1)).toHaveAttribute("aria-current", "page");
+  const [inactiveBackground, selectedBackground] = await Promise.all([
+    taskButtons.nth(0).evaluate((button) => getComputedStyle(button).backgroundColor),
+    taskButtons.nth(1).evaluate((button) => getComputedStyle(button).backgroundColor),
+  ]);
+  expect(selectedBackground).not.toBe(inactiveBackground);
   const secondWindow = windows.nth(1);
   await secondWindow.getByRole("button", { name: /Archive/ }).dblclick();
   await expect(entryRow(secondWindow, "archive.txt")).toBeVisible();

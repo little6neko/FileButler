@@ -24,6 +24,16 @@ it("keeps the jobs sheet below the shared system taskbar height", () => {
   expect(rule('.jobs-sheet-content[data-side="right"]')).toContain("height: calc(100dvh - var(--system-taskbar-height));");
 });
 
+it("uses one soft-blue capsule for the current taskbar window", () => {
+  const current = rule('.taskbar-window-button[aria-current="page"]');
+  expect(current).toContain("border-color: #bfd8f5;");
+  expect(current).toContain("background: #eaf3ff;");
+  expect(current).toContain("color: #183b66;");
+  expect(current).toContain("box-shadow: 0 1px 3px");
+  expect(current).not.toContain("inset 0 -2px");
+  expect(rule('.taskbar-window-button[aria-current="page"]:hover')).toContain("background: #e1efff;");
+});
+
 it("overlays the job cancel button with file-row-like interaction feedback", () => {
   expect(rule(".job-row-shell")).toContain("position: relative;");
   expect(rule(".job-row-main")).toContain("padding: 0.75rem;");

@@ -56,7 +56,12 @@ it("starts with an empty desktop and creates a separate taskbar item for every w
   await userEvent.click(icon);
 
   expect(container.querySelectorAll(".desktop-window")).toHaveLength(2);
-  expect(container.querySelectorAll(".taskbar-window-button")).toHaveLength(2);
+  const taskbarButtons = container.querySelectorAll<HTMLElement>(".taskbar-window-button");
+  expect(taskbarButtons).toHaveLength(2);
+  expect(taskbarButtons[0]).toHaveAttribute("data-variant", "ghost");
+  expect(taskbarButtons[1]).toHaveAttribute("data-variant", "ghost");
+  expect(taskbarButtons[0]).not.toHaveAttribute("aria-current");
+  expect(taskbarButtons[1]).toHaveAttribute("aria-current", "page");
   expect(container.querySelectorAll(".virtual-root")).toHaveLength(2);
 });
 
@@ -267,6 +272,9 @@ it("preserves extra desktop windows across compact mode round trips", async () =
   await userEvent.click(screen.getByRole("button", { name: "Switch to compact mode" }));
   expect(await screen.findByTestId("workspace")).toHaveAttribute("data-active-pane", "left");
   expect(container.querySelectorAll(".desktop-window")).toHaveLength(0);
+  const compactTaskbarButton = container.querySelector<HTMLElement>(".taskbar-window-button");
+  expect(compactTaskbarButton).toHaveAttribute("data-variant", "ghost");
+  expect(compactTaskbarButton).toHaveAttribute("aria-current", "page");
 
   await userEvent.click(screen.getByRole("button", { name: "Switch to full mode" }));
   expect(container.querySelectorAll(".desktop-window")).toHaveLength(3);

@@ -47,7 +47,7 @@ export function WorkspaceShell({
         <h1 className="sr-only">FileButler</h1>
         <nav aria-label={labels.taskbar} className="taskbar-windows">
           {mode === "compact" ? (
-            <Button size="sm" variant="secondary" aria-current="page" aria-expanded="true" className="taskbar-window-button">
+            <Button size="sm" variant="ghost" aria-current="page" aria-expanded="true" className="taskbar-window-button">
               <Files />
               <span>{labels.fileManager}</span>
             </Button>
@@ -57,7 +57,7 @@ export function WorkspaceShell({
               <Button
                 key={window.id}
                 size="sm"
-                variant={active ? "secondary" : "ghost"}
+                variant="ghost"
                 aria-current={active ? "page" : undefined}
                 aria-expanded={window.status !== "minimized"}
                 data-window-status={window.status}

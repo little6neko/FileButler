@@ -39,6 +39,9 @@ test("initializes admin, logs in, and uses the desktop workbench", async ({ page
   await expect(desktopWindow).toBeVisible();
 
   await page.getByRole("button", { name: "Switch to compact mode" }).click();
+  const compactTaskbarButton = systemTaskbar.locator(".taskbar-window-button");
+  await expect(compactTaskbarButton).toHaveAttribute("data-variant", "ghost");
+  await expect(compactTaskbarButton).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("region", { name: "Left pane" })).toBeVisible();
   await expect(page.getByRole("region", { name: "Right pane" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Copy to right pane" })).toBeDisabled();

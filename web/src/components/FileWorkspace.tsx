@@ -1332,10 +1332,19 @@ export function FileWorkspace({
 
   function switchWorkspaceMode(nextMode: WorkspaceMode) {
     if (nextMode === mode) return;
-    setJobsOpen(false);
-    commitWindowDialogs(clearAllWindowDialogs);
+    dismissTransientUIForModeChange();
     if (nextMode === "compact") switchToCompactMode();
     else switchToDesktopMode();
+  }
+
+  function dismissTransientUIForModeChange() {
+    setJobsOpen(false);
+    setPreviewState(null);
+    setMediaPreview(null);
+    setMkdirSessionId(null);
+    setSingleRenameSessionId(null);
+    setPowerRenameSessionId(null);
+    commitWindowDialogs(clearAllWindowDialogs);
   }
 
   function switchToCompactMode() {

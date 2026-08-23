@@ -128,6 +128,85 @@ it("toggles the jobs sheet and closes it for taskbar window or mode changes", as
   expect(await screen.findByTestId("workspace")).toBeVisible();
 });
 
+it.each([
+  "Rename",
+  "Copy to right pane",
+  "Move to right pane",
+  "delete",
+  "mkdir",
+  "PowerRename",
+])("closes the compact %s dialog for a mode switch without restoring it later", async (actionLabel) => {
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  await userEvent.click(await within(leftPane).findByLabelText("Select a.txt"));
+  const toolbar = screen.getByRole("navigation", { name: "File actions" });
+  const modeButton = screen.getByRole("button", { name: "Switch to full mode" });
+
+  await userEvent.click(within(toolbar).getByRole("button", { name: actionLabel }));
+  await waitFor(() => expect(document.querySelector("[data-slot='dialog-content']")).not.toBeNull());
+
+  fireEvent.click(modeButton);
+  expect(await screen.findByTestId("desktop-workspace")).toBeVisible();
+  await waitFor(() => expect(document.querySelector("[data-slot='dialog-content']")).toBeNull());
+
+  await userEvent.click(screen.getByRole("button", { name: "Switch to compact mode" }));
+  expect(await screen.findByTestId("workspace")).toBeVisible();
+  expect(document.querySelector("[data-slot='dialog-content']")).toBeNull();
+});
+
+it("keeps an already submitted compact operation alive after its dialog closes for a mode switch", async () => {
+  let resolveJob!: (job: { id: string }) => void;
+  vi.mocked(api.opsCreateJob).mockReturnValue(new Promise((resolve) => {
+    resolveJob = resolve;
+  }));
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  await userEvent.click(await within(leftPane).findByLabelText("Select a.txt"));
+  const modeButton = screen.getByRole("button", { name: "Switch to full mode" });
+  await userEvent.click(screen.getByRole("button", { name: "delete" }));
+  const dialog = await screen.findByRole("dialog", { name: "delete preview" });
+  const startButton = within(dialog).getByRole("button", { name: "Delete 1 item" });
+  await waitFor(() => expect(startButton).toBeEnabled());
+
+  await userEvent.click(startButton);
+  expect(api.opsCreateJob).toHaveBeenCalledTimes(1);
+  fireEvent.click(modeButton);
+  expect(await screen.findByTestId("desktop-workspace")).toBeVisible();
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "delete preview" })).not.toBeInTheDocument());
+
+  await act(async () => resolveJob({ id: "compact-delete-job" }));
+  await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Background job created"));
+  expect(screen.queryByRole("dialog", { name: "delete preview" })).not.toBeInTheDocument();
+});
+
+it("closes a compact media preview for a mode switch", async () => {
+  vi.mocked(api.browse).mockImplementation(async (rootId, path) => {
+    if (rootId === "source" && path === ".") {
+      return [...sourceEntries, {
+        name: "photo.png",
+        relativePath: "photo.png",
+        type: "file",
+        size: 1,
+        mode: "",
+        modifiedUnix: 0,
+        isSymlink: false,
+      }];
+    }
+    return [];
+  });
+  vi.mocked(api.mediaUrl).mockReturnValue("/media/photo.png");
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  const modeButton = screen.getByRole("button", { name: "Switch to full mode" });
+
+  await userEvent.dblClick(await within(leftPane).findByText("photo.png"));
+  expect(await screen.findByRole("dialog", { name: "Media preview" })).toBeInTheDocument();
+
+  fireEvent.click(modeButton);
+  expect(await screen.findByTestId("desktop-workspace")).toBeVisible();
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Media preview" })).not.toBeInTheDocument());
+});
+
 it("enters a mapped root and returns to the virtual root from the breadcrumb", async () => {
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));

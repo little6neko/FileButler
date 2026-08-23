@@ -1,9 +1,12 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { api } from "../api/client";
+import type { PlanItem, RenameOptions } from "../api/types";
 import { strings } from "../i18n";
-import { RenameDialog } from "./RenameDialog";
+import { defaultRenameOptions } from "./powerRenameOptions";
+import { PowerRenameContent, RenameDialog } from "./RenameDialog";
 
 vi.mock("../api/client", () => ({
   api: {
@@ -15,6 +18,108 @@ vi.mock("../api/client", () => ({
 beforeEach(() => {
   vi.mocked(api.renamePreview).mockReset();
   vi.mocked(api.renameCreateJob).mockReset();
+});
+
+function PowerRenameHarness({
+  rootId,
+  paths,
+  submitting = false,
+  onClose = vi.fn(),
+  onSubmit = vi.fn(),
+}: {
+  rootId: string;
+  paths: string[];
+  submitting?: boolean;
+  onClose?: () => void;
+  onSubmit?: () => void;
+}) {
+  const [options, setOptions] = useState<RenameOptions>(() => ({ ...defaultRenameOptions }));
+  return (
+    <PowerRenameContent
+      rootId={rootId}
+      paths={paths}
+      options={options}
+      submitting={submitting}
+      submitError={null}
+      labels={strings.en}
+      onOptionsChange={setOptions}
+      onClose={onClose}
+      onSubmit={onSubmit}
+    />
+  );
+}
+
+it("isolates options and control IDs across simultaneous PowerRename bodies", async () => {
+  vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
+  const { container } = render(
+    <>
+      <PowerRenameHarness rootId="root-a" paths={["a.txt"]} />
+      <PowerRenameHarness rootId="root-b" paths={["b.txt"]} />
+    </>,
+  );
+
+  const searches = screen.getAllByLabelText("Search");
+  await userEvent.type(searches[0], "alpha");
+
+  expect(searches[0]).toHaveValue("alpha");
+  expect(searches[1]).toHaveValue("");
+  await waitFor(() => expect(api.renamePreview).toHaveBeenCalledWith(
+    expect.objectContaining({ rootId: "root-a", paths: ["a.txt"], options: expect.objectContaining({ search: "alpha" }) }),
+  ));
+
+  const controlIDs = [...container.querySelectorAll<HTMLElement>("input[id], button[role='checkbox'][id]")]
+    .map((control) => control.id)
+    .filter(Boolean);
+  expect(new Set(controlIDs).size).toBe(controlIDs.length);
+});
+
+it("keeps close and submit disabled while an external rename submission is pending", async () => {
+  vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
+  const onClose = vi.fn();
+  const onSubmit = vi.fn();
+  render(
+    <PowerRenameHarness
+      rootId="root-a"
+      paths={["a.txt"]}
+      submitting
+      onClose={onClose}
+      onSubmit={onSubmit}
+    />,
+  );
+
+  await waitFor(() => expect(api.renamePreview).toHaveBeenCalled());
+  expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Rename 1 item" })).toBeDisabled();
+  await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(onClose).not.toHaveBeenCalled();
+  expect(onSubmit).not.toHaveBeenCalled();
+});
+
+it("ignores an older PowerRename preview that resolves after the latest options", async () => {
+  type Preview = { hasConflict: boolean; items: PlanItem[] };
+  let resolveInitial!: (preview: Preview) => void;
+  let resolveLatest!: (preview: Preview) => void;
+  vi.mocked(api.renamePreview).mockImplementation(({ options }) => new Promise((resolve) => {
+    if (options.search === "x") resolveLatest = resolve;
+    else resolveInitial = resolve;
+  }));
+  render(<PowerRenameHarness rootId="root-a" paths={["a.txt"]} />);
+
+  await waitFor(() => expect(resolveInitial).toBeTypeOf("function"));
+  await userEvent.type(screen.getByLabelText("Search"), "x");
+  await waitFor(() => expect(resolveLatest).toBeTypeOf("function"));
+  await act(async () => resolveLatest({
+    hasConflict: false,
+    items: [{ sourcePath: "a.txt", oldName: "a.txt", newName: "latest.txt", conflict: false }],
+  }));
+  expect(await screen.findByText("latest.txt")).toBeInTheDocument();
+
+  await act(async () => resolveInitial({
+    hasConflict: false,
+    items: [{ sourcePath: "a.txt", oldName: "a.txt", newName: "stale.txt", conflict: false }],
+  }));
+  expect(screen.queryByText("stale.txt")).not.toBeInTheDocument();
+  expect(screen.getByText("latest.txt")).toBeInTheDocument();
 });
 
 it("requests preview when rename options change", async () => {

@@ -1,0 +1,26 @@
+import type { RenameOptions } from "../api/types";
+
+export const defaultRenameOptions: RenameOptions = {
+  search: "",
+  replace: "",
+  useRegex: false,
+  caseSensitive: false,
+  matchAll: true,
+  target: "name",
+  includeFiles: true,
+  includeDirs: true,
+  includeSubfolders: false,
+  enumerate: false,
+  nameOnly: true,
+  extensionOnly: false,
+  fullName: false,
+  excludeFiles: false,
+  excludeFolders: false,
+  excludeSubfolders: true,
+  uppercase: false,
+  lowercase: false,
+  titlecase: false,
+  capitalized: false,
+  enumerateItems: false,
+  randomizeItems: false,
+};

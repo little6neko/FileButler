@@ -23,7 +23,7 @@ import {
 import { FileCode2, FileImage, FileVideo, Files, ScanText } from "lucide-react";
 import { toast } from "sonner";
 import { buildClipboardRequest, createAppClipboard, isEditableShortcutTarget, type AppClipboard } from "../appClipboard";
-import { api, APIError } from "../api/client";
+import { api } from "../api/client";
 import type { Entry, OpsRequest, RenameOptions, Root } from "../api/types";
 import { powerRenameCoversPoint } from "../desktopWindowHitTest";
 import { fileOpenKind } from "../fileOpenKind";
@@ -79,6 +79,12 @@ import {
   type WindowRect,
 } from "../windowManager";
 import { createTextEditorManager } from "../textEditorManager";
+import {
+  createTextEditorController,
+  textEditorIssue,
+  type TextEditorActionResult,
+} from "../textEditorController";
+import type { TextEditorSession } from "../textEditorSession";
 import type { TextFileDescriptor } from "../textFiles";
 import {
   clearAllWindowDialogs,
@@ -108,6 +114,7 @@ import { defaultRenameOptions } from "./powerRenameOptions";
 import { PowerRenameContent, RenameDialog } from "./RenameDialog";
 import { SingleRenameContent, SingleRenameDialog } from "./SingleRenameDialog";
 import { TextEditor } from "./TextEditor";
+import { TextEditorConfirm, type TextEditorConflictAction } from "./TextEditorConfirm";
 import { VirtualRootView } from "./VirtualRootView";
 import { WindowFrame } from "./WindowFrame";
 import { WindowDialogLayer } from "./WindowDialogLayer";
@@ -151,6 +158,12 @@ type PowerRenameInstance = {
   options: RenameOptions;
   submitting: boolean;
   submitError: string | null;
+};
+
+type TextEditorConflictPrompt = {
+  instanceId: string;
+  busy: TextEditorConflictAction | null;
+  error: string | null;
 };
 
 export const workspaceModeStorageKey = "filebutler.workspace-mode";
@@ -219,6 +232,11 @@ export function FileWorkspace({
   const contextJobEvents = useOptionalJobEventsStore();
   const [fallbackJobEvents] = useState(() => new JobEventsStore());
   const [textEditors] = useState(() => createTextEditorManager());
+  const [textEditorController] = useState(() => createTextEditorController({
+    read: api.textRead,
+    save: api.textSave,
+  }));
+  const [textEditorConflicts, setTextEditorConflicts] = useState<Record<string, TextEditorConflictPrompt>>({});
   const jobEvents = jobEventsStore ?? contextJobEvents ?? fallbackJobEvents;
   const jobEventsState = useSyncExternalStore(jobEvents.subscribe, jobEvents.getSnapshot, jobEvents.getSnapshot);
   const textEditorState = useSyncExternalStore(textEditors.subscribe, textEditors.getSnapshot, textEditors.getSnapshot);
@@ -709,8 +727,13 @@ export function FileWorkspace({
           {...frameProps}
           title={title}
           icon={<FileCode2 aria-hidden="true" />}
+          childDialog={renderTextEditorConflict(window.id, session)}
         >
-          <TextEditor session={session} labels={labels} />
+          <TextEditor
+            session={session}
+            labels={labels}
+            onSave={() => void saveTextEditor(window.id, session)}
+          />
         </WindowFrame>
       );
     }
@@ -787,6 +810,30 @@ export function FileWorkspace({
           />
         )}
       </div>
+    );
+  }
+
+  function renderTextEditorConflict(windowId: string, session: TextEditorSession) {
+    const prompt = textEditorConflicts[windowId];
+    if (!prompt || prompt.instanceId !== session.id) return null;
+    const titleId = `text-editor-conflict-title-${windowId}`;
+    const canDismiss = prompt.busy === null;
+    return (
+      <WindowDialogLayer
+        labelledBy={titleId}
+        onClose={() => { if (canDismiss) dismissTextEditorConflict(windowId, session); }}
+      >
+        <TextEditorConfirm
+          titleId={titleId}
+          fileName={session.fileName}
+          labels={labels}
+          busy={prompt.busy}
+          error={prompt.error}
+          onCancel={() => dismissTextEditorConflict(windowId, session)}
+          onReload={() => void resolveTextEditorConflict(windowId, session, "reload")}
+          onOverwrite={() => void resolveTextEditorConflict(windowId, session, "overwrite")}
+        />
+      </WindowDialogLayer>
     );
   }
 
@@ -1404,6 +1451,7 @@ export function FileWorkspace({
     if (isTextEditorWindow(target)) {
       const released = textEditors.release(target.instanceId, { kind: "desktop", id: target.id });
       if (released.blocked) return;
+      setTextEditorConflicts((current) => withoutKey(current, id));
       commitWindowState((current) => closeWindow(current, id));
       return;
     }
@@ -1636,6 +1684,68 @@ export function FileWorkspace({
     });
   }
 
+  async function saveTextEditor(windowId: string, session: TextEditorSession) {
+    const result = await textEditorController.save(session);
+    handleTextEditorSaveResult(windowId, session, result);
+  }
+
+  function handleTextEditorSaveResult(
+    windowId: string,
+    session: TextEditorSession,
+    result: TextEditorActionResult,
+  ) {
+    if (result.kind === "saved") {
+      setTextEditorConflicts((current) => withoutKey(current, windowId));
+      requestVisibleRefresh();
+      return;
+    }
+    if (result.kind === "conflict") {
+      setTextEditorConflicts((current) => ({
+        ...current,
+        [windowId]: { instanceId: session.id, busy: null, error: null },
+      }));
+    }
+  }
+
+  function dismissTextEditorConflict(windowId: string, session: TextEditorSession) {
+    const prompt = textEditorConflicts[windowId];
+    if (prompt?.busy) return;
+    textEditorController.dismissConflict(session);
+    setTextEditorConflicts((current) => withoutKey(current, windowId));
+  }
+
+  async function resolveTextEditorConflict(
+    windowId: string,
+    session: TextEditorSession,
+    action: TextEditorConflictAction,
+  ) {
+    setTextEditorConflicts((current) => {
+      const prompt = current[windowId];
+      if (!prompt || prompt.busy || prompt.instanceId !== session.id) return current;
+      return { ...current, [windowId]: { ...prompt, busy: action, error: null } };
+    });
+    const result = action === "reload"
+      ? await textEditorController.reload(session)
+      : await textEditorController.forceSave(session);
+    if (result.kind === "reloaded" || result.kind === "saved") {
+      setTextEditorConflicts((current) => withoutKey(current, windowId));
+      requestVisibleRefresh();
+      return;
+    }
+    setTextEditorConflicts((current) => {
+      const prompt = current[windowId];
+      if (!prompt || prompt.instanceId !== session.id) return current;
+      return {
+        ...current,
+        [windowId]: {
+          ...prompt,
+          busy: null,
+          error: result.kind === "failed" ? result.issue.message : null,
+        },
+      };
+    });
+  }
+
   function startPaneResize(event: ReactMouseEvent<HTMLDivElement>) {
     event.preventDefault();
     const workspace = event.currentTarget.parentElement;
@@ -1734,10 +1844,11 @@ function textEditorTitle(fileName: string, dirty: boolean) {
   return dirty ? `${fileName} *` : fileName;
 }
 
-function textEditorIssue(error: unknown) {
-  return error instanceof APIError
-    ? { code: error.code, message: error.message }
-    : { code: "operation_failed", message: error instanceof Error ? error.message : "Unable to open this text file" };
+function withoutKey<T>(record: Record<string, T>, key: string) {
+  if (!(key in record)) return record;
+  const next = { ...record };
+  delete next[key];
+  return next;
 }
 
 function locationKey(location: DirectoryLocation) {

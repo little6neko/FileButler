@@ -13,6 +13,8 @@ vi.mock("../api/client", () => ({
     roots: vi.fn(),
     browse: vi.fn(),
     mediaUrl: vi.fn(),
+    textRead: vi.fn(),
+    textSave: vi.fn(),
     opsDryRun: vi.fn(),
     opsCreateJob: vi.fn(),
     renamePreview: vi.fn(),
@@ -46,6 +48,8 @@ beforeEach(() => {
     return [];
   });
   vi.mocked(api.mediaUrl).mockReset();
+  vi.mocked(api.textRead).mockReset();
+  vi.mocked(api.textSave).mockReset();
   vi.mocked(api.opsDryRun).mockReset();
   vi.mocked(api.opsDryRun).mockResolvedValue({ hasConflict: false, items: [] });
   vi.mocked(api.opsCreateJob).mockReset();

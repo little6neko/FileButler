@@ -179,9 +179,9 @@ export class TextEditorSession {
     return { content: this.sourceContent, document: this.sourceContent, adapter: null };
   }
 
-  startSaving(): TextSaveOperation | null {
+  startSaving(captureOverride?: TextDocumentCapture): TextSaveOperation | null {
     if (this.disposed || !this.snapshot.hasDocument || this.activeSaveToken !== null) return null;
-    const capture = this.captureDocument();
+    const capture = captureOverride ?? this.captureDocument();
     if (!capture) return null;
     const token = this.nextOperationToken++;
     this.activeSaveToken = token;
@@ -190,7 +190,7 @@ export class TextEditorSession {
   }
 
   finishSaving(operation: TextSaveOperation, result: TextSaveResult) {
-    if (!this.accepts(operation)) return;
+    if (!this.accepts(operation)) return false;
     this.activeSaveToken = null;
     this.baselineContent = operation.capture.content;
     this.baselineDocument = operation.capture.document;
@@ -202,23 +202,38 @@ export class TextEditorSession {
       revision: result.revision,
       issue: null,
     });
+    return true;
   }
 
   failSaving(operation: TextSaveOperation, issue: TextEditorIssue) {
-    if (!this.accepts(operation)) return;
+    if (!this.accepts(operation)) return false;
     this.activeSaveToken = null;
     this.commit({ status: "error", issue });
+    return true;
   }
 
   markConflict(operation: TextSaveOperation, issue: TextEditorIssue) {
-    if (!this.accepts(operation)) return;
+    if (!this.accepts(operation)) return false;
     this.activeSaveToken = null;
     this.commit({ status: "conflict", issue });
+    return true;
   }
 
   dismissConflict() {
     if (this.disposed || this.snapshot.status !== "conflict") return;
     this.commit({ status: "ready", issue: null });
+  }
+
+  beginReloading() {
+    if (this.disposed || !this.snapshot.hasDocument || this.activeSaveToken !== null) return false;
+    this.commit({ status: "loading", issue: null });
+    return true;
+  }
+
+  failReloading(issue: TextEditorIssue) {
+    if (this.disposed || !this.snapshot.hasDocument || this.snapshot.status !== "loading") return false;
+    this.commit({ status: "conflict", issue });
+    return true;
   }
 
   disableHighlight(reason: TextEditorDegradationReason) {

@@ -115,6 +115,10 @@ export type UIStrings = {
   editorLargeFile: string;
   editorDocumentTooLarge: string;
   editorHighlightUnavailable: string;
+  editorConflictTitle: string;
+  editorConflictDescription(name: string): string;
+  editorReload: string;
+  editorOverwrite: string;
   editorLineColumn(line: number, column: number): string;
   editorMixedLineEnding: string;
   editorNoLineEnding: string;
@@ -299,6 +303,10 @@ export const strings: Record<Language, UIStrings> = {
     editorLargeFile: "Large file: syntax highlighting is disabled.",
     editorDocumentTooLarge: "Syntax highlighting was disabled because the document grew beyond the safe limit.",
     editorHighlightUnavailable: "Syntax highlighting is unavailable; editing continues as plain text.",
+    editorConflictTitle: "File changed on disk",
+    editorConflictDescription: (name) => `${name} was changed outside FileButler. Reload the disk version or overwrite it with your saved edit?`,
+    editorReload: "Reload",
+    editorOverwrite: "Overwrite anyway",
     editorLineColumn: (line, column) => `Line ${line}, column ${column}`,
     editorMixedLineEnding: "Mixed",
     editorNoLineEnding: "None",
@@ -498,6 +506,10 @@ export const strings: Record<Language, UIStrings> = {
     editorLargeFile: "文件较大，已关闭语法高亮。",
     editorDocumentTooLarge: "文档超过安全大小，已关闭语法高亮。",
     editorHighlightUnavailable: "语法高亮不可用，已切换为纯文本编辑。",
+    editorConflictTitle: "文件已在磁盘上更改",
+    editorConflictDescription: (name) => `${name} 已在 FileButler 外部被修改。要重新载入磁盘版本，还是用当前编辑内容覆盖？`,
+    editorReload: "重新载入",
+    editorOverwrite: "仍然覆盖",
     editorLineColumn: (line, column) => `第 ${line} 行，第 ${column} 列`,
     editorMixedLineEnding: "混合",
     editorNoLineEnding: "无",

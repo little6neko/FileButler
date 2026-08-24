@@ -297,6 +297,66 @@ it("restores a borrowed dirty desktop session when switching directly back to fu
   expect(api.textRead).toHaveBeenCalledTimes(1);
 });
 
+it("shares manual syntax across modes and resets it only after the final holder closes", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  let fileWindow = await openSourceWindow(container);
+  await userEvent.dblClick(await within(fileWindow).findByText("main.go"));
+  let desktopEditor = container.querySelector<HTMLElement>('.desktop-window[data-window-kind="textEditor"]')!;
+  await waitForEditor(desktopEditor);
+  let syntax = within(desktopEditor).getByRole("combobox", { name: "Syntax highlighting" });
+  await waitFor(() => expect(syntax).toBeEnabled());
+
+  await userEvent.click(syntax);
+  await userEvent.click(await screen.findByRole("option", { name: "Python" }));
+  await waitFor(() => {
+    expect(syntax).toBeEnabled();
+    expect(syntax).toHaveAttribute("title", "Python");
+  });
+  expect(within(desktopEditor).getByLabelText("Status").firstElementChild).toHaveTextContent("Python");
+  expect(desktopEditor).toHaveAttribute("aria-label", "main.go");
+  expect(api.textSave).not.toHaveBeenCalled();
+
+  await userEvent.click(within(desktopEditor).getByRole("button", { name: "Minimize window" }));
+  await userEvent.click(container.querySelector<HTMLElement>('.taskbar-window-button[data-window-kind="textEditor"]')!);
+  desktopEditor = container.querySelector<HTMLElement>('.desktop-window[data-window-kind="textEditor"]')!;
+  expect(within(desktopEditor).getByRole("combobox", { name: "Syntax highlighting" })).toHaveTextContent("Python");
+
+  await userEvent.click(screen.getByRole("button", { name: "Switch to compact mode" }));
+  const compactDialog = await openCompactEditor("main.go");
+  await waitForEditor(compactDialog);
+  syntax = within(compactDialog).getByRole("combobox", { name: "Syntax highlighting" });
+  expect(syntax).toHaveTextContent("Python");
+  expect(within(compactDialog).getByLabelText("Status").firstElementChild).toHaveTextContent("Python");
+
+  await userEvent.click(syntax);
+  await userEvent.click(await screen.findByRole("option", { name: "Rust" }));
+  await waitFor(() => {
+    expect(syntax).toBeEnabled();
+    expect(syntax).toHaveAttribute("title", "Rust");
+  });
+  await userEvent.click(screen.getByRole("button", { name: "Switch to full mode" }));
+
+  desktopEditor = container.querySelector<HTMLElement>('.desktop-window[data-window-kind="textEditor"]')!;
+  await waitFor(() => expect(desktopEditor).toHaveAttribute("data-active", "true"));
+  expect(within(desktopEditor).getByRole("combobox", { name: "Syntax highlighting" })).toHaveTextContent("Rust");
+  expect(within(desktopEditor).getByLabelText("Status").firstElementChild).toHaveTextContent("Rust");
+  expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Jobs" })).toHaveAttribute("aria-expanded", "false");
+  expect(api.textRead).toHaveBeenCalledTimes(1);
+  expect(api.textSave).not.toHaveBeenCalled();
+
+  await userEvent.click(within(desktopEditor).getByRole("button", { name: "Close window" }));
+  await waitFor(() => expect(container.querySelector('.desktop-window[data-window-kind="textEditor"]')).not.toBeInTheDocument());
+  fileWindow = container.querySelector<HTMLElement>('.desktop-window[data-window-kind="file"]')!;
+  await userEvent.dblClick(within(fileWindow).getByText("main.go"));
+  desktopEditor = container.querySelector<HTMLElement>('.desktop-window[data-window-kind="textEditor"]')!;
+  await waitForEditor(desktopEditor);
+  syntax = within(desktopEditor).getByRole("combobox", { name: "Syntax highlighting" });
+  await waitFor(() => expect(syntax).toHaveTextContent("Auto (Go)"));
+  expect(within(desktopEditor).getByLabelText("Status").firstElementChild).toHaveTextContent("Go");
+  expect(api.textRead).toHaveBeenCalledTimes(2);
+});
+
 it("protects an exclusive dirty compact editor on close and supports cancel or discard", async () => {
   render(<FileWorkspace initialMode="compact" persistMode={false} />);
   const dialog = await openCompactEditor("notes.txt");

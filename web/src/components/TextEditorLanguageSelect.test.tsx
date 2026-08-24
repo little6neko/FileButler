@@ -23,7 +23,7 @@ describe("TextEditorLanguageSelect", () => {
     const trigger = screen.getByRole("combobox", { name: "Syntax highlighting" });
     expect(trigger).toHaveTextContent("Auto (Go)");
     await userEvent.click(trigger);
-    const optionLabels = screen.getAllByRole("option").map((option) => option.textContent);
+    const optionLabels = (await screen.findAllByRole("option")).map((option) => option.textContent);
     expect(optionLabels).toEqual([
       "Auto (Go)",
       ...textLanguageOptions().map(({ displayName }) => displayName),
@@ -45,7 +45,7 @@ describe("TextEditorLanguageSelect", () => {
       />,
     );
     await userEvent.click(screen.getByRole("combobox", { name: "Syntax highlighting" }));
-    await userEvent.click(screen.getByRole("option", { name: "Python" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Python" }));
     expect(onChange).toHaveBeenCalledWith("python");
 
     view.rerender(

@@ -145,6 +145,38 @@ describe("TextEditor", () => {
     expect(screen.getByRole("combobox", { name: "Syntax highlighting" })).toHaveTextContent("Plain Text (large file)");
   });
 
+  it("allows exactly 2 MiB but keeps a 2 MiB plus one byte document in forced plain text", async () => {
+    const exactLoad = vi.fn(async () => [] as never);
+    const exactLoader = createCodeMirrorLoader({
+      loadLanguageData: async () => [{ name: "Go", alias: ["go"], extensions: ["go"], load: exactLoad }] as never,
+    });
+    const exactSession = session("main.go");
+    exactSession.applyLoadedDocument({ ...document("short"), byteSize: textHighlightByteLimit });
+    const exact = render(<TextEditor session={exactSession} labels={strings.en} loader={exactLoader} />);
+    await waitFor(() => expect(exact.container.querySelector(".cm-editor")).toBeInTheDocument());
+    await waitFor(() => expect(exactSession.getSnapshot().languageLoading).toBe(false));
+    expect(exactLoad).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("combobox", { name: "Syntax highlighting" })).toBeEnabled();
+    expect(screen.getByRole("combobox", { name: "Syntax highlighting" })).toHaveTextContent("Auto (Go)");
+    exact.unmount();
+
+    const oversizedLoadData = vi.fn(async () => [] as never);
+    const oversizedSession = session("main.go");
+    oversizedSession.applyLoadedDocument({ ...document("short"), byteSize: textHighlightByteLimit + 1 });
+    const oversized = render(
+      <TextEditor
+        session={oversizedSession}
+        labels={strings.en}
+        loader={createCodeMirrorLoader({ loadLanguageData: oversizedLoadData })}
+      />,
+    );
+    await waitFor(() => expect(oversized.container.querySelector(".cm-editor")).toBeInTheDocument());
+    expect(oversizedLoadData).not.toHaveBeenCalled();
+    expect(screen.getByRole("combobox", { name: "Syntax highlighting" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Syntax highlighting" })).toHaveTextContent("Plain Text (large file)");
+    expect(screen.getByLabelText("Status").firstElementChild).toHaveTextContent("Plain Text");
+  });
+
   it("shows a loading state before the file document is available", () => {
     render(<TextEditor session={session("notes.txt")} labels={strings.en} />);
     expect(screen.getByText("Loading editor…")).toBeInTheDocument();
@@ -181,7 +213,7 @@ describe("TextEditor", () => {
     await waitFor(() => expect(editorSession.getSnapshot().languageLoading).toBe(false));
 
     await userEvent.click(screen.getByRole("combobox", { name: "Syntax highlighting" }));
-    await userEvent.click(screen.getByRole("option", { name: "Python" }));
+    await userEvent.click(await screen.findByRole("option", { name: "Python" }));
     await waitFor(() => expect(editorSession.getSnapshot()).toMatchObject({
       languageSelection: "python",
       appliedLanguage: "python",

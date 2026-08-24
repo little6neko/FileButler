@@ -2,12 +2,147 @@ import { describe, expect, it, vi } from "vitest";
 import type { TextDocument } from "./api/types";
 import {
   TextEditorSession,
+  textHighlightByteLimit,
   type EditorDocumentAdapter,
   type TextEditorIssue,
 } from "./textEditorSession";
 import { textFileDescriptor } from "./textFiles";
 
 describe("TextEditorSession", () => {
+  it("tracks automatic, manual, and plain-text language requests without dirtying the document", () => {
+    const session = createSession("main.go");
+    expect(session.getSnapshot()).toMatchObject({
+      languageSelection: "auto",
+      automaticLanguage: "go",
+      requestedLanguage: "plain",
+      appliedLanguage: "plain",
+      languageLoading: false,
+      languageRequestGeneration: 0,
+      largeFileHighlightLocked: false,
+    });
+
+    session.applyLoadedDocument(document({ content: "package main\n", byteSize: 13 }));
+    expect(session.getSnapshot()).toMatchObject({
+      languageSelection: "auto",
+      requestedLanguage: "go",
+      appliedLanguage: "plain",
+      languageLoading: true,
+      languageRequestGeneration: 1,
+    });
+    expect(session.completeLanguageRequest(1)).toBe(true);
+    expect(session.getSnapshot()).toMatchObject({ appliedLanguage: "go", languageLoading: false });
+
+    const baseline = session.getSnapshot();
+    expect(session.selectLanguage("python")).toBe(2);
+    expect(session.getSnapshot()).toMatchObject({
+      languageSelection: "python",
+      requestedLanguage: "python",
+      appliedLanguage: "go",
+      languageLoading: true,
+      languageRequestGeneration: 2,
+      dirty: false,
+      revision: baseline.revision,
+      encoding: baseline.encoding,
+      lineEnding: baseline.lineEnding,
+      saveLineEnding: baseline.saveLineEnding,
+    });
+    expect(session.completeLanguageRequest(2)).toBe(true);
+    expect(session.getSnapshot()).toMatchObject({ appliedLanguage: "python", degradationReason: null });
+
+    expect(session.selectLanguage("auto")).toBe(3);
+    expect(session.getSnapshot()).toMatchObject({ languageSelection: "auto", requestedLanguage: "go" });
+    expect(session.selectLanguage("plain")).toBe(4);
+    expect(session.getSnapshot()).toMatchObject({
+      languageSelection: "plain",
+      requestedLanguage: "plain",
+      appliedLanguage: "plain",
+      languageLoading: false,
+      dirty: false,
+    });
+  });
+
+  it("accepts only the latest language result and recovers after a failed load", () => {
+    const session = createSession("main.go");
+    session.applyLoadedDocument(document());
+    const goGeneration = session.getSnapshot().languageRequestGeneration;
+    const pythonGeneration = session.selectLanguage("python")!;
+
+    expect(session.completeLanguageRequest(goGeneration)).toBe(false);
+    expect(session.failLanguageRequest(goGeneration)).toBe(false);
+    expect(session.getSnapshot()).toMatchObject({ requestedLanguage: "python", languageLoading: true });
+
+    expect(session.failLanguageRequest(pythonGeneration)).toBe(true);
+    expect(session.getSnapshot()).toMatchObject({
+      requestedLanguage: "python",
+      appliedLanguage: "plain",
+      languageLoading: false,
+      highlightEnabled: false,
+      degradationReason: "language-load-failed",
+    });
+
+    const retryGeneration = session.selectLanguage("rust")!;
+    expect(session.getSnapshot()).toMatchObject({
+      requestedLanguage: "rust",
+      languageLoading: true,
+      degradationReason: null,
+    });
+    expect(session.completeLanguageRequest(retryGeneration)).toBe(true);
+    expect(session.getSnapshot()).toMatchObject({ appliedLanguage: "rust", highlightEnabled: true });
+  });
+
+  it("preserves the selection across reloads while recalculating the large-file lock", () => {
+    const session = createSession("main.go");
+    session.applyLoadedDocument(document());
+    session.selectLanguage("python");
+
+    session.applyLoadedDocument(document({ byteSize: textHighlightByteLimit + 1 }));
+    expect(session.getSnapshot()).toMatchObject({
+      languageSelection: "python",
+      requestedLanguage: "plain",
+      appliedLanguage: "plain",
+      languageLoading: false,
+      largeFileHighlightLocked: true,
+      degradationReason: "large-file",
+    });
+    expect(session.selectLanguage("rust")).toBeNull();
+    expect(session.getSnapshot().languageSelection).toBe("python");
+
+    session.applyLoadedDocument(document({ byteSize: textHighlightByteLimit }));
+    expect(session.getSnapshot()).toMatchObject({
+      languageSelection: "python",
+      requestedLanguage: "python",
+      appliedLanguage: "plain",
+      languageLoading: true,
+      largeFileHighlightLocked: false,
+      degradationReason: null,
+    });
+  });
+
+  it("locks highlighting after edits cross the byte limit until the document is reloaded", () => {
+    const session = createSession("main.go");
+    session.applyLoadedDocument(document({ byteSize: textHighlightByteLimit }));
+    const generation = session.getSnapshot().languageRequestGeneration;
+    session.disableHighlight("document-too-large");
+
+    expect(session.getSnapshot()).toMatchObject({
+      languageSelection: "auto",
+      requestedLanguage: "plain",
+      appliedLanguage: "plain",
+      languageLoading: false,
+      largeFileHighlightLocked: true,
+      degradationReason: "document-too-large",
+    });
+    expect(session.completeLanguageRequest(generation)).toBe(false);
+    expect(session.selectLanguage("python")).toBeNull();
+
+    session.applyLoadedDocument(document({ byteSize: 10 }));
+    expect(session.getSnapshot()).toMatchObject({
+      requestedLanguage: "go",
+      largeFileHighlightLocked: false,
+      languageLoading: true,
+    });
+  });
+
   it("moves from loading to ready and only notifies on visible dirty changes while typing", () => {
     const session = createSession();
     const listener = vi.fn();
@@ -141,13 +276,13 @@ function editRuntime(runtime: FakeRuntime, content: string): FakeRuntime {
   };
 }
 
-function createSession() {
+function createSession(fileName = "notes.txt") {
   return new TextEditorSession({
     id: "text-1",
     rootId: "data",
-    path: "notes.txt",
-    fileName: "notes.txt",
-    text: textFileDescriptor("notes.txt")!,
+    path: fileName,
+    fileName,
+    text: textFileDescriptor(fileName)!,
   });
 }
 

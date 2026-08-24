@@ -5,12 +5,13 @@ import type {
   TextSaveResult,
   TextWritableLineEnding,
 } from "./api/types";
-import type { TextFileDescriptor } from "./textFiles";
+import type { TextFileDescriptor, TextLanguage } from "./textFiles";
 
 export const textHighlightByteLimit = 2 * 1024 * 1024;
 
 export type TextEditorStatus = "loading" | "ready" | "saving" | "conflict" | "error";
 export type TextEditorDegradationReason = "large-file" | "document-too-large" | "language-load-failed";
+export type TextLanguageSelection = "auto" | TextLanguage;
 
 export type TextEditorIssue = {
   code: string;
@@ -43,6 +44,13 @@ export type TextEditorSessionSnapshot = TextEditorSessionIdentity & {
   saveLineEnding: TextWritableLineEnding | null;
   byteSize: number;
   revision: string | null;
+  languageSelection: TextLanguageSelection;
+  automaticLanguage: TextLanguage;
+  requestedLanguage: TextLanguage;
+  appliedLanguage: TextLanguage;
+  languageLoading: boolean;
+  languageRequestGeneration: number;
+  largeFileHighlightLocked: boolean;
   highlightEnabled: boolean;
   degradationReason: TextEditorDegradationReason | null;
   issue: TextEditorIssue | null;
@@ -97,6 +105,13 @@ export class TextEditorSession {
       saveLineEnding: null,
       byteSize: 0,
       revision: null,
+      languageSelection: "auto",
+      automaticLanguage: identity.text.language,
+      requestedLanguage: "plain",
+      appliedLanguage: "plain",
+      languageLoading: false,
+      languageRequestGeneration: 0,
+      largeFileHighlightLocked: false,
       highlightEnabled: false,
       degradationReason: null,
       issue: null,
@@ -117,7 +132,7 @@ export class TextEditorSession {
     this.sourceContent = document.content;
     this.baselineContent = document.content;
     this.activeSaveToken = null;
-    const shouldHighlight = this.text.highlight && document.byteSize <= textHighlightByteLimit;
+    const languageState = this.languageStateForLoadedDocument(document.byteSize);
     this.commit({
       status: "ready",
       documentVersion: this.snapshot.documentVersion + 1,
@@ -128,8 +143,7 @@ export class TextEditorSession {
       saveLineEnding: document.preferredLineEnding,
       byteSize: document.byteSize,
       revision: document.revision,
-      highlightEnabled: shouldHighlight,
-      degradationReason: document.byteSize > textHighlightByteLimit ? "large-file" : null,
+      ...languageState,
       issue: null,
     });
   }
@@ -236,9 +250,69 @@ export class TextEditorSession {
     return true;
   }
 
+  selectLanguage(selection: TextLanguageSelection): number | null {
+    if (this.disposed || !this.snapshot.hasDocument || this.snapshot.largeFileHighlightLocked) return null;
+    const requestedLanguage = selection === "auto" ? this.snapshot.automaticLanguage : selection;
+    const generation = this.snapshot.languageRequestGeneration + 1;
+    if (requestedLanguage === "plain") {
+      this.commit({
+        languageSelection: selection,
+        requestedLanguage,
+        appliedLanguage: "plain",
+        languageLoading: false,
+        languageRequestGeneration: generation,
+        highlightEnabled: false,
+        degradationReason: null,
+      });
+      return generation;
+    }
+    this.commit({
+      languageSelection: selection,
+      requestedLanguage,
+      languageLoading: true,
+      languageRequestGeneration: generation,
+      highlightEnabled: true,
+      degradationReason: null,
+    });
+    return generation;
+  }
+
+  completeLanguageRequest(generation: number) {
+    if (!this.acceptsLanguageRequest(generation)) return false;
+    this.commit({
+      appliedLanguage: this.snapshot.requestedLanguage,
+      languageLoading: false,
+      highlightEnabled: true,
+      degradationReason: null,
+    });
+    return true;
+  }
+
+  failLanguageRequest(generation: number) {
+    if (!this.acceptsLanguageRequest(generation)) return false;
+    this.commit({
+      appliedLanguage: "plain",
+      languageLoading: false,
+      highlightEnabled: false,
+      degradationReason: "language-load-failed",
+    });
+    return true;
+  }
+
   disableHighlight(reason: TextEditorDegradationReason) {
     if (this.disposed || (!this.snapshot.highlightEnabled && this.snapshot.degradationReason === reason)) return;
-    this.commit({ highlightEnabled: false, degradationReason: reason });
+    const locksForSize = reason === "large-file" || reason === "document-too-large";
+    this.commit({
+      requestedLanguage: locksForSize ? "plain" : this.snapshot.requestedLanguage,
+      appliedLanguage: "plain",
+      languageLoading: false,
+      languageRequestGeneration: locksForSize
+        ? this.snapshot.languageRequestGeneration + 1
+        : this.snapshot.languageRequestGeneration,
+      largeFileHighlightLocked: locksForSize || this.snapshot.largeFileHighlightLocked,
+      highlightEnabled: false,
+      degradationReason: reason,
+    });
   }
 
   isDisposed() {
@@ -255,6 +329,51 @@ export class TextEditorSession {
 
   private accepts(operation: TextSaveOperation) {
     return !this.disposed && this.activeSaveToken === operation.token;
+  }
+
+  private acceptsLanguageRequest(generation: number) {
+    return !this.disposed &&
+      this.snapshot.hasDocument &&
+      !this.snapshot.largeFileHighlightLocked &&
+      this.snapshot.languageLoading &&
+      this.snapshot.requestedLanguage !== "plain" &&
+      this.snapshot.languageRequestGeneration === generation;
+  }
+
+  private languageStateForLoadedDocument(byteSize: number): Pick<
+    TextEditorSessionSnapshot,
+    | "requestedLanguage"
+    | "appliedLanguage"
+    | "languageLoading"
+    | "languageRequestGeneration"
+    | "largeFileHighlightLocked"
+    | "highlightEnabled"
+    | "degradationReason"
+  > {
+    const languageRequestGeneration = this.snapshot.languageRequestGeneration + 1;
+    if (byteSize > textHighlightByteLimit) {
+      return {
+        requestedLanguage: "plain",
+        appliedLanguage: "plain",
+        languageLoading: false,
+        languageRequestGeneration,
+        largeFileHighlightLocked: true,
+        highlightEnabled: false,
+        degradationReason: "large-file",
+      };
+    }
+    const requestedLanguage = this.snapshot.languageSelection === "auto"
+      ? this.snapshot.automaticLanguage
+      : this.snapshot.languageSelection;
+    return {
+      requestedLanguage,
+      appliedLanguage: "plain",
+      languageLoading: requestedLanguage !== "plain",
+      languageRequestGeneration,
+      largeFileHighlightLocked: false,
+      highlightEnabled: requestedLanguage !== "plain",
+      degradationReason: null,
+    };
   }
 
   private calculateDirty() {

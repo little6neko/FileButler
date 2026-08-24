@@ -32,6 +32,30 @@ describe("TextEditorManager", () => {
     expect(manager.hasHolder(acquired.session.id, desktop("window"))).toBe(true);
   });
 
+  it("shares language selection between holders and resets it after the final release", () => {
+    let nextId = 1;
+    const manager = createTextEditorManager(() => `text-${nextId++}`);
+    const first = manager.acquire(input("data", "main.go"), desktop("window"));
+    first.session.applyLoadedDocument(document());
+    first.session.selectLanguage("python");
+
+    const borrowed = manager.acquire(input("data", "main.go"), compact("dialog"));
+    expect(borrowed.session).toBe(first.session);
+    expect(borrowed.session.getSnapshot()).toMatchObject({
+      languageSelection: "python",
+      requestedLanguage: "python",
+    });
+
+    manager.release(first.session.id, compact("dialog"));
+    manager.release(first.session.id, desktop("window"));
+    const reopened = manager.acquire(input("data", "main.go"), desktop("reopened"));
+    expect(reopened.session).not.toBe(first.session);
+    expect(reopened.session.getSnapshot()).toMatchObject({
+      languageSelection: "auto",
+      languageRequestGeneration: 0,
+    });
+  });
+
   it("removes the last clean holder and cleans subscriptions and runtime", () => {
     const manager = createTextEditorManager(() => "text-1");
     const acquired = manager.acquire(input("data", "notes.txt"), compact("dialog"));

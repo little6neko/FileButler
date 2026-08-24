@@ -286,6 +286,20 @@ describe("TextEditorDialog", () => {
     await userEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
+
+  it("closes through its backdrop without treating dialog content as a backdrop click", async () => {
+    const onClose = vi.fn();
+    const editorSession = readySession("notes.txt", "hello");
+    render(<TextEditorDialog session={editorSession} labels={strings.en} onClose={onClose} />);
+
+    await userEvent.click(screen.getByRole("dialog"));
+    expect(onClose).not.toHaveBeenCalled();
+
+    const overlay = globalThis.document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]');
+    expect(overlay).not.toBeNull();
+    await userEvent.click(overlay!);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
 });
 
 function session(fileName: string) {

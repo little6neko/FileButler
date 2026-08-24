@@ -27,7 +27,7 @@ export function TextEditorDialog({
       open
       onOpenChange={(open) => { if (!open) onClose(); }}
     >
-      <DialogContent className="text-editor-dialog" aria-label={labels.textEditor}>
+      <DialogContent className="text-editor-dialog" aria-label={labels.textEditor} onOverlayClick={onClose}>
         <DialogHeader>
           <DialogTitle>{title ?? session.fileName}</DialogTitle>
         </DialogHeader>

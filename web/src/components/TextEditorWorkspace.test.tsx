@@ -241,7 +241,7 @@ it("opens one compact text dialog without creating a text taskbar item", async (
   expect(api.textRead).toHaveBeenCalledWith("source", "notes.txt");
   expect(container.querySelector('.taskbar-window-button[data-window-kind="textEditor"]')).toBeNull();
 
-  await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+  await userEvent.click(globalThis.document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]')!);
   await waitFor(() => expect(screen.queryByRole("dialog", { name: /notes\.txt/ })).not.toBeInTheDocument());
 });
 
@@ -364,7 +364,7 @@ it("protects an exclusive dirty compact editor on close and supports cancel or d
   await userEvent.click(editor);
   await userEvent.keyboard(" unsaved");
 
-  await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+  await userEvent.click(globalThis.document.querySelector<HTMLElement>('[data-slot="dialog-overlay"]')!);
   let confirmation = await screen.findByRole("dialog", { name: "Unsaved changes" });
   await userEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }));
   expect(await screen.findByRole("dialog", { name: /notes\.txt/ })).toBeInTheDocument();

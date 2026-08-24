@@ -114,7 +114,12 @@ import { defaultRenameOptions } from "./powerRenameOptions";
 import { PowerRenameContent, RenameDialog } from "./RenameDialog";
 import { SingleRenameContent, SingleRenameDialog } from "./SingleRenameDialog";
 import { TextEditor } from "./TextEditor";
-import { TextEditorConfirm, type TextEditorConflictAction } from "./TextEditorConfirm";
+import {
+  TextEditorConfirm,
+  TextEditorPageConfirm,
+  type TextEditorConflictAction,
+} from "./TextEditorConfirm";
+import { TextEditorDialog } from "./TextEditorDialog";
 import { VirtualRootView } from "./VirtualRootView";
 import { WindowFrame } from "./WindowFrame";
 import { WindowDialogLayer } from "./WindowDialogLayer";
@@ -166,6 +171,33 @@ type TextEditorConflictPrompt = {
   error: string | null;
 };
 
+type TextEditorUnsavedPrompt = {
+  instanceId: string;
+  busy: boolean;
+  error: string | null;
+};
+
+type CompactTextEditorView = {
+  holderId: string;
+  instanceId: string;
+};
+
+type CompactTextEditorOpenTarget = {
+  rootId: string;
+  path: string;
+  fileName: string;
+  text: TextFileDescriptor;
+};
+
+type CompactTextEditorPendingAction =
+  | { kind: "close" }
+  | { kind: "open"; target: CompactTextEditorOpenTarget }
+  | { kind: "switch-to-desktop" };
+
+type CompactTextEditorUnsavedPrompt = TextEditorUnsavedPrompt & {
+  pending: CompactTextEditorPendingAction;
+};
+
 export const workspaceModeStorageKey = "filebutler.workspace-mode";
 
 export function FileWorkspace({
@@ -207,6 +239,10 @@ export function FileWorkspace({
   const powerRenameInstancesRef = useRef(powerRenameInstances);
   const [mediaPreviewInstances, setMediaPreviewInstancesState] = useState<Record<string, MediaPreviewInstance>>({});
   const mediaPreviewInstancesRef = useRef(mediaPreviewInstances);
+  const [compactTextEditor, setCompactTextEditorState] = useState<CompactTextEditorView | null>(null);
+  const compactTextEditorRef = useRef(compactTextEditor);
+  const [compactTextEditorConflict, setCompactTextEditorConflict] = useState<TextEditorConflictPrompt | null>(null);
+  const [compactTextEditorUnsaved, setCompactTextEditorUnsaved] = useState<CompactTextEditorUnsavedPrompt | null>(null);
   const [jobsOpen, setJobsOpen] = useState(false);
   const [leftPanePercent, setLeftPanePercent] = useState(50);
   const [clipboard, setClipboard] = useState<AppClipboard | null>(null);
@@ -220,6 +256,7 @@ export function FileWorkspace({
   const windowCounterRef = useRef(0);
   const powerRenameCounterRef = useRef(0);
   const mediaPreviewCounterRef = useRef(0);
+  const compactTextEditorCounterRef = useRef(0);
   const dialogCounterRef = useRef(0);
   const contextTargetsRef = useRef<Record<string, string | null>>({});
   const visibleSessionIdsRef = useRef<string[]>([]);
@@ -237,6 +274,7 @@ export function FileWorkspace({
     save: api.textSave,
   }));
   const [textEditorConflicts, setTextEditorConflicts] = useState<Record<string, TextEditorConflictPrompt>>({});
+  const [textEditorUnsaved, setTextEditorUnsaved] = useState<Record<string, TextEditorUnsavedPrompt>>({});
   const jobEvents = jobEventsStore ?? contextJobEvents ?? fallbackJobEvents;
   const jobEventsState = useSyncExternalStore(jobEvents.subscribe, jobEvents.getSnapshot, jobEvents.getSnapshot);
   const textEditorState = useSyncExternalStore(textEditors.subscribe, textEditors.getSnapshot, textEditors.getSnapshot);
@@ -244,6 +282,7 @@ export function FileWorkspace({
     () => new Set(textEditorState.dirtyInstanceIds),
     [textEditorState.dirtyInstanceIds],
   );
+  const hasDirtyTextEditors = textEditorState.dirtyCount > 0;
   const textEditorDisposalGenerationRef = useRef(0);
   const sensors = useSensors(useSensor(PointerSensor, pointerSensorOptions));
 
@@ -256,6 +295,16 @@ export function FileWorkspace({
       });
     };
   }, [textEditors]);
+
+  useEffect(() => {
+    if (!hasDirtyTextEditors) return;
+    function warnBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+      event.returnValue = "";
+    }
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [hasDirtyTextEditors]);
 
   const commitSessions = useCallback((update: (current: Record<string, BrowserSession>) => Record<string, BrowserSession>) => {
     const next = update(sessionsRef.current);
@@ -286,6 +335,11 @@ export function FileWorkspace({
     const next = update(mediaPreviewInstancesRef.current);
     mediaPreviewInstancesRef.current = next;
     setMediaPreviewInstancesState(next);
+  }, []);
+
+  const commitCompactTextEditor = useCallback((next: CompactTextEditorView | null) => {
+    compactTextEditorRef.current = next;
+    setCompactTextEditorState(next);
   }, []);
 
   const commitWindowDialogs = useCallback((update: (current: WindowDialogs) => WindowDialogs) => {
@@ -532,6 +586,7 @@ export function FileWorkspace({
     return items;
   }, []);
   const compactMediaItem = mediaPreview ? currentMediaItem(mediaPreview) : null;
+  const compactTextEditorSession = compactTextEditor ? textEditors.get(compactTextEditor.instanceId) : null;
 
   return (
     <>
@@ -590,6 +645,19 @@ export function FileWorkspace({
           onClose={() => setMediaPreview(null)}
         />
       ) : null}
+      {mode === "compact" && compactTextEditor && compactTextEditorSession ? (
+        <TextEditorDialog
+          session={compactTextEditorSession}
+          labels={labels}
+          title={textEditorTitle(
+            compactTextEditorSession.fileName,
+            dirtyTextEditorIds.has(compactTextEditorSession.id),
+          )}
+          onSave={() => void saveCompactTextEditor(compactTextEditorSession)}
+          onClose={() => requestCompactTextEditorAction({ kind: "close" })}
+        />
+      ) : null}
+      {mode === "compact" && compactTextEditorSession ? renderCompactTextEditorPrompt(compactTextEditorSession) : null}
       {mkdirSessionId ? renderMkdirDialog(mkdirSessionId) : null}
       {singleRenameSessionId ? renderSingleRenameDialog(singleRenameSessionId) : null}
       {powerRenameSessionId ? renderPowerRenameDialog(powerRenameSessionId) : null}
@@ -721,13 +789,15 @@ export function FileWorkspace({
       const session = textEditors.get(window.instanceId);
       if (!session) return null;
       const title = textEditorTitle(session.fileName, dirtyTextEditorIds.has(session.id));
+      const promptBusy = Boolean(textEditorUnsaved[window.id]?.busy || textEditorConflicts[window.id]?.busy);
       return (
         <WindowFrame
           key={window.id}
           {...frameProps}
           title={title}
           icon={<FileCode2 aria-hidden="true" />}
-          childDialog={renderTextEditorConflict(window.id, session)}
+          closeDisabled={promptBusy}
+          childDialog={renderTextEditorWindowPrompt(window.id, session)}
         >
           <TextEditor
             session={session}
@@ -813,7 +883,30 @@ export function FileWorkspace({
     );
   }
 
-  function renderTextEditorConflict(windowId: string, session: TextEditorSession) {
+  function renderTextEditorWindowPrompt(windowId: string, session: TextEditorSession) {
+    const unsaved = textEditorUnsaved[windowId];
+    if (unsaved?.instanceId === session.id) {
+      const titleId = `text-editor-unsaved-title-${windowId}`;
+      return (
+        <WindowDialogLayer
+          labelledBy={titleId}
+          onClose={() => { if (!unsaved.busy) dismissDesktopTextEditorUnsaved(windowId); }}
+        >
+          <TextEditorConfirm
+            kind="unsaved"
+            titleId={titleId}
+            fileName={session.fileName}
+            labels={labels}
+            busy={unsaved.busy}
+            error={unsaved.error}
+            onCancel={() => dismissDesktopTextEditorUnsaved(windowId)}
+            onSave={() => void saveAndCloseDesktopTextEditor(windowId, session)}
+            onDiscard={() => discardAndCloseDesktopTextEditor(windowId, session)}
+          />
+        </WindowDialogLayer>
+      );
+    }
+
     const prompt = textEditorConflicts[windowId];
     if (!prompt || prompt.instanceId !== session.id) return null;
     const titleId = `text-editor-conflict-title-${windowId}`;
@@ -824,6 +917,7 @@ export function FileWorkspace({
         onClose={() => { if (canDismiss) dismissTextEditorConflict(windowId, session); }}
       >
         <TextEditorConfirm
+          kind="conflict"
           titleId={titleId}
           fileName={session.fileName}
           labels={labels}
@@ -834,6 +928,55 @@ export function FileWorkspace({
           onOverwrite={() => void resolveTextEditorConflict(windowId, session, "overwrite")}
         />
       </WindowDialogLayer>
+    );
+  }
+
+  function renderCompactTextEditorPrompt(session: TextEditorSession) {
+    const unsaved = compactTextEditorUnsaved;
+    if (unsaved?.instanceId === session.id) {
+      const titleId = `compact-text-editor-unsaved-title-${session.id}`;
+      return (
+        <TextEditorPageConfirm
+          titleId={titleId}
+          busy={unsaved.busy}
+          onClose={dismissCompactTextEditorUnsaved}
+        >
+          <TextEditorConfirm
+            kind="unsaved"
+            titleId={titleId}
+            fileName={session.fileName}
+            labels={labels}
+            busy={unsaved.busy}
+            error={unsaved.error}
+            onCancel={dismissCompactTextEditorUnsaved}
+            onSave={() => void saveAndCloseCompactTextEditor(session)}
+            onDiscard={discardCompactTextEditor}
+          />
+        </TextEditorPageConfirm>
+      );
+    }
+
+    const conflict = compactTextEditorConflict;
+    if (!conflict || conflict.instanceId !== session.id) return null;
+    const titleId = `compact-text-editor-conflict-title-${session.id}`;
+    return (
+      <TextEditorPageConfirm
+        titleId={titleId}
+        busy={conflict.busy !== null}
+        onClose={() => dismissCompactTextEditorConflict(session)}
+      >
+        <TextEditorConfirm
+          kind="conflict"
+          titleId={titleId}
+          fileName={session.fileName}
+          labels={labels}
+          busy={conflict.busy}
+          error={conflict.error}
+          onCancel={() => dismissCompactTextEditorConflict(session)}
+          onReload={() => void resolveCompactTextEditorConflict(session, "reload")}
+          onOverwrite={() => void resolveCompactTextEditorConflict(session, "overwrite")}
+        />
+      </TextEditorPageConfirm>
     );
   }
 
@@ -1449,10 +1592,20 @@ export function FileWorkspace({
       return;
     }
     if (isTextEditorWindow(target)) {
-      const released = textEditors.release(target.instanceId, { kind: "desktop", id: target.id });
-      if (released.blocked) return;
-      setTextEditorConflicts((current) => withoutKey(current, id));
-      commitWindowState((current) => closeWindow(current, id));
+      const session = textEditors.get(target.instanceId);
+      if (!session) {
+        commitWindowState((current) => closeWindow(current, id));
+        return;
+      }
+      if (session.getSnapshot().dirty) {
+        focusDesktopWindow(id);
+        setTextEditorUnsaved((current) => ({
+          ...current,
+          [id]: { instanceId: session.id, busy: false, error: null },
+        }));
+        return;
+      }
+      finalizeDesktopTextEditorClose(id, session, false);
       return;
     }
     if (!isFileWindow(target)) {
@@ -1555,6 +1708,14 @@ export function FileWorkspace({
 
   function switchWorkspaceMode(nextMode: WorkspaceMode) {
     if (nextMode === mode) return;
+    if (nextMode === "desktop" && compactTextEditorRef.current) {
+      requestCompactTextEditorAction({ kind: "switch-to-desktop" });
+      return;
+    }
+    performWorkspaceModeSwitch(nextMode);
+  }
+
+  function performWorkspaceModeSwitch(nextMode: WorkspaceMode) {
     dismissTransientUIForModeChange();
     if (nextMode === "compact") switchToCompactMode();
     else switchToDesktopMode();
@@ -1643,8 +1804,12 @@ export function FileWorkspace({
       openMediaPreview(sessionId, entry);
       return;
     }
-    if (openKind.kind !== "text" || mode !== "desktop") return;
-    openTextEditor(sessionId, entry, openKind.text);
+    if (openKind.kind !== "text") return;
+    if (mode === "desktop") {
+      openTextEditor(sessionId, entry, openKind.text);
+      return;
+    }
+    openCompactTextEditor(sessionId, entry, openKind.text);
   }
 
   function openTextEditor(sessionId: string, entry: Entry, text: TextFileDescriptor) {
@@ -1675,12 +1840,265 @@ export function FileWorkspace({
       acquired.session.id,
       desktopBoundsRef.current,
     ));
-    if (!acquired.created) return;
+    if (acquired.created) loadTextEditorSession(acquired.session);
+  }
 
-    void api.textRead(rootId, entry.relativePath).then((document) => {
-      acquired.session.applyLoadedDocument(document);
+  function loadTextEditorSession(session: TextEditorSession) {
+    void api.textRead(session.rootId, session.path).then((document) => {
+      session.applyLoadedDocument(document);
     }).catch((error) => {
-      acquired.session.failLoading(textEditorIssue(error));
+      session.failLoading(textEditorIssue(error));
+    });
+  }
+
+  function openCompactTextEditor(sessionId: string, entry: Entry, text: TextFileDescriptor) {
+    const browserSession = sessionsRef.current[sessionId];
+    if (!browserSession || browserSession.location.kind !== "directory" || !browserSession.location.rootId) return;
+    const target: CompactTextEditorOpenTarget = {
+      rootId: browserSession.location.rootId,
+      path: entry.relativePath,
+      fileName: entry.name,
+      text,
+    };
+    const current = compactTextEditorRef.current;
+    const currentSession = current ? textEditors.get(current.instanceId) : null;
+    if (currentSession?.rootId === target.rootId && currentSession.path === target.path) return;
+    if (current) {
+      requestCompactTextEditorAction({ kind: "open", target });
+      return;
+    }
+    openCompactTextEditorNow(target);
+  }
+
+  function openCompactTextEditorNow(target: CompactTextEditorOpenTarget) {
+    const holderId = `compact-text-editor-${++compactTextEditorCounterRef.current}`;
+    const acquired = textEditors.acquire({
+      rootId: target.rootId,
+      path: target.path,
+      fileName: target.fileName,
+      text: target.text,
+    }, { kind: "compact", id: holderId });
+    commitCompactTextEditor({
+      holderId,
+      instanceId: acquired.session.id,
+    });
+    setCompactTextEditorUnsaved(null);
+    setCompactTextEditorConflict(textEditorController.hasConflict(acquired.session)
+      ? { instanceId: acquired.session.id, busy: null, error: null }
+      : null);
+    if (acquired.created) loadTextEditorSession(acquired.session);
+  }
+
+  function requestCompactTextEditorAction(action: CompactTextEditorPendingAction) {
+    const view = compactTextEditorRef.current;
+    if (!view) {
+      performCompactTextEditorAction(action, null);
+      return;
+    }
+    const session = textEditors.get(view.instanceId);
+    if (!session) {
+      commitCompactTextEditor(null);
+      setCompactTextEditorConflict(null);
+      setCompactTextEditorUnsaved(null);
+      performCompactTextEditorAction(action, null);
+      return;
+    }
+    const borrowed = textEditors.hasDesktopHolder(session.id);
+    if (borrowed || !session.getSnapshot().dirty) {
+      const restoreWindowId = borrowed
+        ? windowsByMostRecent(windowStateRef.current).find(
+          (window) => isTextEditorWindow(window) && window.instanceId === session.id,
+        )?.id ?? null
+        : null;
+      releaseCompactTextEditor(view, false);
+      performCompactTextEditorAction(action, restoreWindowId);
+      return;
+    }
+    setCompactTextEditorUnsaved({
+      instanceId: session.id,
+      busy: false,
+      error: null,
+      pending: action,
+    });
+  }
+
+  function releaseCompactTextEditor(view: CompactTextEditorView, discardDirty: boolean) {
+    const session = textEditors.get(view.instanceId);
+    if (session && textEditorController.hasConflict(session) && textEditors.hasDesktopHolder(session.id)) {
+      showDesktopTextEditorConflict(session.id);
+    }
+    const released = textEditors.release(
+      view.instanceId,
+      { kind: "compact", id: view.holderId },
+      { discardDirty },
+    );
+    if (released.blocked) return false;
+    if (compactTextEditorRef.current?.holderId === view.holderId) commitCompactTextEditor(null);
+    setCompactTextEditorConflict(null);
+    setCompactTextEditorUnsaved(null);
+    return true;
+  }
+
+  function performCompactTextEditorAction(
+    action: CompactTextEditorPendingAction,
+    restoreWindowId: string | null,
+  ) {
+    if (action.kind === "open") {
+      openCompactTextEditorNow(action.target);
+      return;
+    }
+    if (action.kind !== "switch-to-desktop") return;
+    performWorkspaceModeSwitch("desktop");
+    if (restoreWindowId) focusDesktopWindow(restoreWindowId);
+  }
+
+  function dismissCompactTextEditorUnsaved() {
+    if (!compactTextEditorUnsaved?.busy) setCompactTextEditorUnsaved(null);
+  }
+
+  function discardCompactTextEditor() {
+    const prompt = compactTextEditorUnsaved;
+    const view = compactTextEditorRef.current;
+    if (!prompt || prompt.busy || !view || view.instanceId !== prompt.instanceId) return;
+    if (!releaseCompactTextEditor(view, true)) return;
+    performCompactTextEditorAction(prompt.pending, null);
+  }
+
+  async function saveAndCloseCompactTextEditor(session: TextEditorSession) {
+    const prompt = compactTextEditorUnsaved;
+    const view = compactTextEditorRef.current;
+    if (!prompt || prompt.busy || !view || prompt.instanceId !== session.id || view.instanceId !== session.id) return;
+    setCompactTextEditorUnsaved({ ...prompt, busy: true, error: null });
+    if (textEditorController.hasConflict(session)) {
+      textEditorController.dismissConflict(session);
+      clearTextEditorConflictPrompts(session.id);
+    }
+    const result = await textEditorController.save(session);
+    if (result.kind === "saved") {
+      requestVisibleRefresh();
+      if (!session.getSnapshot().dirty && releaseCompactTextEditor(view, false)) {
+        performCompactTextEditorAction(prompt.pending, null);
+        return;
+      }
+    }
+    if (result.kind === "conflict") {
+      setCompactTextEditorUnsaved(null);
+      setCompactTextEditorConflict({ instanceId: session.id, busy: null, error: null });
+      return;
+    }
+    setCompactTextEditorUnsaved((current) => current?.instanceId === session.id
+      ? {
+        ...current,
+        busy: false,
+        error: result.kind === "failed" ? result.issue.message : null,
+      }
+      : current);
+  }
+
+  async function saveCompactTextEditor(session: TextEditorSession) {
+    const result = await textEditorController.save(session);
+    if (result.kind === "saved") {
+      clearTextEditorConflictPrompts(session.id);
+      requestVisibleRefresh();
+      return;
+    }
+    if (result.kind === "conflict" && compactTextEditorRef.current?.instanceId === session.id) {
+      setCompactTextEditorConflict({ instanceId: session.id, busy: null, error: null });
+    }
+  }
+
+  function dismissCompactTextEditorConflict(session: TextEditorSession) {
+    if (compactTextEditorConflict?.busy) return;
+    textEditorController.dismissConflict(session);
+    clearTextEditorConflictPrompts(session.id);
+  }
+
+  async function resolveCompactTextEditorConflict(
+    session: TextEditorSession,
+    action: TextEditorConflictAction,
+  ) {
+    const prompt = compactTextEditorConflict;
+    if (!prompt || prompt.busy || prompt.instanceId !== session.id) return;
+    setCompactTextEditorConflict({ ...prompt, busy: action, error: null });
+    const result = action === "reload"
+      ? await textEditorController.reload(session)
+      : await textEditorController.forceSave(session);
+    if (result.kind === "reloaded" || result.kind === "saved") {
+      clearTextEditorConflictPrompts(session.id);
+      requestVisibleRefresh();
+      return;
+    }
+    setCompactTextEditorConflict((current) => current?.instanceId === session.id
+      ? {
+        ...current,
+        busy: null,
+        error: result.kind === "failed" ? result.issue.message : null,
+      }
+      : current);
+  }
+
+  function finalizeDesktopTextEditorClose(
+    windowId: string,
+    session: TextEditorSession,
+    discardDirty: boolean,
+  ) {
+    const released = textEditors.release(
+      session.id,
+      { kind: "desktop", id: windowId },
+      { discardDirty },
+    );
+    if (released.blocked) return false;
+    setTextEditorUnsaved((current) => withoutKey(current, windowId));
+    setTextEditorConflicts((current) => withoutKey(current, windowId));
+    commitWindowState((current) => closeWindow(current, windowId));
+    return true;
+  }
+
+  function dismissDesktopTextEditorUnsaved(windowId: string) {
+    setTextEditorUnsaved((current) => current[windowId]?.busy ? current : withoutKey(current, windowId));
+  }
+
+  function discardAndCloseDesktopTextEditor(windowId: string, session: TextEditorSession) {
+    const prompt = textEditorUnsaved[windowId];
+    if (!prompt || prompt.busy || prompt.instanceId !== session.id) return;
+    finalizeDesktopTextEditorClose(windowId, session, true);
+  }
+
+  async function saveAndCloseDesktopTextEditor(windowId: string, session: TextEditorSession) {
+    const prompt = textEditorUnsaved[windowId];
+    if (!prompt || prompt.busy || prompt.instanceId !== session.id) return;
+    setTextEditorUnsaved((current) => ({
+      ...current,
+      [windowId]: { ...prompt, busy: true, error: null },
+    }));
+    if (textEditorController.hasConflict(session)) {
+      textEditorController.dismissConflict(session);
+      clearTextEditorConflictPrompts(session.id);
+    }
+    const result = await textEditorController.save(session);
+    if (result.kind === "saved") {
+      requestVisibleRefresh();
+      if (!session.getSnapshot().dirty && finalizeDesktopTextEditorClose(windowId, session, false)) return;
+    }
+    if (result.kind === "conflict") {
+      setTextEditorUnsaved((current) => withoutKey(current, windowId));
+      setTextEditorConflicts((current) => ({
+        ...current,
+        [windowId]: { instanceId: session.id, busy: null, error: null },
+      }));
+      return;
+    }
+    setTextEditorUnsaved((current) => {
+      const latest = current[windowId];
+      if (!latest || latest.instanceId !== session.id) return current;
+      return {
+        ...current,
+        [windowId]: {
+          ...latest,
+          busy: false,
+          error: result.kind === "failed" ? result.issue.message : null,
+        },
+      };
     });
   }
 
@@ -1695,7 +2113,7 @@ export function FileWorkspace({
     result: TextEditorActionResult,
   ) {
     if (result.kind === "saved") {
-      setTextEditorConflicts((current) => withoutKey(current, windowId));
+      clearTextEditorConflictPrompts(session.id);
       requestVisibleRefresh();
       return;
     }
@@ -1711,7 +2129,7 @@ export function FileWorkspace({
     const prompt = textEditorConflicts[windowId];
     if (prompt?.busy) return;
     textEditorController.dismissConflict(session);
-    setTextEditorConflicts((current) => withoutKey(current, windowId));
+    clearTextEditorConflictPrompts(session.id);
   }
 
   async function resolveTextEditorConflict(
@@ -1728,7 +2146,7 @@ export function FileWorkspace({
       ? await textEditorController.reload(session)
       : await textEditorController.forceSave(session);
     if (result.kind === "reloaded" || result.kind === "saved") {
-      setTextEditorConflicts((current) => withoutKey(current, windowId));
+      clearTextEditorConflictPrompts(session.id);
       requestVisibleRefresh();
       return;
     }
@@ -1744,6 +2162,23 @@ export function FileWorkspace({
         },
       };
     });
+  }
+
+  function showDesktopTextEditorConflict(instanceId: string) {
+    setTextEditorConflicts((current) => {
+      let next = current;
+      for (const window of windowStateRef.current.windows) {
+        if (!isTextEditorWindow(window) || window.instanceId !== instanceId || current[window.id]) continue;
+        if (next === current) next = { ...current };
+        next[window.id] = { instanceId, busy: null, error: null };
+      }
+      return next;
+    });
+  }
+
+  function clearTextEditorConflictPrompts(instanceId: string) {
+    setTextEditorConflicts((current) => withoutMatchingValue(current, (prompt) => prompt.instanceId === instanceId));
+    setCompactTextEditorConflict((current) => current?.instanceId === instanceId ? null : current);
   }
 
   function startPaneResize(event: ReactMouseEvent<HTMLDivElement>) {
@@ -1849,6 +2284,11 @@ function withoutKey<T>(record: Record<string, T>, key: string) {
   const next = { ...record };
   delete next[key];
   return next;
+}
+
+function withoutMatchingValue<T>(record: Record<string, T>, matches: (value: T) => boolean) {
+  const entries = Object.entries(record).filter(([, value]) => !matches(value));
+  return entries.length === Object.keys(record).length ? record : Object.fromEntries(entries);
 }
 
 function locationKey(location: DirectoryLocation) {

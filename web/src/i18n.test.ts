@@ -39,4 +39,8 @@ it("localizes text editor actions, states, and cursor position", () => {
   expect(strings["zh-CN"].editorLineColumn(2, 7)).toBe("第 2 行，第 7 列");
   expect(strings.en.editorHighlightUnavailable).toContain("plain text");
   expect(strings["zh-CN"].editorHighlightUnavailable).toContain("纯文本");
+  expect(strings.en.editorUnsavedDescription("main.go")).toContain("main.go");
+  expect(strings["zh-CN"].editorUnsavedTitle).toBe("有未保存的更改");
+  expect(strings.en.discardChanges).toBe("Don't save");
+  expect(strings["zh-CN"].discardChanges).toBe("不保存");
 });

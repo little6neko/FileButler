@@ -10,6 +10,7 @@ it("offers cancel, reload, and force overwrite for a disk conflict", async () =>
   const onOverwrite = vi.fn();
   render(
     <TextEditorConfirm
+      kind="conflict"
       titleId="conflict-title"
       fileName="notes.txt"
       labels={strings.en}
@@ -33,6 +34,7 @@ it("offers cancel, reload, and force overwrite for a disk conflict", async () =>
 it("locks every decision while a conflict action is running and shows its error", () => {
   render(
     <TextEditorConfirm
+      kind="conflict"
       titleId="conflict-title"
       fileName="notes.txt"
       labels={strings.en}
@@ -49,4 +51,31 @@ it("locks every decision while a conflict action is running and shows its error"
   expect(screen.getByRole("button", { name: "Reload" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Overwrite anyway" })).toBeDisabled();
   expect(document.querySelector(".animate-spin")).not.toBeNull();
+});
+
+it("offers save, discard, and cancel for unsaved edits", async () => {
+  const onCancel = vi.fn();
+  const onSave = vi.fn();
+  const onDiscard = vi.fn();
+  render(
+    <TextEditorConfirm
+      kind="unsaved"
+      titleId="unsaved-title"
+      fileName="notes.txt"
+      labels={strings.en}
+      busy={false}
+      onCancel={onCancel}
+      onSave={onSave}
+      onDiscard={onDiscard}
+    />,
+  );
+
+  expect(screen.getByRole("heading", { name: "Unsaved changes" })).toHaveAttribute("id", "unsaved-title");
+  expect(screen.getByText(/notes\.txt has changes that have not been saved/)).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+  await userEvent.click(screen.getByRole("button", { name: "Don't save" }));
+  await userEvent.click(screen.getByRole("button", { name: "Save" }));
+  expect(onCancel).toHaveBeenCalledOnce();
+  expect(onDiscard).toHaveBeenCalledOnce();
+  expect(onSave).toHaveBeenCalledOnce();
 });

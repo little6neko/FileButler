@@ -230,12 +230,210 @@ it("cancels a conflict without losing edits and can force the captured content",
   expect(editorWindow).toHaveAttribute("aria-label", "notes.txt");
 });
 
+it("opens one compact text dialog without creating a text taskbar item", async () => {
+  const { container } = render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+
+  await userEvent.dblClick(await within(leftPane).findByText("notes.txt"));
+
+  const dialog = await screen.findByRole("dialog", { name: /notes\.txt/ });
+  await waitFor(() => expect(dialog.querySelector(".cm-editor")).toBeInTheDocument());
+  expect(api.textRead).toHaveBeenCalledWith("source", "notes.txt");
+  expect(container.querySelector('.taskbar-window-button[data-window-kind="textEditor"]')).toBeNull();
+
+  await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: /notes\.txt/ })).not.toBeInTheDocument());
+});
+
+it("borrows a dirty desktop session in compact mode without reading or discarding it", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const fileWindow = await openSourceWindow(container);
+  await userEvent.dblClick(await within(fileWindow).findByText("notes.txt"));
+  const desktopEditor = container.querySelector<HTMLElement>('.desktop-window[data-window-kind="textEditor"]')!;
+  const editor = await waitForEditor(desktopEditor);
+  await userEvent.click(editor);
+  await userEvent.keyboard(" borrowed edit");
+  await waitFor(() => expect(desktopEditor).toHaveAttribute("aria-label", "notes.txt *"));
+
+  await userEvent.click(screen.getByRole("button", { name: "Switch to compact mode" }));
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  await userEvent.dblClick(await within(leftPane).findByText("notes.txt"));
+  const dialog = await screen.findByRole("dialog", { name: /notes\.txt/ });
+  const compactEditor = await waitForEditor(dialog);
+  expect(compactEditor).toHaveTextContent("borrowed edit");
+  expect(api.textRead).toHaveBeenCalledTimes(1);
+
+  await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: /notes\.txt/ })).not.toBeInTheDocument());
+  expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Switch to full mode" }));
+
+  const restored = container.querySelector<HTMLElement>('.desktop-window[data-window-kind="textEditor"]')!;
+  expect(restored).toHaveAttribute("aria-label", "notes.txt *");
+  expect(await waitForEditor(restored)).toHaveTextContent("borrowed edit");
+  expect(api.textRead).toHaveBeenCalledTimes(1);
+});
+
+it("restores a borrowed dirty desktop session when switching directly back to full mode", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const fileWindow = await openSourceWindow(container);
+  await userEvent.dblClick(await within(fileWindow).findByText("notes.txt"));
+  const desktopEditor = container.querySelector<HTMLElement>('.desktop-window[data-window-kind="textEditor"]')!;
+  const editor = await waitForEditor(desktopEditor);
+  await userEvent.click(editor);
+  await userEvent.keyboard(" direct restore");
+
+  await userEvent.click(screen.getByRole("button", { name: "Switch to compact mode" }));
+  const compactDialog = await openCompactEditor("notes.txt");
+  expect(await waitForEditor(compactDialog)).toHaveTextContent("direct restore");
+
+  await userEvent.click(screen.getByRole("button", { name: "Switch to full mode" }));
+
+  expect(await screen.findByTestId("desktop-workspace")).toBeVisible();
+  expect(screen.queryByRole("dialog", { name: "Unsaved changes" })).not.toBeInTheDocument();
+  const restored = container.querySelector<HTMLElement>('.desktop-window[data-window-kind="textEditor"]')!;
+  await waitFor(() => expect(restored).toHaveAttribute("data-active", "true"));
+  expect(restored).toHaveAttribute("aria-label", "notes.txt *");
+  expect(api.textRead).toHaveBeenCalledTimes(1);
+});
+
+it("protects an exclusive dirty compact editor on close and supports cancel or discard", async () => {
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const dialog = await openCompactEditor("notes.txt");
+  const editor = await waitForEditor(dialog);
+  await userEvent.click(editor);
+  await userEvent.keyboard(" unsaved");
+
+  await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+  let confirmation = await screen.findByRole("dialog", { name: "Unsaved changes" });
+  await userEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }));
+  expect(await screen.findByRole("dialog", { name: /notes\.txt/ })).toBeInTheDocument();
+
+  await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+  confirmation = await screen.findByRole("dialog", { name: "Unsaved changes" });
+  await userEvent.click(within(confirmation).getByRole("button", { name: "Don't save" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: /notes\.txt/ })).not.toBeInTheDocument());
+  expect(api.textSave).not.toHaveBeenCalled();
+});
+
+it("keeps an exclusive compact editor open when saving before close fails", async () => {
+  vi.mocked(api.textSave).mockRejectedValueOnce(new Error("save failed"));
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const dialog = await openCompactEditor("notes.txt");
+  const editor = await waitForEditor(dialog);
+  await userEvent.click(editor);
+  await userEvent.keyboard(" failed save");
+
+  await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+  const confirmation = await screen.findByRole("dialog", { name: "Unsaved changes" });
+  await userEvent.click(within(confirmation).getByRole("button", { name: "Save" }));
+
+  expect(await within(confirmation).findByRole("alert")).toHaveTextContent("save failed");
+  expect(screen.getByRole("dialog", { name: /notes\.txt/ })).toBeInTheDocument();
+  expect(await screen.findByTestId("workspace")).toBeVisible();
+  expect(within(confirmation).getByRole("button", { name: "Save" })).toBeEnabled();
+});
+
+it("lets a dirty compact editor cancel a mode switch or save before switching", async () => {
+  const { container } = render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const dialog = await openCompactEditor("notes.txt");
+  const editor = await waitForEditor(dialog);
+  await userEvent.click(editor);
+  await userEvent.keyboard(" switch edit");
+
+  await userEvent.click(screen.getByRole("button", { name: "Switch to full mode" }));
+  let confirmation = await screen.findByRole("dialog", { name: "Unsaved changes" });
+  await userEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }));
+  expect(await screen.findByTestId("workspace")).toBeVisible();
+  expect(screen.getByRole("dialog", { name: /notes\.txt/ })).toBeInTheDocument();
+
+  await userEvent.click(screen.getByRole("button", { name: "Switch to full mode" }));
+  confirmation = await screen.findByRole("dialog", { name: "Unsaved changes" });
+  await userEvent.click(within(confirmation).getByRole("button", { name: "Save" }));
+
+  expect(await screen.findByTestId("desktop-workspace")).toBeVisible();
+  expect(screen.queryByRole("dialog", { name: /notes\.txt/ })).not.toBeInTheDocument();
+  expect(api.textSave).toHaveBeenCalledWith(expect.objectContaining({ content: expect.stringContaining("switch edit") }));
+  expect(container.querySelector('.taskbar-window-button[data-window-kind="textEditor"]')).toBeNull();
+});
+
+it("uses a window-local unsaved confirmation before closing a dirty desktop editor", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const fileWindow = await openSourceWindow(container);
+  await userEvent.dblClick(await within(fileWindow).findByText("notes.txt"));
+  const editorWindow = container.querySelector<HTMLElement>('.desktop-window[data-window-kind="textEditor"]')!;
+  const editor = await waitForEditor(editorWindow);
+  await userEvent.click(editor);
+  await userEvent.keyboard(" close edit");
+
+  await userEvent.click(within(editorWindow).getByRole("button", { name: "Close window" }));
+  let confirmation = await within(editorWindow).findByRole("dialog", { name: "Unsaved changes" });
+  await userEvent.click(within(confirmation).getByRole("button", { name: "Cancel" }));
+  expect(editorWindow).toBeInTheDocument();
+
+  await userEvent.click(within(editorWindow).getByRole("button", { name: "Close window" }));
+  confirmation = await within(editorWindow).findByRole("dialog", { name: "Unsaved changes" });
+  await userEvent.click(within(confirmation).getByRole("button", { name: "Don't save" }));
+  await waitFor(() => expect(container.querySelector('.desktop-window[data-window-kind="textEditor"]')).not.toBeInTheDocument());
+});
+
+it("saves before closing a dirty desktop editor", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const fileWindow = await openSourceWindow(container);
+  await userEvent.dblClick(await within(fileWindow).findByText("notes.txt"));
+  const editorWindow = container.querySelector<HTMLElement>('.desktop-window[data-window-kind="textEditor"]')!;
+  const editor = await waitForEditor(editorWindow);
+  await userEvent.click(editor);
+  await userEvent.keyboard(" save on close");
+
+  await userEvent.click(within(editorWindow).getByRole("button", { name: "Close window" }));
+  const confirmation = await within(editorWindow).findByRole("dialog", { name: "Unsaved changes" });
+  await userEvent.click(within(confirmation).getByRole("button", { name: "Save" }));
+
+  await waitFor(() => expect(container.querySelector('.desktop-window[data-window-kind="textEditor"]')).not.toBeInTheDocument());
+  expect(api.textSave).toHaveBeenCalledWith(expect.objectContaining({
+    content: expect.stringContaining("save on close"),
+    force: false,
+  }));
+});
+
+it("registers one beforeunload guard while any editor is dirty and removes it when clean", async () => {
+  const addEventListener = vi.spyOn(window, "addEventListener");
+  const removeEventListener = vi.spyOn(window, "removeEventListener");
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const fileWindow = await openSourceWindow(container);
+  await userEvent.dblClick(await within(fileWindow).findByText("main.go"));
+  await userEvent.dblClick(within(fileWindow).getByText("notes.txt"));
+  const editors = container.querySelectorAll<HTMLElement>('.desktop-window[data-window-kind="textEditor"]');
+  await userEvent.click(await waitForEditor(editors[0]));
+  await userEvent.keyboard(" dirty one");
+  await userEvent.click(await waitForEditor(editors[1]));
+  await userEvent.keyboard(" dirty two");
+
+  await waitFor(() => expect(addEventListener.mock.calls.filter(([type]) => type === "beforeunload")).toHaveLength(1));
+  for (const editorWindow of Array.from(editors)) {
+    await userEvent.click(within(editorWindow).getByRole("button", { name: "Close window" }));
+    const confirmation = await within(editorWindow).findByRole("dialog", { name: "Unsaved changes" });
+    await userEvent.click(within(confirmation).getByRole("button", { name: "Don't save" }));
+  }
+  await waitFor(() => expect(removeEventListener.mock.calls.filter(([type]) => type === "beforeunload")).toHaveLength(1));
+
+  addEventListener.mockRestore();
+  removeEventListener.mockRestore();
+});
+
 async function openSourceWindow(container: HTMLElement) {
   await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
   const fileWindow = container.querySelector<HTMLElement>('.desktop-window[data-window-kind="file"]')!;
   await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
   await within(fileWindow).findByText("main.go");
   return fileWindow;
+}
+
+async function openCompactEditor(fileName: string) {
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  await userEvent.dblClick(await within(leftPane).findByText(fileName));
+  return screen.findByRole("dialog", { name: new RegExp(fileName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")) });
 }
 
 function entry(name: string): Entry {

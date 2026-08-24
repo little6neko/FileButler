@@ -9,20 +9,27 @@ export function TextEditorDialog({
   session,
   labels = strings.en,
   loader,
+  title,
   onSave,
   onClose,
 }: {
   session: TextEditorSession;
   labels?: UIStrings;
   loader?: CodeMirrorLoader;
+  title?: string;
   onSave?(): void;
   onClose(): void;
 }) {
   return (
-    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+    <Dialog
+      modal={false}
+      disablePointerDismissal
+      open
+      onOpenChange={(open) => { if (!open) onClose(); }}
+    >
       <DialogContent className="text-editor-dialog" aria-label={labels.textEditor}>
         <DialogHeader>
-          <DialogTitle>{session.fileName}</DialogTitle>
+          <DialogTitle>{title ?? session.fileName}</DialogTitle>
         </DialogHeader>
         <div className="text-editor-dialog-body">
           <TextEditor session={session} labels={labels} loader={loader} onSave={onSave} />

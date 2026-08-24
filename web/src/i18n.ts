@@ -119,6 +119,9 @@ export type UIStrings = {
   editorConflictDescription(name: string): string;
   editorReload: string;
   editorOverwrite: string;
+  editorUnsavedTitle: string;
+  editorUnsavedDescription(name: string): string;
+  discardChanges: string;
   editorLineColumn(line: number, column: number): string;
   editorMixedLineEnding: string;
   editorNoLineEnding: string;
@@ -307,6 +310,9 @@ export const strings: Record<Language, UIStrings> = {
     editorConflictDescription: (name) => `${name} was changed outside FileButler. Reload the disk version or overwrite it with your saved edit?`,
     editorReload: "Reload",
     editorOverwrite: "Overwrite anyway",
+    editorUnsavedTitle: "Unsaved changes",
+    editorUnsavedDescription: (name) => `${name} has changes that have not been saved. Save them before closing?`,
+    discardChanges: "Don't save",
     editorLineColumn: (line, column) => `Line ${line}, column ${column}`,
     editorMixedLineEnding: "Mixed",
     editorNoLineEnding: "None",
@@ -510,6 +516,9 @@ export const strings: Record<Language, UIStrings> = {
     editorConflictDescription: (name) => `${name} 已在 FileButler 外部被修改。要重新载入磁盘版本，还是用当前编辑内容覆盖？`,
     editorReload: "重新载入",
     editorOverwrite: "仍然覆盖",
+    editorUnsavedTitle: "有未保存的更改",
+    editorUnsavedDescription: (name) => `${name} 包含尚未保存的更改。是否在关闭前保存？`,
+    discardChanges: "不保存",
     editorLineColumn: (line, column) => `第 ${line} 行，第 ${column} 列`,
     editorMixedLineEnding: "混合",
     editorNoLineEnding: "无",

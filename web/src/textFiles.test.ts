@@ -1,7 +1,42 @@
 import { describe, expect, it } from "vitest";
-import { textFileDescriptor, type TextLanguage } from "./textFiles";
+import {
+  textFileDescriptor,
+  textLanguageCatalog,
+  textLanguageDefinition,
+  textLanguageOptions,
+  type TextLanguage,
+} from "./textFiles";
 
 describe("text file descriptors", () => {
+  it("exposes one complete language catalog for detection, loading, and selection", () => {
+    expect(textLanguageCatalog).toHaveLength(47);
+    expect(new Set(textLanguageCatalog.map(({ id }) => id))).toHaveLength(47);
+    expect(textLanguageCatalog.filter(({ id }) => id === "plain")).toHaveLength(1);
+
+    for (const definition of textLanguageCatalog) {
+      expect(definition.displayName).not.toBe("");
+      expect(definition.extensions).toBeDefined();
+      expect(definition.fileNames).toBeDefined();
+      expect(definition.fileNamePrefixes).toBeDefined();
+      if (definition.id === "plain") expect(definition.codeMirrorName).toBeNull();
+      else expect(definition.codeMirrorName).not.toBeNull();
+    }
+  });
+
+  it("orders selectable languages as plain text followed by highlighted languages by display name", () => {
+    const options = textLanguageOptions();
+    expect(options).toHaveLength(47);
+    expect(options[0]?.id).toBe("plain");
+    expect(options.slice(1).map(({ displayName }) => displayName)).toEqual(
+      options.slice(1).map(({ displayName }) => displayName).toSorted((left, right) => left.localeCompare(right)),
+    );
+    expect(textLanguageDefinition("go")).toMatchObject({
+      id: "go",
+      displayName: "Go",
+      codeMirrorName: "Go",
+    });
+  });
+
   it.each([
     ["plain", ["txt", "text", "log", "nfo", "csv", "tsv", "srt", "vtt", "ass", "ssa", "lrc", "m3u", "m3u8", "cue"]],
     ["markdown", ["md", "markdown", "mdown", "mkd"]],

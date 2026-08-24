@@ -5,7 +5,7 @@ import type * as SearchModule from "@codemirror/search";
 import type * as StateModule from "@codemirror/state";
 import type * as ViewModule from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
-import type { TextFileDescriptor, TextLanguage } from "./textFiles";
+import { codeMirrorLanguageDescriptionName, type TextLanguage } from "./textFiles";
 
 export type CodeMirrorCore = {
   state: typeof StateModule;
@@ -61,9 +61,9 @@ export class CodeMirrorLoader {
     return this.corePromise;
   }
 
-  loadLanguage(text: TextFileDescriptor, fileName: string): Promise<CodeMirrorLanguageResult> {
-    const descriptionName = languageDescriptionName(text.language, fileName);
-    if (!text.highlight || descriptionName === null) {
+  loadLanguage(language: TextLanguage, automaticFileName?: string): Promise<CodeMirrorLanguageResult> {
+    const descriptionName = codeMirrorLanguageDescriptionName(language, automaticFileName);
+    if (descriptionName === null) {
       return Promise.resolve({ extension: null, degraded: false });
     }
 
@@ -94,58 +94,3 @@ export function createCodeMirrorLoader(dependencies: Partial<CodeMirrorLoaderDep
 }
 
 export const codeMirrorLoader = createCodeMirrorLoader();
-
-function languageDescriptionName(language: TextLanguage, fileName: string): string | null {
-  if (language === "objectiveC" && fileName.toLowerCase().endsWith(".mm")) return "Objective-C++";
-  return languageDescriptionNames[language];
-}
-
-const languageDescriptionNames: Record<TextLanguage, string | null> = {
-  plain: null,
-  markdown: "Markdown",
-  json: "JSON",
-  yaml: "YAML",
-  toml: "TOML",
-  xml: "XML",
-  properties: "Properties files",
-  sql: "SQL",
-  diff: "diff",
-  http: "HTTP",
-  protobuf: "ProtoBuf",
-  latex: "LaTeX",
-  html: "HTML",
-  css: "CSS",
-  sass: "Sass",
-  scss: "SCSS",
-  less: "LESS",
-  javascript: "JavaScript",
-  jsx: "JSX",
-  typescript: "TypeScript",
-  tsx: "TSX",
-  vue: "Vue",
-  python: "Python",
-  go: "Go",
-  rust: "Rust",
-  c: "C",
-  cpp: "C++",
-  csharp: "C#",
-  java: "Java",
-  kotlin: "Kotlin",
-  php: "PHP",
-  ruby: "Ruby",
-  shell: "Shell",
-  powershell: "PowerShell",
-  lua: "Lua",
-  swift: "Swift",
-  dart: "Dart",
-  r: "R",
-  perl: "Perl",
-  groovy: "Groovy",
-  scala: "Scala",
-  fsharp: "F#",
-  objectiveC: "Objective-C",
-  visualBasic: "VB.NET",
-  dockerfile: "Dockerfile",
-  cmake: "CMake",
-  nginx: "Nginx",
-};

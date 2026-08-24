@@ -1,54 +1,105 @@
-const languageDisplayNames = {
-  plain: "Plain Text",
-  markdown: "Markdown",
-  json: "JSON",
-  yaml: "YAML",
-  toml: "TOML",
-  xml: "XML",
-  properties: "INI / Properties",
-  sql: "SQL",
-  diff: "Diff",
-  http: "HTTP",
-  protobuf: "Protocol Buffers",
-  latex: "LaTeX",
-  html: "HTML",
-  css: "CSS",
-  sass: "Sass",
-  scss: "SCSS",
-  less: "LESS",
-  javascript: "JavaScript",
-  jsx: "JSX",
-  typescript: "TypeScript",
-  tsx: "TSX",
-  vue: "Vue",
-  python: "Python",
-  go: "Go",
-  rust: "Rust",
-  c: "C",
-  cpp: "C++",
-  csharp: "C#",
-  java: "Java",
-  kotlin: "Kotlin",
-  php: "PHP",
-  ruby: "Ruby",
-  shell: "Shell",
-  powershell: "PowerShell",
-  lua: "Lua",
-  swift: "Swift",
-  dart: "Dart",
-  r: "R",
-  perl: "Perl",
-  groovy: "Groovy",
-  scala: "Scala",
-  fsharp: "F#",
-  objectiveC: "Objective-C",
-  visualBasic: "Visual Basic",
-  dockerfile: "Dockerfile",
-  cmake: "CMake",
-  nginx: "Nginx",
-} as const;
+type LanguageCatalogEntry = Readonly<{
+  id: string;
+  displayName: string;
+  codeMirrorName: string | null;
+  extensions: readonly string[];
+  fileNames: readonly string[];
+  fileNamePrefixes: readonly string[];
+  automaticCodeMirrorNames?: Readonly<Record<string, string>>;
+}>;
 
-export type TextLanguage = keyof typeof languageDisplayNames;
+const rawTextLanguageCatalog = [
+  {
+    id: "plain",
+    displayName: "Plain Text",
+    codeMirrorName: null,
+    extensions: [".ass", ".csv", ".cue", ".log", ".lrc", ".m3u", ".m3u8", ".nfo", ".srt", ".ssa", ".text", ".tsv", ".txt", ".vtt"],
+    fileNames: [".gitattributes", ".gitignore", ".npmrc", ".yarnrc", "changelog", "gnumakefile", "go.mod", "go.sum", "go.work", "license", "makefile"],
+    fileNamePrefixes: [],
+  },
+  {
+    id: "markdown",
+    displayName: "Markdown",
+    codeMirrorName: "Markdown",
+    extensions: [".markdown", ".md", ".mdown", ".mkd"],
+    fileNames: ["readme"],
+    fileNamePrefixes: [],
+  },
+  { id: "json", displayName: "JSON", codeMirrorName: "JSON", extensions: [".json", ".json5", ".jsonc", ".map"], fileNames: [], fileNamePrefixes: [] },
+  { id: "yaml", displayName: "YAML", codeMirrorName: "YAML", extensions: [".yaml", ".yml"], fileNames: [], fileNamePrefixes: [] },
+  { id: "toml", displayName: "TOML", codeMirrorName: "TOML", extensions: [".toml"], fileNames: [], fileNamePrefixes: [] },
+  { id: "xml", displayName: "XML", codeMirrorName: "XML", extensions: [".atom", ".rss", ".xml", ".xsd", ".xsl", ".xslt"], fileNames: [], fileNamePrefixes: [] },
+  {
+    id: "properties",
+    displayName: "INI / Properties",
+    codeMirrorName: "Properties files",
+    extensions: [".cfg", ".conf", ".ini", ".properties"],
+    fileNames: [".editorconfig", ".env"],
+    fileNamePrefixes: [".env."],
+  },
+  { id: "sql", displayName: "SQL", codeMirrorName: "SQL", extensions: [".sql"], fileNames: [], fileNamePrefixes: [] },
+  { id: "diff", displayName: "Diff", codeMirrorName: "diff", extensions: [".diff", ".patch"], fileNames: [], fileNamePrefixes: [] },
+  { id: "http", displayName: "HTTP", codeMirrorName: "HTTP", extensions: [".http", ".rest"], fileNames: [], fileNamePrefixes: [] },
+  { id: "protobuf", displayName: "Protocol Buffers", codeMirrorName: "ProtoBuf", extensions: [".proto"], fileNames: [], fileNamePrefixes: [] },
+  { id: "latex", displayName: "LaTeX", codeMirrorName: "LaTeX", extensions: [".bib", ".latex", ".tex"], fileNames: [], fileNamePrefixes: [] },
+  { id: "html", displayName: "HTML", codeMirrorName: "HTML", extensions: [".htm", ".html", ".xhtml"], fileNames: [], fileNamePrefixes: [] },
+  { id: "css", displayName: "CSS", codeMirrorName: "CSS", extensions: [".css"], fileNames: [], fileNamePrefixes: [] },
+  { id: "sass", displayName: "Sass", codeMirrorName: "Sass", extensions: [".sass"], fileNames: [], fileNamePrefixes: [] },
+  { id: "scss", displayName: "SCSS", codeMirrorName: "SCSS", extensions: [".scss"], fileNames: [], fileNamePrefixes: [] },
+  { id: "less", displayName: "LESS", codeMirrorName: "LESS", extensions: [".less"], fileNames: [], fileNamePrefixes: [] },
+  { id: "javascript", displayName: "JavaScript", codeMirrorName: "JavaScript", extensions: [".cjs", ".js", ".mjs"], fileNames: [], fileNamePrefixes: [] },
+  { id: "jsx", displayName: "JSX", codeMirrorName: "JSX", extensions: [".jsx"], fileNames: [], fileNamePrefixes: [] },
+  { id: "typescript", displayName: "TypeScript", codeMirrorName: "TypeScript", extensions: [".cts", ".mts", ".ts"], fileNames: [], fileNamePrefixes: [] },
+  { id: "tsx", displayName: "TSX", codeMirrorName: "TSX", extensions: [".tsx"], fileNames: [], fileNamePrefixes: [] },
+  { id: "vue", displayName: "Vue", codeMirrorName: "Vue", extensions: [".vue"], fileNames: [], fileNamePrefixes: [] },
+  { id: "python", displayName: "Python", codeMirrorName: "Python", extensions: [".py", ".pyi", ".pyw"], fileNames: [], fileNamePrefixes: [] },
+  { id: "go", displayName: "Go", codeMirrorName: "Go", extensions: [".go"], fileNames: [], fileNamePrefixes: [] },
+  { id: "rust", displayName: "Rust", codeMirrorName: "Rust", extensions: [".rs"], fileNames: [], fileNamePrefixes: [] },
+  { id: "c", displayName: "C", codeMirrorName: "C", extensions: [".c", ".h"], fileNames: [], fileNamePrefixes: [] },
+  { id: "cpp", displayName: "C++", codeMirrorName: "C++", extensions: [".cc", ".cpp", ".cxx", ".hh", ".hpp", ".hxx"], fileNames: [], fileNamePrefixes: [] },
+  { id: "csharp", displayName: "C#", codeMirrorName: "C#", extensions: [".cs"], fileNames: [], fileNamePrefixes: [] },
+  { id: "java", displayName: "Java", codeMirrorName: "Java", extensions: [".java"], fileNames: [], fileNamePrefixes: [] },
+  { id: "kotlin", displayName: "Kotlin", codeMirrorName: "Kotlin", extensions: [".kt", ".kts"], fileNames: [], fileNamePrefixes: [] },
+  { id: "php", displayName: "PHP", codeMirrorName: "PHP", extensions: [".php", ".phtml"], fileNames: [], fileNamePrefixes: [] },
+  { id: "ruby", displayName: "Ruby", codeMirrorName: "Ruby", extensions: [".rb"], fileNames: ["gemfile", "rakefile"], fileNamePrefixes: [] },
+  { id: "shell", displayName: "Shell", codeMirrorName: "Shell", extensions: [".bash", ".ksh", ".sh", ".zsh"], fileNames: [], fileNamePrefixes: [] },
+  { id: "powershell", displayName: "PowerShell", codeMirrorName: "PowerShell", extensions: [".ps1", ".psd1", ".psm1"], fileNames: [], fileNamePrefixes: [] },
+  { id: "lua", displayName: "Lua", codeMirrorName: "Lua", extensions: [".lua"], fileNames: [], fileNamePrefixes: [] },
+  { id: "swift", displayName: "Swift", codeMirrorName: "Swift", extensions: [".swift"], fileNames: [], fileNamePrefixes: [] },
+  { id: "dart", displayName: "Dart", codeMirrorName: "Dart", extensions: [".dart"], fileNames: [], fileNamePrefixes: [] },
+  { id: "r", displayName: "R", codeMirrorName: "R", extensions: [".r"], fileNames: [], fileNamePrefixes: [] },
+  { id: "perl", displayName: "Perl", codeMirrorName: "Perl", extensions: [".pl", ".pm"], fileNames: [], fileNamePrefixes: [] },
+  { id: "groovy", displayName: "Groovy", codeMirrorName: "Groovy", extensions: [".gradle", ".groovy"], fileNames: ["jenkinsfile"], fileNamePrefixes: [] },
+  { id: "scala", displayName: "Scala", codeMirrorName: "Scala", extensions: [".scala"], fileNames: [], fileNamePrefixes: [] },
+  { id: "fsharp", displayName: "F#", codeMirrorName: "F#", extensions: [".fs", ".fsi", ".fsx"], fileNames: [], fileNamePrefixes: [] },
+  {
+    id: "objectiveC",
+    displayName: "Objective-C",
+    codeMirrorName: "Objective-C",
+    extensions: [".m", ".mm"],
+    fileNames: [],
+    fileNamePrefixes: [],
+    automaticCodeMirrorNames: { ".mm": "Objective-C++" },
+  },
+  { id: "visualBasic", displayName: "Visual Basic", codeMirrorName: "VB.NET", extensions: [".vb"], fileNames: [], fileNamePrefixes: [] },
+  { id: "dockerfile", displayName: "Dockerfile", codeMirrorName: "Dockerfile", extensions: [], fileNames: ["dockerfile"], fileNamePrefixes: ["dockerfile."] },
+  { id: "cmake", displayName: "CMake", codeMirrorName: "CMake", extensions: [".cmake"], fileNames: ["cmakelists.txt"], fileNamePrefixes: [] },
+  { id: "nginx", displayName: "Nginx", codeMirrorName: "Nginx", extensions: [], fileNames: ["nginx.conf"], fileNamePrefixes: [] },
+] as const satisfies readonly LanguageCatalogEntry[];
+
+export type TextLanguage = (typeof rawTextLanguageCatalog)[number]["id"];
+
+export type TextLanguageDefinition = Readonly<{
+  id: TextLanguage;
+  displayName: string;
+  codeMirrorName: string | null;
+  extensions: readonly string[];
+  fileNames: readonly string[];
+  fileNamePrefixes: readonly string[];
+  automaticCodeMirrorNames?: Readonly<Record<string, string>>;
+}>;
+
+export const textLanguageCatalog: readonly TextLanguageDefinition[] = rawTextLanguageCatalog;
 
 export type TextFileDescriptor = {
   language: TextLanguage;
@@ -56,153 +107,63 @@ export type TextFileDescriptor = {
   highlight: boolean;
 };
 
-const extensionLanguages: Readonly<Record<string, TextLanguage>> = {
-  ".ass": "plain",
-  ".atom": "xml",
-  ".bash": "shell",
-  ".bib": "latex",
-  ".c": "c",
-  ".cc": "cpp",
-  ".cfg": "properties",
-  ".cjs": "javascript",
-  ".cmake": "cmake",
-  ".conf": "properties",
-  ".cpp": "cpp",
-  ".cs": "csharp",
-  ".css": "css",
-  ".csv": "plain",
-  ".cts": "typescript",
-  ".cue": "plain",
-  ".cxx": "cpp",
-  ".dart": "dart",
-  ".diff": "diff",
-  ".fs": "fsharp",
-  ".fsi": "fsharp",
-  ".fsx": "fsharp",
-  ".go": "go",
-  ".gradle": "groovy",
-  ".groovy": "groovy",
-  ".h": "c",
-  ".hh": "cpp",
-  ".hpp": "cpp",
-  ".htm": "html",
-  ".html": "html",
-  ".http": "http",
-  ".hxx": "cpp",
-  ".ini": "properties",
-  ".java": "java",
-  ".js": "javascript",
-  ".json": "json",
-  ".json5": "json",
-  ".jsonc": "json",
-  ".jsx": "jsx",
-  ".ksh": "shell",
-  ".kt": "kotlin",
-  ".kts": "kotlin",
-  ".latex": "latex",
-  ".less": "less",
-  ".log": "plain",
-  ".lrc": "plain",
-  ".lua": "lua",
-  ".m": "objectiveC",
-  ".m3u": "plain",
-  ".m3u8": "plain",
-  ".map": "json",
-  ".markdown": "markdown",
-  ".md": "markdown",
-  ".mdown": "markdown",
-  ".mkd": "markdown",
-  ".mjs": "javascript",
-  ".mm": "objectiveC",
-  ".mts": "typescript",
-  ".nfo": "plain",
-  ".patch": "diff",
-  ".php": "php",
-  ".phtml": "php",
-  ".pl": "perl",
-  ".pm": "perl",
-  ".properties": "properties",
-  ".proto": "protobuf",
-  ".ps1": "powershell",
-  ".psd1": "powershell",
-  ".psm1": "powershell",
-  ".py": "python",
-  ".pyi": "python",
-  ".pyw": "python",
-  ".r": "r",
-  ".rb": "ruby",
-  ".rest": "http",
-  ".rs": "rust",
-  ".rss": "xml",
-  ".sass": "sass",
-  ".scala": "scala",
-  ".scss": "scss",
-  ".sh": "shell",
-  ".sql": "sql",
-  ".srt": "plain",
-  ".ssa": "plain",
-  ".swift": "swift",
-  ".tex": "latex",
-  ".text": "plain",
-  ".toml": "toml",
-  ".ts": "typescript",
-  ".tsv": "plain",
-  ".tsx": "tsx",
-  ".txt": "plain",
-  ".vb": "visualBasic",
-  ".vtt": "plain",
-  ".vue": "vue",
-  ".xhtml": "html",
-  ".xml": "xml",
-  ".xsd": "xml",
-  ".xsl": "xml",
-  ".xslt": "xml",
-  ".yaml": "yaml",
-  ".yml": "yaml",
-  ".zsh": "shell",
-};
+const definitionsByLanguage = new Map<TextLanguage, TextLanguageDefinition>(
+  textLanguageCatalog.map((definition) => [definition.id, definition]),
+);
+const extensionLanguages = new Map<string, TextLanguage>();
+const specialNameLanguages = new Map<string, TextLanguage>();
+const prefixLanguages: { prefix: string; language: TextLanguage }[] = [];
 
-const specialNameLanguages: Readonly<Record<string, TextLanguage>> = {
-  ".editorconfig": "properties",
-  ".env": "properties",
-  ".gitattributes": "plain",
-  ".gitignore": "plain",
-  ".npmrc": "plain",
-  ".yarnrc": "plain",
-  "changelog": "plain",
-  "cmakelists.txt": "cmake",
-  "dockerfile": "dockerfile",
-  "gemfile": "ruby",
-  "gnumakefile": "plain",
-  "go.mod": "plain",
-  "go.sum": "plain",
-  "go.work": "plain",
-  "jenkinsfile": "groovy",
-  "license": "plain",
-  "makefile": "plain",
-  "nginx.conf": "nginx",
-  "rakefile": "ruby",
-  "readme": "markdown",
-};
+for (const definition of textLanguageCatalog) {
+  for (const extension of definition.extensions) extensionLanguages.set(extension, definition.id);
+  for (const fileName of definition.fileNames) specialNameLanguages.set(fileName, definition.id);
+  for (const prefix of definition.fileNamePrefixes) prefixLanguages.push({ prefix, language: definition.id });
+}
 
+const selectableLanguages = Object.freeze([
+  textLanguageDefinition("plain"),
+  ...textLanguageCatalog
+    .filter(({ id }) => id !== "plain")
+    .toSorted((left, right) => left.displayName.localeCompare(right.displayName)),
+]);
 const descriptorCache = new Map<TextLanguage, TextFileDescriptor>();
+
+export function textLanguageDefinition(language: TextLanguage): TextLanguageDefinition {
+  const definition = definitionsByLanguage.get(language);
+  if (!definition) throw new Error(`Unknown text language: ${language}`);
+  return definition;
+}
+
+export function textLanguageOptions(): readonly TextLanguageDefinition[] {
+  return selectableLanguages;
+}
+
+export function codeMirrorLanguageDescriptionName(
+  language: TextLanguage,
+  automaticFileName?: string,
+): string | null {
+  const definition = textLanguageDefinition(language);
+  if (!automaticFileName || !definition.automaticCodeMirrorNames) return definition.codeMirrorName;
+  const name = baseName(automaticFileName).toLowerCase();
+  return definition.automaticCodeMirrorNames[fileExtension(name)] ?? definition.codeMirrorName;
+}
 
 export function textFileDescriptor(path: string): TextFileDescriptor | null {
   const name = baseName(path).toLowerCase();
-  let language = specialNameLanguages[name];
-  if (!language && name.startsWith("dockerfile.")) language = "dockerfile";
-  if (!language && name.startsWith(".env.")) language = "properties";
-  if (!language) language = extensionLanguages[fileExtension(name)];
+  let language = specialNameLanguages.get(name);
+  if (!language) language = prefixLanguages.find(({ prefix }) => name.startsWith(prefix))?.language;
+  if (!language) language = extensionLanguages.get(fileExtension(name));
   return language ? descriptorForLanguage(language) : null;
 }
 
 function descriptorForLanguage(language: TextLanguage): TextFileDescriptor {
   const cached = descriptorCache.get(language);
   if (cached) return cached;
+  const definition = textLanguageDefinition(language);
   const descriptor = Object.freeze({
     language,
-    displayName: languageDisplayNames[language],
-    highlight: language !== "plain",
+    displayName: definition.displayName,
+    highlight: definition.codeMirrorName !== null,
   });
   descriptorCache.set(language, descriptor);
   return descriptor;

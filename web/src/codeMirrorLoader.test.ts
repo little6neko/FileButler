@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCodeMirrorLoader } from "./codeMirrorLoader";
-import { textFileDescriptor } from "./textFiles";
 
 describe("CodeMirror loader", () => {
   it("loads every core module once and reuses the same promise", async () => {
@@ -27,10 +26,8 @@ describe("CodeMirror loader", () => {
       { name: "Go", alias: ["go"], extensions: ["go"], load },
     ] as never);
     const loader = createCodeMirrorLoader({ loadLanguageData });
-    const descriptor = textFileDescriptor("main.go")!;
-
-    const first = loader.loadLanguage(descriptor, "main.go");
-    const second = loader.loadLanguage(descriptor, "another.go");
+    const first = loader.loadLanguage("go", "main.go");
+    const second = loader.loadLanguage("go", "another.go");
     expect(second).toBe(first);
     await expect(first).resolves.toEqual({ extension, degraded: false });
     expect(loadLanguageData).toHaveBeenCalledTimes(1);
@@ -41,7 +38,7 @@ describe("CodeMirror loader", () => {
     const loadLanguageData = vi.fn(async () => [] as never);
     const loader = createCodeMirrorLoader({ loadLanguageData });
 
-    await expect(loader.loadLanguage(textFileDescriptor("notes.txt")!, "notes.txt")).resolves.toEqual({
+    await expect(loader.loadLanguage("plain")).resolves.toEqual({
       extension: null,
       degraded: false,
     });
@@ -55,13 +52,13 @@ describe("CodeMirror loader", () => {
         { name: "Go", alias: ["go"], extensions: ["go"], load: failedLoad },
       ] as never),
     });
-    await expect(failed.loadLanguage(textFileDescriptor("main.go")!, "main.go")).resolves.toEqual({
+    await expect(failed.loadLanguage("go")).resolves.toEqual({
       extension: null,
       degraded: true,
     });
 
     const missing = createCodeMirrorLoader({ loadLanguageData: vi.fn(async () => [] as never) });
-    await expect(missing.loadLanguage(textFileDescriptor("main.rs")!, "main.rs")).resolves.toEqual({
+    await expect(missing.loadLanguage("rust")).resolves.toEqual({
       extension: null,
       degraded: true,
     });
@@ -69,7 +66,7 @@ describe("CodeMirror loader", () => {
 
   it("selects explicit language-data names for ambiguous extensions and special files", async () => {
     const loadedNames: string[] = [];
-    const descriptions = ["Properties files", "Objective-C++", "Dockerfile", "VB.NET"].map((name) => ({
+    const descriptions = ["Properties files", "Objective-C++", "Objective-C", "Dockerfile", "VB.NET"].map((name) => ({
       name,
       alias: [name.toLowerCase()],
       extensions: [],
@@ -80,10 +77,11 @@ describe("CodeMirror loader", () => {
     }));
     const loader = createCodeMirrorLoader({ loadLanguageData: async () => descriptions as never });
 
-    await loader.loadLanguage(textFileDescriptor("settings.cfg")!, "settings.cfg");
-    await loader.loadLanguage(textFileDescriptor("main.mm")!, "main.mm");
-    await loader.loadLanguage(textFileDescriptor("Dockerfile.dev")!, "Dockerfile.dev");
-    await loader.loadLanguage(textFileDescriptor("Module.vb")!, "Module.vb");
-    expect(loadedNames).toEqual(["Properties files", "Objective-C++", "Dockerfile", "VB.NET"]);
+    await loader.loadLanguage("properties", "settings.cfg");
+    await loader.loadLanguage("objectiveC", "main.mm");
+    await loader.loadLanguage("objectiveC");
+    await loader.loadLanguage("dockerfile", "Dockerfile.dev");
+    await loader.loadLanguage("visualBasic", "Module.vb");
+    expect(loadedNames).toEqual(["Properties files", "Objective-C++", "Objective-C", "Dockerfile", "VB.NET"]);
   });
 });

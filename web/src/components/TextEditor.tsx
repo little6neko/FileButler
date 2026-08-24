@@ -96,7 +96,7 @@ export function TextEditor({
         const [core, languageResult] = await Promise.all([
           loader.loadCore(),
           existing === null && shouldLoadLanguage
-            ? loader.loadLanguage(session.text, session.fileName)
+            ? loader.loadLanguage(session.text.language, session.fileName)
             : Promise.resolve({ extension: null, degraded: false }),
         ]);
         if (canceled) return;

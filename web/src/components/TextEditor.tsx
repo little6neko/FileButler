@@ -36,7 +36,6 @@ type CodeMirrorBridge = {
   onSave(): void;
   onInfo(info: EditorInfo): void;
   languageCompartment: Compartment;
-  languageEnabled: boolean;
   degradationScheduled: boolean;
 };
 
@@ -92,15 +91,8 @@ export function TextEditor({
     async function mountEditor() {
       try {
         const existing = session.getRuntime();
-        const shouldLoadLanguage = session.getSnapshot().highlightEnabled;
-        const [core, languageResult] = await Promise.all([
-          loader.loadCore(),
-          existing === null && shouldLoadLanguage
-            ? loader.loadLanguage(session.text.language, session.fileName)
-            : Promise.resolve({ extension: null, degraded: false }),
-        ]);
+        const core = await loader.loadCore();
         if (canceled) return;
-        if (languageResult.degraded) session.disableHighlight("language-load-failed");
 
         let runtime: CodeMirrorRuntime;
         if (existing !== null) {
@@ -111,7 +103,6 @@ export function TextEditor({
           const adapter = createCodeMirrorAdapter(
             core,
             session,
-            languageResult.extension,
             labels.textEditorLabel(session.fileName),
           );
           const initialized = session.initializeRuntime(adapter);
@@ -148,6 +139,44 @@ export function TextEditor({
       parent.replaceChildren();
     };
   }, [labels, loader, mountKey, session, snapshot.hasDocument]);
+
+  const editorReady = snapshot.hasDocument &&
+    !effectiveMountState.loading &&
+    effectiveMountState.error === null;
+
+  useEffect(() => {
+    if (!editorReady) return;
+    const generation = snapshot.languageRequestGeneration;
+    if (snapshot.largeFileHighlightLocked || snapshot.requestedLanguage === "plain") {
+      reconfigureRuntimeLanguage(session, null);
+      return;
+    }
+    if (!snapshot.languageLoading) return;
+    let canceled = false;
+    const automaticFileName = snapshot.languageSelection === "auto" ? session.fileName : undefined;
+
+    async function loadSelectedLanguage() {
+      const result = await loader.loadLanguage(snapshot.requestedLanguage, automaticFileName);
+      if (canceled || !isCurrentLanguageRequest(session, generation)) return;
+      if (!reconfigureRuntimeLanguage(session, result.degraded ? null : result.extension)) return;
+      if (result.degraded) session.failLanguageRequest(generation);
+      else session.completeLanguageRequest(generation);
+    }
+
+    void loadSelectedLanguage();
+    return () => {
+      canceled = true;
+    };
+  }, [
+    editorReady,
+    loader,
+    session,
+    snapshot.languageLoading,
+    snapshot.languageRequestGeneration,
+    snapshot.languageSelection,
+    snapshot.largeFileHighlightLocked,
+    snapshot.requestedLanguage,
+  ]);
 
   const degradationMessage = degradationLabel(snapshot.degradationReason, labels);
   const issueMessage = snapshot.issue?.message ?? effectiveMountState.error;
@@ -204,7 +233,6 @@ export function TextEditor({
 function createCodeMirrorAdapter(
   core: CodeMirrorCore,
   session: TextEditorSession,
-  languageExtension: Extension | null,
   accessibleLabel: string,
 ): EditorDocumentAdapter {
   let createdRuntime: CodeMirrorRuntime | null = null;
@@ -218,7 +246,6 @@ function createCodeMirrorAdapter(
         onSave: noop,
         onInfo: noop,
         languageCompartment,
-        languageEnabled: languageExtension !== null,
         degradationScheduled: false,
       };
       const extensions: Extension[] = [
@@ -254,7 +281,7 @@ function createCodeMirrorAdapter(
           core.commands.indentWithTab,
         ]),
         core.view.EditorView.updateListener.of((update) => handleEditorUpdate(bridge, update)),
-        languageCompartment.of(languageExtension ?? []),
+        languageCompartment.of([]),
       ];
       const state = core.state.EditorState.create({ doc: content, extensions });
       const runtime: CodeMirrorRuntime = {
@@ -297,18 +324,40 @@ function handleEditorUpdate(bridge: CodeMirrorBridge, update: ViewUpdate) {
 
   if (
     byteSize > textHighlightByteLimit &&
-    bridge.languageEnabled &&
+    !bridge.session.getSnapshot().largeFileHighlightLocked &&
     !bridge.degradationScheduled
   ) {
     bridge.degradationScheduled = true;
     queueMicrotask(() => {
       bridge.session.disableHighlight("document-too-large");
-      bridge.languageEnabled = false;
       bridge.degradationScheduled = false;
-      const view = bridge.view;
-      if (view) view.dispatch({ effects: bridge.languageCompartment.reconfigure([]) });
+      reconfigureRuntimeLanguage(bridge.session, null);
     });
   }
+}
+
+function isCurrentLanguageRequest(session: TextEditorSession, generation: number) {
+  const snapshot = session.getSnapshot();
+  return !snapshot.largeFileHighlightLocked &&
+    snapshot.languageLoading &&
+    snapshot.requestedLanguage !== "plain" &&
+    snapshot.languageRequestGeneration === generation;
+}
+
+function reconfigureRuntimeLanguage(session: TextEditorSession, extension: Extension | null) {
+  const runtime = session.getRuntime();
+  if (!isCodeMirrorRuntime(runtime)) return false;
+  const bridge = runtime.bridge;
+  const effects = bridge.languageCompartment.reconfigure(extension ?? []);
+  if (bridge.view) {
+    bridge.view.dispatch({ effects });
+    return true;
+  }
+  const transaction = runtime.state.update({ effects });
+  const updatedRuntime: CodeMirrorRuntime = { ...runtime, state: transaction.state };
+  bridge.runtime = updatedRuntime;
+  session.setRuntime(updatedRuntime);
+  return true;
 }
 
 function changedByteSize(update: ViewUpdate, previousByteSize: number) {

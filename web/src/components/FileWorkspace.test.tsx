@@ -271,11 +271,11 @@ it("opens reusable independent media windows for different files in full mode", 
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   const taskbar = screen.getByRole("navigation", { name: "System taskbar" });
   await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
-  const fileWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  const fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
   await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
 
   await userEvent.dblClick(await within(fileWindow).findByText("photo.png"));
-  let mediaWindows = container.querySelectorAll<HTMLElement>("[data-window-kind='mediaPreview']");
+  let mediaWindows = container.querySelectorAll<HTMLElement>(".desktop-window[data-window-kind='mediaPreview']");
   expect(mediaWindows).toHaveLength(1);
   expect(within(mediaWindows[0]).getByRole("img", { name: "photo.png" })).toHaveAttribute("src", "/media/photo.png");
   expect(within(mediaWindows[0]).getByRole("button", { name: "Minimize window" })).toBeInTheDocument();
@@ -284,17 +284,17 @@ it("opens reusable independent media windows for different files in full mode", 
   expect(within(taskbar).getByRole("button", { name: "photo.png" }).querySelector(".lucide-file-image")).not.toBeNull();
 
   await userEvent.click(within(mediaWindows[0]).getByRole("button", { name: "Minimize window" }));
-  expect(container.querySelectorAll("[data-window-kind='mediaPreview']")).toHaveLength(0);
+  expect(container.querySelectorAll(".desktop-window[data-window-kind='mediaPreview']")).toHaveLength(0);
   expect(within(taskbar).getByRole("button", { name: "photo.png" })).toHaveAttribute("data-window-status", "minimized");
 
   await userEvent.dblClick(within(fileWindow).getByText("photo.png"));
-  mediaWindows = container.querySelectorAll<HTMLElement>("[data-window-kind='mediaPreview']");
+  mediaWindows = container.querySelectorAll<HTMLElement>(".desktop-window[data-window-kind='mediaPreview']");
   expect(mediaWindows).toHaveLength(1);
   expect(within(taskbar).getAllByRole("button", { name: "photo.png" })).toHaveLength(1);
   expect(mediaWindows[0]).toHaveAttribute("data-active", "true");
 
   await userEvent.dblClick(within(fileWindow).getByText("clip.mp4"));
-  mediaWindows = container.querySelectorAll<HTMLElement>("[data-window-kind='mediaPreview']");
+  mediaWindows = container.querySelectorAll<HTMLElement>(".desktop-window[data-window-kind='mediaPreview']");
   expect(mediaWindows).toHaveLength(2);
   expect(within(mediaWindows[1]).getByLabelText("clip.mp4")).toHaveAttribute("controls");
   expect(mediaWindows[1].querySelector(".lucide-file-play")).not.toBeNull();
@@ -314,11 +314,11 @@ it("updates a full media window and taskbar while keeping its snapshot after the
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   const taskbar = screen.getByRole("navigation", { name: "System taskbar" });
   await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
-  const fileWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  const fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
   await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
 
   await userEvent.dblClick(await within(fileWindow).findByText("beta.mp4"));
-  const mediaWindow = container.querySelector<HTMLElement>("[data-window-kind='mediaPreview']")!;
+  const mediaWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='mediaPreview']")!;
   expect(within(mediaWindow).getByLabelText("beta.mp4")).toBeInTheDocument();
   expect(within(taskbar).getByRole("button", { name: "beta.mp4" }).querySelector(".lucide-file-play")).not.toBeNull();
 
@@ -329,7 +329,7 @@ it("updates a full media window and taskbar while keeping its snapshot after the
   expect(within(mediaWindow).getByRole("button", { name: "Next media" })).toBeDisabled();
 
   await userEvent.click(within(fileWindow).getByRole("button", { name: "Close window" }));
-  expect(container.querySelector("[data-window-kind='file']")).toBeNull();
+  expect(container.querySelector(".desktop-window[data-window-kind='file']")).toBeNull();
   await userEvent.click(within(mediaWindow).getByRole("button", { name: "Previous media" }));
   expect(mediaWindow).toHaveAttribute("aria-label", "beta.mp4");
   expect(within(mediaWindow).getByLabelText("beta.mp4")).toHaveAttribute("src", "/media/beta.mp4");
@@ -355,27 +355,27 @@ it("keeps full-mode media windows independent from their source window and acros
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   const taskbar = screen.getByRole("navigation", { name: "System taskbar" });
   await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
-  const fileWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  const fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
   await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
   await userEvent.dblClick(await within(fileWindow).findByText("photo.png"));
-  expect(container.querySelectorAll("[data-window-kind='mediaPreview']")).toHaveLength(1);
+  expect(container.querySelectorAll(".desktop-window[data-window-kind='mediaPreview']")).toHaveLength(1);
 
   await userEvent.click(within(fileWindow).getByRole("button", { name: "Close window" }));
-  expect(container.querySelector("[data-window-kind='file']")).toBeNull();
-  expect(container.querySelectorAll("[data-window-kind='mediaPreview']")).toHaveLength(1);
+  expect(container.querySelector(".desktop-window[data-window-kind='file']")).toBeNull();
+  expect(container.querySelectorAll(".desktop-window[data-window-kind='mediaPreview']")).toHaveLength(1);
   expect(within(taskbar).getByRole("button", { name: "photo.png" })).toBeInTheDocument();
 
   await userEvent.click(screen.getByRole("button", { name: "Switch to compact mode" }));
-  expect(container.querySelector("[data-window-kind='mediaPreview']")).toBeNull();
+  expect(container.querySelector(".desktop-window[data-window-kind='mediaPreview']")).toBeNull();
   expect(within(taskbar).queryByRole("button", { name: "photo.png" })).not.toBeInTheDocument();
 
   await userEvent.click(screen.getByRole("button", { name: "Switch to full mode" }));
-  expect(container.querySelectorAll("[data-window-kind='mediaPreview']")).toHaveLength(1);
+  expect(container.querySelectorAll(".desktop-window[data-window-kind='mediaPreview']")).toHaveLength(1);
   expect(within(taskbar).getByRole("button", { name: "photo.png" })).toBeInTheDocument();
 
-  const mediaWindow = container.querySelector<HTMLElement>("[data-window-kind='mediaPreview']")!;
+  const mediaWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='mediaPreview']")!;
   await userEvent.click(within(mediaWindow).getByRole("button", { name: "Close window" }));
-  expect(container.querySelector("[data-window-kind='mediaPreview']")).toBeNull();
+  expect(container.querySelector(".desktop-window[data-window-kind='mediaPreview']")).toBeNull();
   expect(within(taskbar).queryByRole("button", { name: "photo.png" })).not.toBeInTheDocument();
 });
 
@@ -451,7 +451,7 @@ it("opens independent local rename dialogs without adding taskbar windows", asyn
   const icon = await screen.findByRole("button", { name: "Open File Manager" });
   await userEvent.click(icon);
   await userEvent.click(icon);
-  const windows = container.querySelectorAll<HTMLElement>("[data-window-kind='file']");
+  const windows = container.querySelectorAll<HTMLElement>(".desktop-window[data-window-kind='file']");
   const firstWindow = windows[0];
   const secondWindow = windows[1];
   await userEvent.dblClick(within(firstWindow).getByRole("button", { name: /Source/ }));
@@ -480,7 +480,7 @@ it("renders mkdir and delete inside the command's file window", async () => {
   const icon = await screen.findByRole("button", { name: "Open File Manager" });
   await userEvent.click(icon);
   await userEvent.click(icon);
-  const windows = container.querySelectorAll<HTMLElement>("[data-window-kind='file']");
+  const windows = container.querySelectorAll<HTMLElement>(".desktop-window[data-window-kind='file']");
   const sourceWindow = windows[0];
   const otherWindow = windows[1];
   await userEvent.dblClick(within(sourceWindow).getByRole("button", { name: /Source/ }));
@@ -504,7 +504,7 @@ it("submits a local rename snapshot and closes only its child dialog", async () 
   vi.mocked(api.singleRenameCreateJob).mockResolvedValue({ id: "rename-job" });
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
-  const fileWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  const fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
   await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
   await userEvent.click(await within(fileWindow).findByLabelText("Select a.txt"));
   await userEvent.click(within(fileWindow).getByRole("button", { name: "Rename" }));
@@ -519,7 +519,7 @@ it("submits a local rename snapshot and closes only its child dialog", async () 
     newName: "renamed.txt",
   });
   await waitFor(() => expect(within(fileWindow).queryByRole("dialog")).not.toBeInTheDocument());
-  expect(container.querySelectorAll("[data-window-kind='file']")).toHaveLength(1);
+  expect(container.querySelectorAll(".desktop-window[data-window-kind='file']")).toHaveLength(1);
   expect(container.querySelectorAll(".taskbar-window-button")).toHaveLength(1);
   expect(toast.success).toHaveBeenCalledWith("Background job created");
 });
@@ -529,7 +529,7 @@ it("keeps local dialogs for focus and maximize but discards them for minimize an
   const icon = await screen.findByRole("button", { name: "Open File Manager" });
   await userEvent.click(icon);
   await userEvent.click(icon);
-  let windows = container.querySelectorAll<HTMLElement>("[data-window-kind='file']");
+  let windows = container.querySelectorAll<HTMLElement>(".desktop-window[data-window-kind='file']");
   const firstWindow = windows[0];
   const secondWindow = windows[1];
   await userEvent.dblClick(within(firstWindow).getByRole("button", { name: /Source/ }));
@@ -546,7 +546,7 @@ it("keeps local dialogs for focus and maximize but discards them for minimize an
   await userEvent.click(within(firstWindow).getByRole("button", { name: "Minimize window" }));
   const firstTaskbarButton = container.querySelectorAll<HTMLElement>(".taskbar-window-button")[0];
   await userEvent.click(firstTaskbarButton);
-  windows = container.querySelectorAll<HTMLElement>("[data-window-kind='file']");
+  windows = container.querySelectorAll<HTMLElement>(".desktop-window[data-window-kind='file']");
   const restoredFirst = Array.from(windows).find((window) => window.dataset.windowId === firstWindow.dataset.windowId)!;
   expect(within(restoredFirst).queryByRole("dialog")).not.toBeInTheDocument();
   expect(within(secondWindow).getByRole("dialog", { name: "Directory name" })).toBeInTheDocument();
@@ -561,7 +561,7 @@ it("scopes file shortcuts to the active window's local dialog", async () => {
   const icon = await screen.findByRole("button", { name: "Open File Manager" });
   await userEvent.click(icon);
   await userEvent.click(icon);
-  const windows = container.querySelectorAll<HTMLElement>("[data-window-kind='file']");
+  const windows = container.querySelectorAll<HTMLElement>(".desktop-window[data-window-kind='file']");
   const firstWindow = windows[0];
   const secondWindow = windows[1];
   await userEvent.dblClick(within(firstWindow).getByRole("button", { name: /Source/ }));
@@ -588,7 +588,7 @@ it("does not let an old local submission close a newer dialog", async () => {
   vi.mocked(api.singleRenameCreateJob).mockReturnValue(new Promise((resolve) => { resolveRename = resolve; }));
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
-  const fileWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  const fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
   await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
   await userEvent.click(await within(fileWindow).findByLabelText("Select a.txt"));
   const toolbarRename = within(fileWindow).getByRole("button", { name: "Rename" });
@@ -617,7 +617,7 @@ it("reports a detached local submission failure globally", async () => {
   vi.mocked(api.singleRenameCreateJob).mockReturnValue(new Promise((_, reject) => { rejectRename = reject; }));
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
-  const fileWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  const fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
   await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
   await userEvent.click(await within(fileWindow).findByLabelText("Select a.txt"));
   await userEvent.click(within(fileWindow).getByRole("button", { name: "Rename" }));
@@ -635,14 +635,14 @@ it("keeps a submitted local request alive after its parent window closes", async
   vi.mocked(api.opsCreateJob).mockReturnValue(new Promise((resolve) => { resolveMkdir = resolve; }));
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
-  const fileWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  const fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
   await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
   await userEvent.click(within(fileWindow).getByRole("button", { name: "mkdir" }));
   const dialog = within(fileWindow).getByRole("dialog", { name: "Directory name" });
   await userEvent.type(within(dialog).getByRole("textbox", { name: "Directory name" }), "pending-folder");
   await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
   await userEvent.click(within(fileWindow).getByRole("button", { name: "Close window" }));
-  expect(container.querySelector("[data-window-kind='file']")).toBeNull();
+  expect(container.querySelector(".desktop-window[data-window-kind='file']")).toBeNull();
 
   await act(async () => resolveMkdir({ id: "mkdir-job" }));
   expect(toast.success).toHaveBeenCalledWith("Background job created");
@@ -776,7 +776,7 @@ it("keeps a PowerRename window open and retryable after task creation fails", as
   await userEvent.click(renameButton);
 
   expect(await within(powerRenameWindow).findByText("rename unavailable")).toBeInTheDocument();
-  expect(container.querySelectorAll("[data-window-kind='powerRename']")).toHaveLength(1);
+  expect(container.querySelectorAll(".desktop-window[data-window-kind='powerRename']")).toHaveLength(1);
   await waitFor(() => expect(renameButton).toBeEnabled());
   expect(within(powerRenameWindow).getByRole("button", { name: "Close window" })).toBeEnabled();
 });
@@ -814,13 +814,13 @@ it("opens right-click paste inside the receiving file window", async () => {
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   const icon = await screen.findByRole("button", { name: "Open File Manager" });
   await userEvent.click(icon);
-  const sourceWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  const sourceWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
   await userEvent.dblClick(within(sourceWindow).getByRole("button", { name: /Source/ }));
   await userEvent.click(await within(sourceWindow).findByLabelText("Select a.txt"));
   fireEvent.keyDown(document, { key: "c", ctrlKey: true });
 
   await userEvent.click(icon);
-  const windows = container.querySelectorAll<HTMLElement>("[data-window-kind='file']");
+  const windows = container.querySelectorAll<HTMLElement>(".desktop-window[data-window-kind='file']");
   const targetWindow = windows[windows.length - 1];
   await userEvent.dblClick(within(targetWindow).getByRole("button", { name: /Target/ }));
   fireEvent.contextMenu(targetWindow.querySelector(".file-list")!, { clientX: 200, clientY: 180 });
@@ -835,13 +835,13 @@ it("opens root-card paste inside its virtual-root file window", async () => {
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   const icon = await screen.findByRole("button", { name: "Open File Manager" });
   await userEvent.click(icon);
-  const sourceWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  const sourceWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
   await userEvent.dblClick(within(sourceWindow).getByRole("button", { name: /Source/ }));
   await userEvent.click(await within(sourceWindow).findByLabelText("Select a.txt"));
   fireEvent.keyDown(document, { key: "c", ctrlKey: true });
 
   await userEvent.click(icon);
-  const windows = container.querySelectorAll<HTMLElement>("[data-window-kind='file']");
+  const windows = container.querySelectorAll<HTMLElement>(".desktop-window[data-window-kind='file']");
   const targetWindow = windows[windows.length - 1];
   fireEvent.contextMenu(within(targetWindow).getByRole("button", { name: /Target/ }), { clientX: 200, clientY: 180 });
   const menu = await screen.findByRole("menu", { name: "File actions" });
@@ -862,7 +862,7 @@ it("clears a cut clipboard only after the local move job is created", async () =
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   const icon = await screen.findByRole("button", { name: "Open File Manager" });
   await userEvent.click(icon);
-  const sourceWindow = container.querySelector<HTMLElement>("[data-window-kind='file']")!;
+  const sourceWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
   await userEvent.dblClick(within(sourceWindow).getByRole("button", { name: /Source/ }));
   const fileName = await within(sourceWindow).findByText("a.txt");
   fireEvent.contextMenu(fileName, { clientX: 100, clientY: 100 });
@@ -871,7 +871,7 @@ it("clears a cut clipboard only after the local move job is created", async () =
   expect(fileName.closest("tr")).toHaveAttribute("data-clipboard-cut", "true");
 
   await userEvent.click(icon);
-  const windows = container.querySelectorAll<HTMLElement>("[data-window-kind='file']");
+  const windows = container.querySelectorAll<HTMLElement>(".desktop-window[data-window-kind='file']");
   const targetWindow = windows[windows.length - 1];
   await userEvent.dblClick(within(targetWindow).getByRole("button", { name: /Target/ }));
   fireEvent.keyDown(document, { key: "v", ctrlKey: true });

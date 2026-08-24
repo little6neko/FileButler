@@ -20,12 +20,13 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { FileImage, FileVideo, Files, ScanText } from "lucide-react";
+import { FileCode2, FileImage, FileVideo, Files, ScanText } from "lucide-react";
 import { toast } from "sonner";
 import { buildClipboardRequest, createAppClipboard, isEditableShortcutTarget, type AppClipboard } from "../appClipboard";
-import { api } from "../api/client";
+import { api, APIError } from "../api/client";
 import type { Entry, OpsRequest, RenameOptions, Root } from "../api/types";
 import { powerRenameCoversPoint } from "../desktopWindowHitTest";
+import { fileOpenKind } from "../fileOpenKind";
 import {
   buildDragRequest,
   buildFileDragSource,
@@ -60,10 +61,12 @@ import {
   focusWindow,
   isFileWindow,
   isMediaPreviewWindow,
+  isTextEditorWindow,
   minimizeWindow,
   openFileWindow,
   openMediaPreviewWindow,
   openPowerRenameWindow,
+  openTextEditorWindow,
   reconcileWindowBounds,
   restoreWindow,
   setWindowRect,
@@ -75,6 +78,8 @@ import {
   type WindowManagerState,
   type WindowRect,
 } from "../windowManager";
+import { createTextEditorManager } from "../textEditorManager";
+import type { TextFileDescriptor } from "../textFiles";
 import {
   clearAllWindowDialogs,
   clearWindowDialog,
@@ -102,6 +107,7 @@ import { OperationPreview, OperationPreviewContent } from "./OperationPreview";
 import { defaultRenameOptions } from "./powerRenameOptions";
 import { PowerRenameContent, RenameDialog } from "./RenameDialog";
 import { SingleRenameContent, SingleRenameDialog } from "./SingleRenameDialog";
+import { TextEditor } from "./TextEditor";
 import { VirtualRootView } from "./VirtualRootView";
 import { WindowFrame } from "./WindowFrame";
 import { WindowDialogLayer } from "./WindowDialogLayer";
@@ -212,9 +218,26 @@ export function FileWorkspace({
   const refreshStateRef = useRef({ running: false, pending: false });
   const contextJobEvents = useOptionalJobEventsStore();
   const [fallbackJobEvents] = useState(() => new JobEventsStore());
+  const [textEditors] = useState(() => createTextEditorManager());
   const jobEvents = jobEventsStore ?? contextJobEvents ?? fallbackJobEvents;
   const jobEventsState = useSyncExternalStore(jobEvents.subscribe, jobEvents.getSnapshot, jobEvents.getSnapshot);
+  const textEditorState = useSyncExternalStore(textEditors.subscribe, textEditors.getSnapshot, textEditors.getSnapshot);
+  const dirtyTextEditorIds = useMemo(
+    () => new Set(textEditorState.dirtyInstanceIds),
+    [textEditorState.dirtyInstanceIds],
+  );
+  const textEditorDisposalGenerationRef = useRef(0);
   const sensors = useSensors(useSensor(PointerSensor, pointerSensorOptions));
+
+  useEffect(() => {
+    textEditorDisposalGenerationRef.current += 1;
+    return () => {
+      const cleanupGeneration = ++textEditorDisposalGenerationRef.current;
+      queueMicrotask(() => {
+        if (textEditorDisposalGenerationRef.current === cleanupGeneration) textEditors.dispose();
+      });
+    };
+  }, [textEditors]);
 
   const commitSessions = useCallback((update: (current: Record<string, BrowserSession>) => Record<string, BrowserSession>) => {
     const next = update(sessionsRef.current);
@@ -467,6 +490,18 @@ export function FileWorkspace({
       }
       return items;
     }
+    if (isTextEditorWindow(window)) {
+      const session = textEditors.get(window.instanceId);
+      if (session) {
+        items.push({
+          id: window.id,
+          kind: window.kind,
+          title: textEditorTitle(session.fileName, dirtyTextEditorIds.has(session.id)),
+          status: window.status,
+        });
+      }
+      return items;
+    }
     const instance = powerRenameInstances[window.instanceId];
     if (instance) {
       items.push({
@@ -660,6 +695,22 @@ export function FileWorkspace({
               onNext={() => moveMediaPreviewInstance(instance.id, "next")}
             />
           </div>
+        </WindowFrame>
+      );
+    }
+
+    if (isTextEditorWindow(window)) {
+      const session = textEditors.get(window.instanceId);
+      if (!session) return null;
+      const title = textEditorTitle(session.fileName, dirtyTextEditorIds.has(session.id));
+      return (
+        <WindowFrame
+          key={window.id}
+          {...frameProps}
+          title={title}
+          icon={<FileCode2 aria-hidden="true" />}
+        >
+          <TextEditor session={session} labels={labels} />
         </WindowFrame>
       );
     }
@@ -907,7 +958,7 @@ export function FileWorkspace({
       onSelectEntry: (path: string, modifiers: FileSelectionModifiers) => session.selectionStore.select(path, fileSelectionMode(modifiers)),
       onSelectAll: (checked: boolean) => session.selectionStore.selectAll(checked),
       onSelectPaths: (paths: string[]) => session.selectionStore.replace(paths),
-      onOpenFile: (entry: Entry) => openMediaPreview(sessionId, entry),
+      onOpenFile: (entry: Entry) => openFile(sessionId, entry),
       onRefresh: () => void loadSession(sessionId, true),
       onActivate,
       isActive: activeSessionId === sessionId,
@@ -1350,6 +1401,12 @@ export function FileWorkspace({
       removeMediaPreviewInstance(target.instanceId);
       return;
     }
+    if (isTextEditorWindow(target)) {
+      const released = textEditors.release(target.instanceId, { kind: "desktop", id: target.id });
+      if (released.blocked) return;
+      commitWindowState((current) => closeWindow(current, id));
+      return;
+    }
     if (!isFileWindow(target)) {
       const instance = powerRenameInstancesRef.current[target.instanceId];
       if (instance?.submitting) return;
@@ -1532,6 +1589,53 @@ export function FileWorkspace({
     setMediaPreview(snapshot);
   }
 
+  function openFile(sessionId: string, entry: Entry) {
+    const openKind = fileOpenKind(entry);
+    if (openKind.kind === "media") {
+      openMediaPreview(sessionId, entry);
+      return;
+    }
+    if (openKind.kind !== "text" || mode !== "desktop") return;
+    openTextEditor(sessionId, entry, openKind.text);
+  }
+
+  function openTextEditor(sessionId: string, entry: Entry, text: TextFileDescriptor) {
+    const browserSession = sessionsRef.current[sessionId];
+    if (!browserSession || browserSession.location.kind !== "directory" || !browserSession.location.rootId) return;
+    const { rootId } = browserSession.location;
+    const existingSession = textEditors.findByPath(rootId, entry.relativePath);
+    if (existingSession) {
+      const existingWindow = windowsByMostRecent(windowStateRef.current).find(
+        (window) => isTextEditorWindow(window) && window.instanceId === existingSession.id,
+      );
+      if (existingWindow) {
+        focusDesktopWindow(existingWindow.id);
+        return;
+      }
+    }
+
+    const windowId = `window-${++windowCounterRef.current}`;
+    const acquired = textEditors.acquire({
+      rootId,
+      path: entry.relativePath,
+      fileName: entry.name,
+      text,
+    }, { kind: "desktop", id: windowId });
+    commitWindowState((current) => openTextEditorWindow(
+      current,
+      windowId,
+      acquired.session.id,
+      desktopBoundsRef.current,
+    ));
+    if (!acquired.created) return;
+
+    void api.textRead(rootId, entry.relativePath).then((document) => {
+      acquired.session.applyLoadedDocument(document);
+    }).catch((error) => {
+      acquired.session.failLoading(textEditorIssue(error));
+    });
+  }
+
   function startPaneResize(event: ReactMouseEvent<HTMLDivElement>) {
     event.preventDefault();
     const workspace = event.currentTarget.parentElement;
@@ -1624,6 +1728,16 @@ function titleForSession(session: BrowserSession | undefined, roots: Root[], lab
 function basename(path: string) {
   const parts = path.split("/").filter(Boolean);
   return parts[parts.length - 1] ?? path;
+}
+
+function textEditorTitle(fileName: string, dirty: boolean) {
+  return dirty ? `${fileName} *` : fileName;
+}
+
+function textEditorIssue(error: unknown) {
+  return error instanceof APIError
+    ? { code: error.code, message: error.message }
+    : { code: "operation_failed", message: error instanceof Error ? error.message : "Unable to open this text file" };
 }
 
 function locationKey(location: DirectoryLocation) {

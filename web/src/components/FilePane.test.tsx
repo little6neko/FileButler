@@ -265,6 +265,17 @@ it("navigates into a directory", async () => {
   expect(onPathChange).toHaveBeenCalledWith("folder");
 });
 
+it("opens an ordinary file on double click", async () => {
+  const onOpenFile = vi.fn();
+  const file = entry("notes.txt");
+  renderPane({ entries: [file], onOpenFile });
+
+  await userEvent.dblClick(screen.getByText("notes.txt"));
+
+  expect(onOpenFile).toHaveBeenCalledOnce();
+  expect(onOpenFile).toHaveBeenCalledWith(file);
+});
+
 it("marks directory rows as clickable", () => {
   renderPane({
     entries: [entry("folder", "directory"), entry("file.txt")],

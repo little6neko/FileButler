@@ -10,7 +10,7 @@ export function LanguageSelect({ value, onChange, labels }: { value: LanguageMod
 
   return (
     <Select items={items} value={value} onValueChange={(next) => onChange(next as LanguageMode)}>
-      <SelectTrigger aria-label="Language" className="h-7 w-[118px] bg-slate-50 text-xs">
+      <SelectTrigger aria-label="Language" className="h-7 w-36 bg-slate-50 text-xs">
         <SelectValue />
       </SelectTrigger>
       <SelectContent

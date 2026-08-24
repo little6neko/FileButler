@@ -7,7 +7,10 @@ import { LanguageSelect } from "./LanguageSelect";
 it("renders the translated label for the selected language mode", () => {
   render(<LanguageSelect value="auto" onChange={vi.fn()} labels={strings.en} />);
 
-  expect(screen.getByRole("combobox", { name: "Language" })).toHaveTextContent("Auto");
+  const trigger = screen.getByRole("combobox", { name: "Language" });
+  expect(trigger).toHaveTextContent("Auto");
+  expect(trigger).toHaveClass("w-36");
+  expect(trigger).not.toHaveClass("w-[118px]");
 });
 
 it("opens an animated taskbar menu above system panels and changes language", async () => {

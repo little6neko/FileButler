@@ -72,6 +72,24 @@ async function launchPowerRename(container: HTMLElement) {
   return { fileWindow: windows[0], powerRenameWindow: windows[1] };
 }
 
+function dispatchSelectAllShortcut({
+  target = document,
+  metaKey = false,
+}: {
+  target?: EventTarget;
+  metaKey?: boolean;
+} = {}) {
+  const event = new KeyboardEvent("keydown", {
+    key: "a",
+    ctrlKey: !metaKey,
+    metaKey,
+    bubbles: true,
+    cancelable: true,
+  });
+  act(() => target.dispatchEvent(event));
+  return event;
+}
+
 it("starts with an empty desktop and creates a separate taskbar item for every window", async () => {
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   const icon = await screen.findByRole("button", { name: "Open File Manager" });
@@ -948,6 +966,114 @@ it("reports empty keyboard clipboard commands without invoking native page clipb
   document.dispatchEvent(pasteEvent);
   expect(pasteEvent.defaultPrevented).toBe(true);
   expect(toast.error).toHaveBeenCalledWith("The app clipboard is empty");
+});
+
+it("selects all files only in the active compact pane with Ctrl+A or Cmd+A", async () => {
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  const rightPane = await screen.findByRole("region", { name: "Right pane" });
+  const leftFolder = await within(leftPane).findByLabelText("Select folder");
+  const leftFile = within(leftPane).getByLabelText("Select a.txt");
+  const rightFolder = await within(rightPane).findByLabelText("Select folder");
+  const rightFile = within(rightPane).getByLabelText("Select a.txt");
+
+  await userEvent.click(within(rightPane).getByText("Right pane"));
+  const metaEvent = dispatchSelectAllShortcut({ metaKey: true });
+
+  expect(metaEvent.defaultPrevented).toBe(true);
+  expect(rightFolder).toBeChecked();
+  expect(rightFile).toBeChecked();
+  expect(leftFolder).not.toBeChecked();
+  expect(leftFile).not.toBeChecked();
+
+  dispatchSelectAllShortcut({ metaKey: true });
+  expect(rightFolder).toBeChecked();
+  expect(rightFile).toBeChecked();
+
+  await userEvent.click(within(leftPane).getByText("Left pane"));
+  const ctrlEvent = dispatchSelectAllShortcut();
+  expect(ctrlEvent.defaultPrevented).toBe(true);
+  expect(leftFolder).toBeChecked();
+  expect(leftFile).toBeChecked();
+});
+
+it("selects all files only in the active desktop file window", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const icon = await screen.findByRole("button", { name: "Open File Manager" });
+  await userEvent.click(icon);
+  await userEvent.click(icon);
+  const windows = container.querySelectorAll<HTMLElement>(".desktop-window[data-window-kind='file']");
+  const firstWindow = windows[0];
+  const secondWindow = windows[1];
+  await userEvent.dblClick(within(firstWindow).getByRole("button", { name: /Source/ }));
+  await userEvent.dblClick(within(secondWindow).getByRole("button", { name: /Source/ }));
+  const firstFolder = await within(firstWindow).findByLabelText("Select folder");
+  const firstFile = within(firstWindow).getByLabelText("Select a.txt");
+  const secondFolder = await within(secondWindow).findByLabelText("Select folder");
+  const secondFile = within(secondWindow).getByLabelText("Select a.txt");
+
+  const secondEvent = dispatchSelectAllShortcut();
+  expect(secondEvent.defaultPrevented).toBe(true);
+  expect(secondFolder).toBeChecked();
+  expect(secondFile).toBeChecked();
+  expect(firstFolder).not.toBeChecked();
+  expect(firstFile).not.toBeChecked();
+
+  await userEvent.click(container.querySelectorAll<HTMLElement>(".taskbar-window-button")[0]);
+  dispatchSelectAllShortcut({ metaKey: true });
+  expect(firstFolder).toBeChecked();
+  expect(firstFile).toBeChecked();
+});
+
+it("leaves editable controls in charge of their own select-all shortcut", async () => {
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  const folder = await within(leftPane).findByLabelText("Select folder");
+  const file = within(leftPane).getByLabelText("Select a.txt");
+  const pathInput = within(leftPane).getByRole("textbox", { name: "Left pane path" });
+
+  const event = dispatchSelectAllShortcut({ target: pathInput });
+
+  expect(event.defaultPrevented).toBe(false);
+  expect(folder).not.toBeChecked();
+  expect(file).not.toBeChecked();
+});
+
+it("blocks page select-all without selecting files while a dialog or menu is open", async () => {
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  const folder = await within(leftPane).findByLabelText("Select folder");
+  const file = within(leftPane).getByLabelText("Select a.txt");
+  await userEvent.click(screen.getByRole("button", { name: "mkdir" }));
+  const dialog = await screen.findByRole("dialog", { name: "Directory name" });
+
+  const dialogEvent = dispatchSelectAllShortcut();
+  expect(dialogEvent.defaultPrevented).toBe(true);
+  expect(folder).not.toBeChecked();
+  expect(file).not.toBeChecked();
+
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Directory name" })).not.toBeInTheDocument());
+  fireEvent.contextMenu(within(leftPane).getByText("a.txt"), { clientX: 100, clientY: 100 });
+  expect(await screen.findByRole("menu", { name: "File actions" })).toBeInTheDocument();
+
+  const menuEvent = dispatchSelectAllShortcut();
+  expect(menuEvent.defaultPrevented).toBe(true);
+  expect(folder).not.toBeChecked();
+  expect(file).toBeChecked();
+});
+
+it("blocks page select-all without selecting the background list in a non-file window", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const { fileWindow, powerRenameWindow } = await launchPowerRename(container);
+  const folder = within(fileWindow).getByLabelText("Select folder");
+  const file = within(fileWindow).getByLabelText("Select a.txt");
+
+  const event = dispatchSelectAllShortcut({ target: powerRenameWindow });
+
+  expect(event.defaultPrevented).toBe(true);
+  expect(folder).not.toBeChecked();
+  expect(file).toBeChecked();
 });
 
 it("preserves extra desktop windows across compact mode round trips", async () => {

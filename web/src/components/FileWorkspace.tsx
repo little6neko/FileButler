@@ -518,10 +518,23 @@ export function FileWorkspace({
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
       if (event.defaultPrevented || !(event.ctrlKey || event.metaKey) || event.altKey) return;
-      if (isEditableShortcutTarget(event.target) || document.querySelector("[role='dialog']:not(.window-dialog-panel)")) return;
-      const activeFileWindowId = activeFileWindowIdRef.current;
-      if (activeFileWindowId && windowDialogsRef.current[activeFileWindowId]) return;
+      if (isEditableShortcutTarget(event.target)) return;
       const key = event.key.toLowerCase();
+      const pageDialogOpen = Boolean(document.querySelector("[role='dialog']:not(.window-dialog-panel)"));
+      const activeFileWindowId = activeFileWindowIdRef.current;
+      const activeWindowDialogOpen = Boolean(activeFileWindowId && windowDialogsRef.current[activeFileWindowId]);
+      if (key === "a") {
+        event.preventDefault();
+        if (
+          pageDialogOpen
+          || activeWindowDialogOpen
+          || document.querySelector("[role='alertdialog'], [role='menu'], [role='listbox']")
+        ) return;
+        const activeSessionId = activeSessionIdRef.current;
+        if (activeSessionId) sessionsRef.current[activeSessionId]?.selectionStore.selectAll(true);
+        return;
+      }
+      if (pageDialogOpen || activeWindowDialogOpen) return;
       if ((key === "c" || key === "x") && !window.getSelection()?.toString()) {
         if (!copySessionSelection(activeSessionIdRef.current, key === "c" ? "copy" : "move")) {
           toast.error(labels.clipboardSelectionRequired);

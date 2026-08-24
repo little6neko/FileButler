@@ -91,6 +91,29 @@ it("restores and focuses the existing window when the same path is opened again"
   expect(api.textRead).toHaveBeenCalledTimes(1);
 });
 
+it("keeps Ctrl+A inside CodeMirror instead of selecting the background file list", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const fileWindow = await openSourceWindow(container);
+  await userEvent.dblClick(await within(fileWindow).findByText("notes.txt"));
+  const editorWindow = container.querySelector<HTMLElement>('.desktop-window[data-window-kind="textEditor"]')!;
+  const editor = await waitForEditor(editorWindow);
+
+  await userEvent.click(editor);
+  const selectAllEvent = new KeyboardEvent("keydown", {
+    key: "a",
+    code: "KeyA",
+    ctrlKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  act(() => editor.dispatchEvent(selectAllEvent));
+
+  expect(selectAllEvent.defaultPrevented).toBe(true);
+  expect(window.getSelection()?.toString()).toBe("contents of notes.txt");
+  expect(editor).toHaveTextContent("contents of notes.txt");
+  expect(within(fileWindow).getByLabelText("Select main.go")).not.toBeChecked();
+});
+
 it("opens independent text windows while keeping SVG media and unknown files out of the editor", async () => {
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   const fileWindow = await openSourceWindow(container);

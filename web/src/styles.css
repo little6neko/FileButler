@@ -570,6 +570,26 @@ body {
   white-space: nowrap;
 }
 
+.text-editor-language-trigger {
+  width: min(190px, 46%);
+  min-width: 126px;
+  margin-left: auto;
+  background: var(--background);
+  font-size: 12px;
+}
+
+.text-editor-language-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-editor-language-menu {
+  width: max(190px, var(--anchor-width));
+  max-height: min(22rem, var(--available-height));
+}
+
 .text-editor-degradation {
   grid-row: 2;
   min-width: 0;

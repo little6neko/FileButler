@@ -25,10 +25,14 @@ describe("TextEditor", () => {
       ] as never,
     });
     const editorSession = readySession("main.go", "package main\n");
-    const { container } = render(<TextEditor session={editorSession} labels={strings.en} loader={loader} />);
+    const onSave = vi.fn();
+    const { container } = render(
+      <TextEditor session={editorSession} labels={strings.en} loader={loader} onSave={onSave} />,
+    );
 
     await waitFor(() => expect(container.querySelector(".cm-editor")).toBeInTheDocument());
     expect(editorSession.getSnapshot()).toMatchObject({ languageLoading: true, appliedLanguage: "plain" });
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
     const loadingRuntime = exposedRuntime(editorSession);
     loadingRuntime.bridge.view?.dispatch({
       changes: { from: loadingRuntime.state.doc.length, insert: "// editable while loading\n" },
@@ -137,6 +141,8 @@ describe("TextEditor", () => {
       appliedLanguage: "plain",
       degradationReason: "document-too-large",
     }));
+    expect(screen.getByRole("combobox", { name: "Syntax highlighting" })).toBeDisabled();
+    expect(screen.getByRole("combobox", { name: "Syntax highlighting" })).toHaveTextContent("Plain Text (large file)");
   });
 
   it("shows a loading state before the file document is available", () => {
@@ -150,9 +156,11 @@ describe("TextEditor", () => {
     const { container } = render(<TextEditor session={editorSession} labels={strings.en} onSave={onSave} />);
 
     await waitFor(() => expect(container.querySelector(".cm-editor")).toBeInTheDocument());
+    await waitFor(() => expect(editorSession.getSnapshot().languageLoading).toBe(false));
     expect(container.querySelector(".cm-gutters")).toBeInTheDocument();
     expect(container.querySelector(".cm-content")).toHaveAttribute("aria-label", "Edit main.go");
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+    expect(screen.getByRole("combobox", { name: "Syntax highlighting" })).toHaveTextContent("Auto (Go)");
     expect(screen.getByText("Go")).toBeInTheDocument();
     expect(screen.getByText("UTF-8")).toBeInTheDocument();
     expect(screen.getByText("LF")).toBeInTheDocument();
@@ -163,6 +171,25 @@ describe("TextEditor", () => {
     onSave.mockClear();
     fireEvent.keyDown(container.querySelector(".cm-content")!, { key: "s", code: "KeyS", ctrlKey: true });
     expect(onSave).toHaveBeenCalledTimes(1);
+  });
+
+  it("changes syntax from the toolbar without saving or marking the document dirty", async () => {
+    const onSave = vi.fn();
+    const editorSession = readySession("main.go", "package main\n");
+    const { container } = render(<TextEditor session={editorSession} labels={strings.en} onSave={onSave} />);
+    await waitFor(() => expect(container.querySelector(".cm-editor")).toBeInTheDocument());
+    await waitFor(() => expect(editorSession.getSnapshot().languageLoading).toBe(false));
+
+    await userEvent.click(screen.getByRole("combobox", { name: "Syntax highlighting" }));
+    await userEvent.click(screen.getByRole("option", { name: "Python" }));
+    await waitFor(() => expect(editorSession.getSnapshot()).toMatchObject({
+      languageSelection: "python",
+      appliedLanguage: "python",
+      dirty: false,
+    }));
+    expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByRole("combobox", { name: "Syntax highlighting" })).toHaveTextContent("Python");
+    expect(screen.getByLabelText("Status").firstElementChild).toHaveTextContent("Python");
   });
 
   it("keeps editing available when a language chunk fails", async () => {
@@ -183,6 +210,8 @@ describe("TextEditor", () => {
       degradationReason: "language-load-failed",
     }));
     expect(screen.getByText("Syntax highlighting is unavailable; editing continues as plain text.")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Syntax highlighting" })).toBeEnabled();
+    expect(screen.getByLabelText("Status").firstElementChild).toHaveTextContent("Plain Text");
   });
 
   it("restores the document and undo history after the visible view is remounted", async () => {

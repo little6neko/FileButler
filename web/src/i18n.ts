@@ -115,6 +115,10 @@ export type UIStrings = {
   editorLargeFile: string;
   editorDocumentTooLarge: string;
   editorHighlightUnavailable: string;
+  editorSyntaxHighlight: string;
+  editorSyntaxAuto(language: string): string;
+  editorSyntaxLoading(language: string): string;
+  editorSyntaxLargeFile: string;
   editorConflictTitle: string;
   editorConflictDescription(name: string): string;
   editorReload: string;
@@ -306,6 +310,10 @@ export const strings: Record<Language, UIStrings> = {
     editorLargeFile: "Large file: syntax highlighting is disabled.",
     editorDocumentTooLarge: "Syntax highlighting was disabled because the document grew beyond the safe limit.",
     editorHighlightUnavailable: "Syntax highlighting is unavailable; editing continues as plain text.",
+    editorSyntaxHighlight: "Syntax highlighting",
+    editorSyntaxAuto: (language) => `Auto (${language})`,
+    editorSyntaxLoading: (language) => `Loading ${language}…`,
+    editorSyntaxLargeFile: "Plain Text (large file)",
     editorConflictTitle: "File changed on disk",
     editorConflictDescription: (name) => `${name} was changed outside FileButler. Reload the disk version or overwrite it with your saved edit?`,
     editorReload: "Reload",
@@ -512,6 +520,10 @@ export const strings: Record<Language, UIStrings> = {
     editorLargeFile: "文件较大，已关闭语法高亮。",
     editorDocumentTooLarge: "文档超过安全大小，已关闭语法高亮。",
     editorHighlightUnavailable: "语法高亮不可用，已切换为纯文本编辑。",
+    editorSyntaxHighlight: "语法高亮",
+    editorSyntaxAuto: (language) => `自动（${language}）`,
+    editorSyntaxLoading: (language) => `正在加载 ${language}…`,
+    editorSyntaxLargeFile: "纯文本（大文件）",
     editorConflictTitle: "文件已在磁盘上更改",
     editorConflictDescription: (name) => `${name} 已在 FileButler 外部被修改。要重新载入磁盘版本，还是用当前编辑内容覆盖？`,
     editorReload: "重新载入",

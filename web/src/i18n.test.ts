@@ -43,4 +43,10 @@ it("localizes text editor actions, states, and cursor position", () => {
   expect(strings["zh-CN"].editorUnsavedTitle).toBe("有未保存的更改");
   expect(strings.en.discardChanges).toBe("Don't save");
   expect(strings["zh-CN"].discardChanges).toBe("不保存");
+  expect(strings.en.editorSyntaxHighlight).toBe("Syntax highlighting");
+  expect(strings["zh-CN"].editorSyntaxHighlight).toBe("语法高亮");
+  expect(strings.en.editorSyntaxAuto("Go")).toBe("Auto (Go)");
+  expect(strings["zh-CN"].editorSyntaxAuto("Go")).toBe("自动（Go）");
+  expect(strings.en.editorSyntaxLoading("Python")).toBe("Loading Python…");
+  expect(strings["zh-CN"].editorSyntaxLargeFile).toBe("纯文本（大文件）");
 });

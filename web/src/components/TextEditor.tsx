@@ -14,7 +14,9 @@ import {
   type TextEditorDegradationReason,
   type TextEditorSession,
 } from "../textEditorSession";
+import { textLanguageDefinition } from "../textFiles";
 import { ErrorBanner } from "./ErrorBanner";
+import { TextEditorLanguageSelect } from "./TextEditorLanguageSelect";
 
 type Props = {
   session: TextEditorSession;
@@ -202,6 +204,16 @@ export function TextEditor({
           {labels.save}
         </Button>
         <span className="text-editor-save-state" aria-live="polite">{saveStatus}</span>
+        <TextEditorLanguageSelect
+          selection={snapshot.languageSelection}
+          automaticLanguage={snapshot.automaticLanguage}
+          requestedLanguage={snapshot.requestedLanguage}
+          loading={snapshot.languageLoading}
+          largeFileLocked={snapshot.largeFileHighlightLocked}
+          unavailable={!snapshot.hasDocument}
+          labels={labels}
+          onChange={(selection) => session.selectLanguage(selection)}
+        />
       </div>
 
       {degradationMessage ? <div className="text-editor-degradation" role="status">{degradationMessage}</div> : null}
@@ -219,7 +231,7 @@ export function TextEditor({
 
       {snapshot.hasDocument ? (
         <div className="text-editor-statusbar" aria-label={labels.status}>
-          <span>{session.text.displayName}</span>
+          <span>{textLanguageDefinition(snapshot.appliedLanguage).displayName}</span>
           <span>{encodingLabel(snapshot.encoding)}</span>
           <span>{lineEndingLabel(snapshot.lineEnding, snapshot.saveLineEnding, labels)}</span>
           <span>{labels.editorLineColumn(editorInfo.line, editorInfo.column)}</span>

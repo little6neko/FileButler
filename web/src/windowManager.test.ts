@@ -4,10 +4,12 @@ import {
   createWindowManagerState,
   focusWindow,
   isMediaPreviewWindow,
+  isTextEditorWindow,
   minimizeWindow,
   openFileWindow,
   openMediaPreviewWindow,
   openPowerRenameWindow,
+  openTextEditorWindow,
   reconcileWindowBounds,
   renderedWindowRect,
   resizeWindowRect,
@@ -102,21 +104,27 @@ describe("window manager", () => {
     expect(state.windows.map((window) => window.id)).toEqual(["window-2"]);
   });
 
-  it("preserves file, PowerRename, and media preview identities through shared window transitions", () => {
+  it("preserves every application identity through shared window transitions", () => {
     let state = openFileWindow(createWindowManagerState(), "window-file", "session-1", bounds);
     state = openPowerRenameWindow(state, "window-rename", "rename-1", bounds);
     state = openMediaPreviewWindow(state, "window-media", "media-1", bounds);
+    state = openTextEditorWindow(state, "window-text", "text-1", bounds);
 
     expect(state.windows).toMatchObject([
       { id: "window-file", kind: "file", sessionId: "session-1" },
       { id: "window-rename", kind: "powerRename", instanceId: "rename-1" },
       { id: "window-media", kind: "mediaPreview", instanceId: "media-1" },
+      { id: "window-text", kind: "textEditor", instanceId: "text-1" },
     ]);
     expect(state.windows[1].rect).toMatchObject({ width: 720, height: 504 });
     expect(isMediaPreviewWindow(state.windows[2])).toBe(true);
+    expect(isTextEditorWindow(state.windows[3])).toBe(true);
 
     state = setWindowRect(state, "window-media", { x: 0, y: 0, width: 100, height: 100 }, bounds);
     expect(state.windows[2].restoreRect).toMatchObject({ width: 420, height: 280 });
+
+    state = setWindowRect(state, "window-text", { x: 0, y: 0, width: 100, height: 100 }, bounds);
+    expect(state.windows[3].restoreRect).toMatchObject({ width: 640, height: 400 });
 
     state = setWindowRect(state, "window-rename", { x: 0, y: 0, width: 100, height: 100 }, bounds);
     state = toggleMaximizeWindow(state, "window-rename");
@@ -131,10 +139,11 @@ describe("window manager", () => {
     });
 
     state = closeWindow(state, "window-rename");
-    expect(state.activeWindowId).toBe("window-media");
+    expect(state.activeWindowId).toBe("window-text");
     expect(state.windows).toMatchObject([
       { id: "window-file", kind: "file", sessionId: "session-1" },
       { id: "window-media", kind: "mediaPreview", instanceId: "media-1" },
+      { id: "window-text", kind: "textEditor", instanceId: "text-1" },
     ]);
   });
 });

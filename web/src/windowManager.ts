@@ -35,7 +35,12 @@ export type MediaPreviewWindowRecord = BaseWindowRecord & {
   instanceId: string;
 };
 
-export type DesktopWindowRecord = FileWindowRecord | PowerRenameWindowRecord | MediaPreviewWindowRecord;
+export type TextEditorWindowRecord = BaseWindowRecord & {
+  kind: "textEditor";
+  instanceId: string;
+};
+
+export type DesktopWindowRecord = FileWindowRecord | PowerRenameWindowRecord | MediaPreviewWindowRecord | TextEditorWindowRecord;
 
 export type WindowManagerState = {
   windows: DesktopWindowRecord[];
@@ -47,6 +52,7 @@ export type WindowManagerState = {
 export const desktopWindowMinimum = { width: 560, height: 360 } as const;
 export const powerRenameWindowMinimum = { width: 720, height: 480 } as const;
 export const mediaPreviewWindowMinimum = { width: 420, height: 280 } as const;
+export const textEditorWindowMinimum = { width: 640, height: 400 } as const;
 
 const desktopInset = 12;
 const cascadeOrigin = { x: 96, y: 40 } as const;
@@ -83,13 +89,23 @@ export function openMediaPreviewWindow(
   return openWindow(state, id, { kind: "mediaPreview", instanceId }, bounds);
 }
 
+export function openTextEditorWindow(
+  state: WindowManagerState,
+  id: string,
+  instanceId: string,
+  bounds: DesktopBounds,
+): WindowManagerState {
+  return openWindow(state, id, { kind: "textEditor", instanceId }, bounds);
+}
+
 function openWindow(
   state: WindowManagerState,
   id: string,
   identity:
     | Pick<FileWindowRecord, "kind" | "sessionId">
     | Pick<PowerRenameWindowRecord, "kind" | "instanceId">
-    | Pick<MediaPreviewWindowRecord, "kind" | "instanceId">,
+    | Pick<MediaPreviewWindowRecord, "kind" | "instanceId">
+    | Pick<TextEditorWindowRecord, "kind" | "instanceId">,
   bounds: DesktopBounds,
 ): WindowManagerState {
   const rect = cascadeRect(bounds, state.cascadeIndex, windowMinimum(identity));
@@ -311,6 +327,7 @@ function highestVisibleZ(windows: DesktopWindowRecord[]) {
 export function windowMinimum(window: Pick<DesktopWindowRecord, "kind">) {
   if (window.kind === "powerRename") return powerRenameWindowMinimum;
   if (window.kind === "mediaPreview") return mediaPreviewWindowMinimum;
+  if (window.kind === "textEditor") return textEditorWindowMinimum;
   return desktopWindowMinimum;
 }
 
@@ -320,6 +337,10 @@ export function isFileWindow(window: DesktopWindowRecord): window is FileWindowR
 
 export function isMediaPreviewWindow(window: DesktopWindowRecord): window is MediaPreviewWindowRecord {
   return window.kind === "mediaPreview";
+}
+
+export function isTextEditorWindow(window: DesktopWindowRecord): window is TextEditorWindowRecord {
+  return window.kind === "textEditor";
 }
 
 function sameRect(left: WindowRect, right: WindowRect) {

@@ -11,6 +11,7 @@ import (
 	"github.com/little6neko/filebutler/internal/ops"
 	"github.com/little6neko/filebutler/internal/rename"
 	"github.com/little6neko/filebutler/internal/roots"
+	"github.com/little6neko/filebutler/internal/textfile"
 )
 
 type Deps struct {
@@ -26,6 +27,7 @@ type Deps struct {
 
 func NewRouter(deps Deps) http.Handler {
 	router := chi.NewRouter()
+	textService := textfile.NewService(deps.Roots)
 	cookieName := deps.Config.Session.CookieName
 	if cookieName == "" {
 		cookieName = "filebutler_session"
@@ -44,6 +46,8 @@ func NewRouter(deps Deps) http.Handler {
 		protected.Get("/api/roots", rootsHandler(deps.Roots))
 		protected.Get("/api/browse", browseHandler(deps.Browser))
 		protected.Get("/api/media", mediaHandler(deps.Roots))
+		protected.Get("/api/text", textReadHandler(textService))
+		protected.Put("/api/text", textSaveHandler(textService))
 		protected.Post("/api/ops/dry-run", ops.DryRunHandler(deps.OpsPlanner))
 		protected.Post("/api/ops/jobs", ops.CreateJobHandler(deps.OpsPlanner, deps.JobStore, deps.OpsRunner))
 		protected.Post("/api/rename/preview", rename.PreviewHandler(deps.Browser))

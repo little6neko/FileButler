@@ -1,4 +1,14 @@
-import type { Entry, OpsRequest, PlanItem, RenameRequest, Root, SingleRenameRequest } from "./types";
+import type {
+  Entry,
+  OpsRequest,
+  PlanItem,
+  RenameRequest,
+  Root,
+  SingleRenameRequest,
+  TextDocument,
+  TextSaveRequest,
+  TextSaveResult,
+} from "./types";
 
 export class APIError extends Error {
   code: string;
@@ -45,6 +55,12 @@ export const api = {
     ),
   mediaUrl: (rootId: string, path: string) =>
     `/api/media?rootId=${encodeURIComponent(rootId)}&path=${encodeURIComponent(path)}`,
+  textRead: (rootId: string, path: string) =>
+    request<TextDocument>(
+      `/api/text?rootId=${encodeURIComponent(rootId)}&path=${encodeURIComponent(path)}`,
+    ),
+  textSave: (payload: TextSaveRequest) =>
+    request<TextSaveResult>("/api/text", { method: "PUT", body: JSON.stringify(payload) }),
   opsDryRun: (payload: OpsRequest) =>
     request<{ items: PlanItem[]; hasConflict: boolean }>("/api/ops/dry-run", {
       method: "POST",

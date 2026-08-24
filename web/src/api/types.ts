@@ -102,3 +102,37 @@ export type JobSnapshot = {
   reset: boolean;
   jobs: Job[];
 };
+
+export type TextEncoding =
+  | "utf-8"
+  | "utf-8-bom"
+  | "utf-16le-bom"
+  | "utf-16be-bom"
+  | "gb18030";
+
+export type TextLineEnding = "lf" | "crlf" | "cr" | "mixed" | "none";
+export type TextWritableLineEnding = Exclude<TextLineEnding, "mixed" | "none">;
+
+export type TextDocument = {
+  content: string;
+  encoding: TextEncoding;
+  lineEnding: TextLineEnding;
+  preferredLineEnding: TextWritableLineEnding;
+  byteSize: number;
+  revision: string;
+};
+
+export type TextSaveRequest = {
+  rootId: string;
+  path: string;
+  content: string;
+  encoding: TextEncoding;
+  lineEnding: TextWritableLineEnding;
+  revision: string;
+  force: boolean;
+};
+
+export type TextSaveResult = {
+  byteSize: number;
+  revision: string;
+};

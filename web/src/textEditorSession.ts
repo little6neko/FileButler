@@ -35,6 +35,7 @@ export type TextEditorSessionIdentity = {
 
 export type TextEditorSessionSnapshot = TextEditorSessionIdentity & {
   status: TextEditorStatus;
+  documentVersion: number;
   hasDocument: boolean;
   dirty: boolean;
   encoding: TextEncoding | null;
@@ -88,6 +89,7 @@ export class TextEditorSession {
     this.snapshot = {
       ...identity,
       status: "loading",
+      documentVersion: 0,
       hasDocument: false,
       dirty: false,
       encoding: null,
@@ -118,6 +120,7 @@ export class TextEditorSession {
     const shouldHighlight = this.text.highlight && document.byteSize <= textHighlightByteLimit;
     this.commit({
       status: "ready",
+      documentVersion: this.snapshot.documentVersion + 1,
       hasDocument: true,
       dirty: false,
       encoding: document.encoding,

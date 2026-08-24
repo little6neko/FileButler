@@ -31,3 +31,12 @@ it("formats PowerRename application window titles", () => {
   expect(strings.en.powerRenameWindowTitle(3)).toBe("PowerRename — 3 items");
   expect(strings["zh-CN"].powerRenameWindowTitle(3)).toBe("PowerRename — 3 项");
 });
+
+it("localizes text editor actions, states, and cursor position", () => {
+  expect(strings.en.textEditorLabel("main.go")).toBe("Edit main.go");
+  expect(strings["zh-CN"].textEditorLabel("main.go")).toBe("编辑 main.go");
+  expect(strings.en.editorLineColumn(2, 7)).toBe("Line 2, column 7");
+  expect(strings["zh-CN"].editorLineColumn(2, 7)).toBe("第 2 行，第 7 列");
+  expect(strings.en.editorHighlightUnavailable).toContain("plain text");
+  expect(strings["zh-CN"].editorHighlightUnavailable).toContain("纯文本");
+});

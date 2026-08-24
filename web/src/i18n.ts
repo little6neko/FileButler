@@ -104,6 +104,20 @@ export type UIStrings = {
   mediaPreview: string;
   previousMedia: string;
   nextMedia: string;
+  textEditor: string;
+  textEditorLabel(name: string): string;
+  save: string;
+  editorLoading: string;
+  editorUnavailable: string;
+  editorSaving: string;
+  editorSaved: string;
+  editorUnsaved: string;
+  editorLargeFile: string;
+  editorDocumentTooLarge: string;
+  editorHighlightUnavailable: string;
+  editorLineColumn(line: number, column: number): string;
+  editorMixedLineEnding: string;
+  editorNoLineEnding: string;
   jobCreationFailed: string;
   batchRename: string;
   renameDialog: string;
@@ -274,6 +288,20 @@ export const strings: Record<Language, UIStrings> = {
     mediaPreview: "Media preview",
     previousMedia: "Previous media",
     nextMedia: "Next media",
+    textEditor: "Text editor",
+    textEditorLabel: (name) => `Edit ${name}`,
+    save: "Save",
+    editorLoading: "Loading editor…",
+    editorUnavailable: "The text editor could not be loaded.",
+    editorSaving: "Saving…",
+    editorSaved: "Saved",
+    editorUnsaved: "Unsaved changes",
+    editorLargeFile: "Large file: syntax highlighting is disabled.",
+    editorDocumentTooLarge: "Syntax highlighting was disabled because the document grew beyond the safe limit.",
+    editorHighlightUnavailable: "Syntax highlighting is unavailable; editing continues as plain text.",
+    editorLineColumn: (line, column) => `Line ${line}, column ${column}`,
+    editorMixedLineEnding: "Mixed",
+    editorNoLineEnding: "None",
     jobCreationFailed: "Job creation failed",
     batchRename: "Batch rename",
     renameDialog: "Rename dialog",
@@ -459,6 +487,20 @@ export const strings: Record<Language, UIStrings> = {
     mediaPreview: "媒体预览",
     previousMedia: "上一个媒体",
     nextMedia: "下一个媒体",
+    textEditor: "文本编辑器",
+    textEditorLabel: (name) => `编辑 ${name}`,
+    save: "保存",
+    editorLoading: "正在加载编辑器…",
+    editorUnavailable: "无法加载文本编辑器。",
+    editorSaving: "正在保存…",
+    editorSaved: "已保存",
+    editorUnsaved: "有未保存的更改",
+    editorLargeFile: "文件较大，已关闭语法高亮。",
+    editorDocumentTooLarge: "文档超过安全大小，已关闭语法高亮。",
+    editorHighlightUnavailable: "语法高亮不可用，已切换为纯文本编辑。",
+    editorLineColumn: (line, column) => `第 ${line} 行，第 ${column} 列`,
+    editorMixedLineEnding: "混合",
+    editorNoLineEnding: "无",
     jobCreationFailed: "创建任务失败",
     batchRename: "批量重命名",
     renameDialog: "重命名窗口",

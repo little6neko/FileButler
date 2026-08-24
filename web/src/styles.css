@@ -537,6 +537,168 @@ body {
   padding: 14px;
 }
 
+.text-editor-layout {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.text-editor-toolbar {
+  grid-row: 1;
+  min-width: 0;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 9px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklab, var(--background) 96%, #dbeafe);
+}
+
+.text-editor-save-state {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-editor-degradation {
+  grid-row: 2;
+  min-width: 0;
+  padding: 6px 10px;
+  border-bottom: 1px solid color-mix(in oklab, #d97706 28%, var(--border));
+  background: color-mix(in oklab, #fef3c7 48%, var(--background));
+  color: #92400e;
+  font-size: 12px;
+}
+
+.text-editor-error {
+  grid-row: 3;
+  min-width: 0;
+  padding: 7px 9px 0;
+}
+
+.text-editor-region {
+  grid-row: 4;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--background);
+}
+
+.text-editor-host,
+.text-editor-host > .cm-editor {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.text-editor-host > .cm-editor {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 13px;
+}
+
+.text-editor-host .cm-scroller {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  line-height: 1.55;
+}
+
+.text-editor-host .cm-content {
+  min-width: max-content;
+  padding: 8px 0;
+  caret-color: var(--foreground);
+}
+
+.text-editor-host .cm-line {
+  padding: 0 10px 0 6px;
+}
+
+.text-editor-host .cm-gutters {
+  border-right: 1px solid var(--border);
+  background: color-mix(in oklab, var(--muted) 62%, var(--background));
+  color: var(--muted-foreground);
+}
+
+.text-editor-host .cm-activeLine,
+.text-editor-host .cm-activeLineGutter {
+  background: color-mix(in oklab, var(--accent) 70%, transparent);
+}
+
+.text-editor-host .cm-selectionBackground,
+.text-editor-host.cm-focused .cm-selectionBackground {
+  background: color-mix(in oklab, var(--primary) 24%, transparent) !important;
+}
+
+.text-editor-host > .cm-editor.cm-focused {
+  outline: 2px solid color-mix(in oklab, var(--ring) 60%, transparent);
+  outline-offset: -2px;
+}
+
+.text-editor-placeholder {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted-foreground);
+  background: var(--background);
+  font-size: 13px;
+}
+
+.text-editor-placeholder-overlay {
+  z-index: 2;
+  background: color-mix(in oklab, var(--background) 91%, transparent);
+}
+
+.text-editor-statusbar {
+  grid-row: 5;
+  min-width: 0;
+  min-height: 27px;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  overflow-x: auto;
+  border-top: 1px solid var(--border);
+  background: color-mix(in oklab, var(--muted) 62%, var(--background));
+  color: var(--muted-foreground);
+  font-size: 11px;
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+
+.text-editor-statusbar > span {
+  padding: 0 9px;
+  border-right: 1px solid var(--border);
+}
+
+.text-editor-dialog {
+  width: min(88vw, 74rem);
+  max-width: min(88vw, 74rem);
+  height: min(82vh, 52rem);
+  max-height: calc(100dvh - 2rem);
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.text-editor-dialog-body {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
 .media-preview-window-layout {
   width: 100%;
   height: 100%;

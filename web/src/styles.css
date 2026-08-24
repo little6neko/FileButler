@@ -1113,13 +1113,24 @@ body {
   display: none;
 }
 
-.pane-header select {
-  min-height: 30px;
-  border: 1px solid var(--input);
-  border-radius: var(--radius);
+.pane-root-select-trigger {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
   background: var(--background);
-  color: var(--foreground);
-  padding: 0 8px;
+  font-size: 12px;
+}
+
+.pane-root-select-trigger [data-slot="select-value"] {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pane-root-select-menu {
+  width: max(160px, var(--anchor-width));
+  max-height: min(20rem, var(--available-height));
 }
 
 .root-marker {

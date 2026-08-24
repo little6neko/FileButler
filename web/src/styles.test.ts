@@ -105,6 +105,18 @@ it("keeps the breadcrumb row compact with matching pane dividers", () => {
   expect(rule(".path-segments")).not.toContain("min-height: 32px;");
 });
 
+it("keeps the compact root selector inside its pane header", () => {
+  const trigger = rule(".pane-root-select-trigger");
+  expect(trigger).toContain("width: 100%;");
+  expect(trigger).toContain("min-width: 0;");
+  expect(trigger).toContain("height: 30px;");
+
+  const menu = rule(".pane-root-select-menu");
+  expect(menu).toContain("width: max(160px, var(--anchor-width));");
+  expect(menu).toContain("max-height: min(20rem, var(--available-height));");
+  expect(css).not.toContain(".pane-header select");
+});
+
 it("keeps breadcrumb separators passive and folder controls clickable", () => {
   expect(rule(".path-separator")).toContain("pointer-events: none;");
   expect(rule(".path-separator")).toContain("cursor: default;");

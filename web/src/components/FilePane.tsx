@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { MenuItem, MenuPopup, MenuPortal, MenuPositioner, MenuRoot, MenuTrigger } from "@/components/ui/menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Entry, Root } from "../api/types";
 import { entryTypeLabel, type EntryTypeLabels } from "../entryType";
@@ -315,17 +316,30 @@ export function FilePane({
             /
           </span>
         ) : (
-          <select
-            aria-label={labels.rootLabel(title)}
+          <Select
+            items={roots.map((root) => ({ value: root.id, label: root.name }))}
             value={selectedRootId}
-            onChange={(event) => onRootChange(event.target.value)}
+            onValueChange={(next) => {
+              if (next !== null && next !== selectedRootId) onRootChange(next);
+            }}
           >
-            {roots.map((root) => (
-              <option key={root.id} value={root.id}>
-                {root.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              size="sm"
+              aria-label={labels.rootLabel(title)}
+              className="pane-root-select-trigger"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent
+              align="start"
+              alignItemWithTrigger={false}
+              className="pane-root-select-menu"
+            >
+              {roots.map((root) => (
+                <SelectItem key={root.id} value={root.id}>{root.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
         <div className="path-combobox">
           <Input

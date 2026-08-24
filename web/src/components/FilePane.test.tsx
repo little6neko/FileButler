@@ -163,6 +163,34 @@ it("shows a slash root marker instead of a selector for one mapped root", () => 
   expect(screen.getByRole("button", { name: "/" })).toBeInTheDocument();
 });
 
+it("uses the shared rounded selector for multiple roots and reports a root change", async () => {
+  const onRootChange = vi.fn();
+  renderPane({
+    roots: [
+      { id: "data", name: "Data" },
+      { id: "backup", name: "Backup" },
+    ],
+    selectedRootId: "data",
+    onRootChange,
+  });
+
+  const trigger = screen.getByRole("combobox", { name: "Left pane root" });
+  expect(trigger).toHaveAttribute("data-slot", "select-trigger");
+  expect(trigger).toHaveClass("pane-root-select-trigger");
+  expect(trigger).toHaveTextContent("Data");
+
+  await userEvent.click(trigger);
+  const options = await screen.findAllByRole("option");
+  expect(options.map((option) => option.textContent)).toEqual(["Data", "Backup"]);
+  expect(screen.getByRole("option", { name: "Data" })).toHaveAttribute("aria-selected", "true");
+  expect(document.querySelector('[data-slot="select-content"]')).toHaveClass("rounded-lg", "pane-root-select-menu");
+  expect(screen.getByRole("option", { name: "Backup" })).toHaveClass("rounded-md");
+
+  await userEvent.click(screen.getByRole("option", { name: "Backup" }));
+  expect(onRootChange).toHaveBeenCalledOnce();
+  expect(onRootChange).toHaveBeenCalledWith("backup");
+});
+
 it("renders current path as clickable segments", async () => {
   const onPathChange = vi.fn();
   renderPane({ currentPath: "photos/2026/raw", onPathChange });

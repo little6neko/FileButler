@@ -90,6 +90,15 @@ it("fits full-mode media inside the window without changing compact preview over
   expect(fullMedia).toContain("object-fit: contain;");
 });
 
+it("removes the editor focus outline only inside full-mode text windows", () => {
+  const sharedFocus = rule(".text-editor-host > .cm-editor.cm-focused");
+  expect(sharedFocus).toContain("outline: 2px solid");
+  expect(sharedFocus).toContain("outline-offset: -2px;");
+
+  const fullModeFocus = rule('.desktop-window[data-window-kind="textEditor"] .text-editor-host > .cm-editor.cm-focused');
+  expect(fullModeFocus).toContain("outline: none;");
+});
+
 it("keeps the breadcrumb row compact with matching pane dividers", () => {
   expect(rule(".file-pane")).toContain("grid-template-rows: 39px 29px minmax(0, 1fr) 28px;");
   expect(rule(".pane-header")).toContain("border-bottom: 1px solid var(--border);");

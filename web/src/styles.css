@@ -666,6 +666,10 @@ body {
   outline-offset: -2px;
 }
 
+.desktop-window[data-window-kind="textEditor"] .text-editor-host > .cm-editor.cm-focused {
+  outline: none;
+}
+
 .text-editor-placeholder {
   position: absolute;
   inset: 0;

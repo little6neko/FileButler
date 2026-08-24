@@ -13,7 +13,12 @@ export function LanguageSelect({ value, onChange, labels }: { value: LanguageMod
       <SelectTrigger aria-label="Language" className="h-7 w-[118px] bg-slate-50 text-xs">
         <SelectValue />
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent
+        align="end"
+        alignItemWithTrigger={false}
+        sideOffset={8}
+        positionerClassName="taskbar-language-menu-positioner"
+      >
         <SelectItem value="auto">{labels.languageAuto}</SelectItem>
         <SelectItem value="en">{labels.languageEnglish}</SelectItem>
         <SelectItem value="zh-CN">{labels.languageChinese}</SelectItem>

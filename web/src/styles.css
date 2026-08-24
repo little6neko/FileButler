@@ -78,6 +78,9 @@
   --sidebar-ring:
     oklch(0.708 0 0);
   --system-taskbar-height: 44px;
+  --system-taskbar-layer: 60;
+  --system-panel-layer: 70;
+  --system-taskbar-popover-layer: 80;
 }
 
 html,
@@ -105,7 +108,7 @@ body {
 
 .system-taskbar {
   position: relative;
-  z-index: 100000;
+  z-index: var(--system-taskbar-layer);
   min-width: 0;
   display: flex;
   align-items: center;
@@ -117,8 +120,13 @@ body {
 }
 
 .jobs-sheet-content[data-side="right"] {
+  z-index: var(--system-panel-layer);
   top: var(--system-taskbar-height);
   height: calc(100dvh - var(--system-taskbar-height));
+}
+
+.taskbar-language-menu-positioner {
+  z-index: var(--system-taskbar-popover-layer);
 }
 
 .job-row-shell {

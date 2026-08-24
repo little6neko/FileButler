@@ -17,11 +17,19 @@ it("keeps the application desktop-only and pane scrolling internal", () => {
   expect(rule(".file-list")).toContain("overflow: auto;");
 });
 
-it("keeps the jobs sheet below the shared system taskbar height", () => {
-  expect(rule(":root")).toContain("--system-taskbar-height: 44px;");
+it("orders taskbar overlays above the shared system taskbar height", () => {
+  const root = rule(":root");
+  expect(root).toContain("--system-taskbar-height: 44px;");
+  expect(root).toContain("--system-taskbar-layer: 60;");
+  expect(root).toContain("--system-panel-layer: 70;");
+  expect(root).toContain("--system-taskbar-popover-layer: 80;");
   expect(rule(".workspace-shell")).toContain("grid-template-rows: var(--system-taskbar-height) minmax(0, 1fr);");
-  expect(rule('.jobs-sheet-content[data-side="right"]')).toContain("top: var(--system-taskbar-height);");
-  expect(rule('.jobs-sheet-content[data-side="right"]')).toContain("height: calc(100dvh - var(--system-taskbar-height));");
+  expect(rule(".system-taskbar")).toContain("z-index: var(--system-taskbar-layer);");
+  const jobs = rule('.jobs-sheet-content[data-side="right"]');
+  expect(jobs).toContain("z-index: var(--system-panel-layer);");
+  expect(jobs).toContain("top: var(--system-taskbar-height);");
+  expect(jobs).toContain("height: calc(100dvh - var(--system-taskbar-height));");
+  expect(rule(".taskbar-language-menu-positioner")).toContain("z-index: var(--system-taskbar-popover-layer);");
 });
 
 it("uses one soft-blue capsule for the current taskbar window", () => {

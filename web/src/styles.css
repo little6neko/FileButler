@@ -662,11 +662,6 @@ body {
 }
 
 .text-editor-host > .cm-editor.cm-focused {
-  outline: 2px solid color-mix(in oklab, var(--ring) 60%, transparent);
-  outline-offset: -2px;
-}
-
-.desktop-window[data-window-kind="textEditor"] .text-editor-host > .cm-editor.cm-focused {
   outline: none;
 }
 

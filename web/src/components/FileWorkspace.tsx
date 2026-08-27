@@ -525,6 +525,7 @@ export function FileWorkspace({
       const activeWindowDialogOpen = Boolean(activeFileWindowId && windowDialogsRef.current[activeFileWindowId]);
       if (key === "a") {
         event.preventDefault();
+        window.getSelection()?.removeAllRanges();
         if (
           pageDialogOpen
           || activeWindowDialogOpen

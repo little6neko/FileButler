@@ -1091,6 +1091,7 @@ body {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  outline: none;
   overflow: hidden;
 }
 

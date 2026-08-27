@@ -90,6 +90,21 @@ function dispatchSelectAllShortcut({
   return event;
 }
 
+function clickFileRowBlankFromStaleInputFocus(pane: HTMLElement, pathLabel: string, fileName: string) {
+  const pathInput = within(pane).getByRole("textbox", { name: pathLabel });
+  const statusBar = pane.querySelector<HTMLElement>("footer")!;
+  const nameCell = within(pane).getByText(fileName, { exact: true }).closest<HTMLTableCellElement>("td")!;
+  pathInput.focus();
+
+  fireEvent.pointerDown(statusBar, { button: 0 });
+  fireEvent.click(statusBar);
+  fireEvent.pointerDown(nameCell, { button: 0 });
+  fireEvent.mouseDown(nameCell, { button: 0, clientX: 300, clientY: 200 });
+  fireEvent.mouseUp(document, { button: 0, clientX: 300, clientY: 200 });
+
+  return statusBar;
+}
+
 it("starts with an empty desktop and creates a separate taskbar item for every window", async () => {
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   const icon = await screen.findByRole("button", { name: "Open File Manager" });
@@ -997,6 +1012,26 @@ it("selects all files only in the active compact pane with Ctrl+A or Cmd+A", asy
   expect(leftFile).toBeChecked();
 });
 
+it("moves stale input focus to the compact file surface before selecting all", async () => {
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  const folder = await within(leftPane).findByLabelText("Select folder");
+  const file = within(leftPane).getByLabelText("Select a.txt");
+  const statusBar = clickFileRowBlankFromStaleInputFocus(leftPane, "Left pane path", "a.txt");
+  const range = document.createRange();
+  range.selectNodeContents(statusBar);
+  window.getSelection()?.removeAllRanges();
+  window.getSelection()?.addRange(range);
+
+  const event = dispatchSelectAllShortcut({ target: document.activeElement ?? document });
+
+  expect(event.defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(leftPane);
+  expect(folder).toBeChecked();
+  expect(file).toBeChecked();
+  expect(window.getSelection()?.toString()).toBe("");
+});
+
 it("selects all files only in the active desktop file window", async () => {
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   const icon = await screen.findByRole("button", { name: "Open File Manager" });
@@ -1023,6 +1058,24 @@ it("selects all files only in the active desktop file window", async () => {
   dispatchSelectAllShortcut({ metaKey: true });
   expect(firstFolder).toBeChecked();
   expect(firstFile).toBeChecked();
+});
+
+it("moves stale input focus to the full-mode file surface before selecting all", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
+  const fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
+  await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
+  const filePane = fileWindow.querySelector<HTMLElement>(".file-pane")!;
+  const folder = await within(filePane).findByLabelText("Select folder");
+  const file = within(filePane).getByLabelText("Select a.txt");
+  clickFileRowBlankFromStaleInputFocus(filePane, "Source path", "a.txt");
+
+  const event = dispatchSelectAllShortcut({ target: document.activeElement ?? document });
+
+  expect(event.defaultPrevented).toBe(true);
+  expect(document.activeElement).toBe(filePane);
+  expect(folder).toBeChecked();
+  expect(file).toBeChecked();
 });
 
 it("leaves editable controls in charge of their own select-all shortcut", async () => {

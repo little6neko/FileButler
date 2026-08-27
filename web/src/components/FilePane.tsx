@@ -1,5 +1,5 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { CSSProperties, KeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
+import type { CSSProperties, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -119,6 +119,7 @@ export function FilePane({
     visible: buildPathSegments(currentPath),
     hidden: [],
   }));
+  const paneRef = useRef<HTMLElement>(null);
   const fileListRef = useRef<HTMLDivElement>(null);
   const fallbackSelectionStoreRef = useRef<FileSelectionStore | null>(null);
   if (fallbackSelectionStoreRef.current === null) {
@@ -297,12 +298,19 @@ export function FilePane({
 
   return (
     <section
+      ref={paneRef}
       className="file-pane"
+      tabIndex={-1}
       data-drop-window-id={dropWindowId}
       data-drop-disabled={dropDisabled ? "true" : undefined}
       aria-label={title}
       aria-current={isActive ? "true" : undefined}
       data-active={isActive ? "true" : "false"}
+      onPointerDownCapture={(event: ReactPointerEvent<HTMLElement>) => {
+        if (event.button !== 0) return;
+        onActivate();
+        if (!preservesNativeFocus(event.target)) paneRef.current?.focus({ preventScroll: true });
+      }}
       onClick={onActivate}
     >
       <div className="pane-header" data-root-selector={showRootSelector ? "visible" : "hidden"}>
@@ -880,6 +888,12 @@ function isDragBlockedTarget(target: EventTarget) {
   return target instanceof Element && Boolean(
     target.closest("button, input, select, textarea, a, thead, [data-file-drag-handle], [role='checkbox'], [role='separator']"),
   );
+}
+
+function preservesNativeFocus(target: EventTarget) {
+  return target instanceof Element && Boolean(target.closest(
+    "button, input, select, textarea, a[href], [contenteditable='true'], [contenteditable='plaintext-only']",
+  ));
 }
 
 function listContentPoint(list: HTMLDivElement, clientX: number, clientY: number) {

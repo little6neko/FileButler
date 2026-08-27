@@ -29,10 +29,10 @@ Prebuilt multi-architecture images for `linux/amd64` and `linux/arm64` are publi
 
 ```bash
 docker pull ghcr.io/little6neko/filebutler:latest
-docker pull ghcr.io/little6neko/filebutler:v0.2.0
+docker pull ghcr.io/little6neko/filebutler:v0.2.1
 ```
 
-The `latest` tag tracks the newest version release. Version tags such as `v0.2.0` are immutable releases. If the package is private, authenticate before pulling with a GitHub token that has `read:packages` permission:
+The `latest` tag tracks the newest version release. Version tags such as `v0.2.1` are immutable releases. If the package is private, authenticate before pulling with a GitHub token that has `read:packages` permission:
 
 ```bash
 echo "$GHCR_TOKEN" | docker login ghcr.io -u little6neko --password-stdin

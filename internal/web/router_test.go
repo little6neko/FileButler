@@ -53,6 +53,19 @@ func TestProtectedRoutesRequireLogin(t *testing.T) {
 	}
 }
 
+func TestSuperRenameRoutesRequireLogin(t *testing.T) {
+	router := testRouter(t)
+	for _, path := range []string{"/api/super-rename/preview", "/api/super-rename/jobs"} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(`{}`))
+		request.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusUnauthorized {
+			t.Fatalf("%s status=%d body=%s", path, recorder.Code, recorder.Body.String())
+		}
+	}
+}
+
 func TestRemovedHistoryAndAuditRoutesReturnNotFound(t *testing.T) {
 	router := testRouter(t)
 	cookies := loginCookies(t, router)
@@ -126,6 +139,30 @@ func TestBrowseEndpointReturnsEntries(t *testing.T) {
 	decodeBody(t, rec, &body)
 	if len(body.Data) != 1 || body.Data[0].Name != "file2.txt" {
 		t.Fatalf("body=%s", rec.Body.String())
+	}
+}
+
+func TestSuperRenamePreviewEndpointReturnsAuthenticatedInventory(t *testing.T) {
+	root := t.TempDir()
+	testutil.WriteFile(t, filepath.Join(root, "albums", "A", "photo.jpg"), "x")
+	router := testRouterWithRoot(t, root)
+	cookies := loginCookies(t, router)
+	recorder := postJSON(t, router, "/api/super-rename/preview", map[string]any{
+		"rootId":        "data",
+		"directoryPath": "albums",
+	}, cookies)
+	var body struct {
+		Data struct {
+			Groups []struct {
+				Images []struct {
+					SourcePath string `json:"sourcePath"`
+				} `json:"images"`
+			} `json:"groups"`
+		} `json:"data"`
+	}
+	decodeBody(t, recorder, &body)
+	if len(body.Data.Groups) != 1 || len(body.Data.Groups[0].Images) != 1 || body.Data.Groups[0].Images[0].SourcePath != "albums/A/photo.jpg" {
+		t.Fatalf("body=%s", recorder.Body.String())
 	}
 }
 

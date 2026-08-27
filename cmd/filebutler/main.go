@@ -12,6 +12,7 @@ import (
 	"github.com/little6neko/filebutler/internal/ops"
 	"github.com/little6neko/filebutler/internal/rename"
 	"github.com/little6neko/filebutler/internal/roots"
+	"github.com/little6neko/filebutler/internal/superrename"
 	"github.com/little6neko/filebutler/internal/web"
 )
 
@@ -44,6 +45,10 @@ func main() {
 		JobStore:     jobStore,
 		OpsRunner:    jobs.Runner{Store: jobStore, Executor: ops.JobExecutor{Executor: opsExecutor}},
 		RenameRunner: jobs.Runner{Store: jobStore, Executor: rename.Executor{Resolver: resolver}},
+		SuperRenameRunner: superrename.Runner{
+			Store:    jobStore,
+			Executor: superrename.Executor{Resolver: resolver},
+		},
 	})
 
 	log.Printf("FileButler listening on %s", cfg.Listen)

@@ -11,23 +11,31 @@ import (
 	"github.com/little6neko/filebutler/internal/ops"
 	"github.com/little6neko/filebutler/internal/rename"
 	"github.com/little6neko/filebutler/internal/roots"
+	"github.com/little6neko/filebutler/internal/superrename"
 	"github.com/little6neko/filebutler/internal/textfile"
 )
 
 type Deps struct {
-	Config       config.Config
-	Auth         *auth.Service
-	Roots        roots.Resolver
-	Browser      browser.Service
-	OpsPlanner   ops.Planner
-	JobStore     jobs.Store
-	OpsRunner    jobs.Runner
-	RenameRunner jobs.Runner
+	Config            config.Config
+	Auth              *auth.Service
+	Roots             roots.Resolver
+	Browser           browser.Service
+	OpsPlanner        ops.Planner
+	JobStore          jobs.Store
+	OpsRunner         jobs.Runner
+	RenameRunner      jobs.Runner
+	SuperRenameRunner superrename.Runner
 }
 
 func NewRouter(deps Deps) http.Handler {
 	router := chi.NewRouter()
 	textService := textfile.NewService(deps.Roots)
+	superRenameScanner := superrename.Scanner{Resolver: deps.Roots}
+	superRenameRunner := deps.SuperRenameRunner
+	superRenameRunner.Store = deps.JobStore
+	if superRenameRunner.Executor == nil {
+		superRenameRunner.Executor = superrename.Executor{Resolver: deps.Roots}
+	}
 	cookieName := deps.Config.Session.CookieName
 	if cookieName == "" {
 		cookieName = "filebutler_session"
@@ -53,6 +61,8 @@ func NewRouter(deps Deps) http.Handler {
 		protected.Post("/api/rename/preview", rename.PreviewHandler(deps.Browser))
 		protected.Post("/api/rename/jobs", rename.CreateJobHandler(deps.Browser, deps.JobStore, deps.RenameRunner))
 		protected.Post("/api/rename/single/jobs", rename.SingleRenameCreateJobHandler(deps.Browser, deps.JobStore, deps.RenameRunner))
+		protected.Post("/api/super-rename/preview", superrename.PreviewHandler(superRenameScanner))
+		protected.Post("/api/super-rename/jobs", superrename.CreateJobHandler(superRenameScanner, superrename.Planner{}, deps.JobStore, superRenameRunner))
 		protected.Get("/api/jobs/events", jobs.EventsHandler(deps.JobStore))
 		protected.Post("/api/jobs/{id}/cancel", jobs.CancelHandler(deps.JobStore))
 	})

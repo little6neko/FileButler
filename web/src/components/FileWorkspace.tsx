@@ -7,7 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
+import type { ComponentProps, CSSProperties, MouseEvent as ReactMouseEvent } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -20,12 +20,12 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { FileCode2, FileImage, FileVideo, Files, ScanText } from "lucide-react";
+import { FileCode2, FileImage, FileVideo, Files, ScanText, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 import { buildClipboardRequest, createAppClipboard, isEditableShortcutTarget, type AppClipboard } from "../appClipboard";
 import { api } from "../api/client";
 import type { Entry, OpsRequest, RenameOptions, Root } from "../api/types";
-import { powerRenameCoversPoint } from "../desktopWindowHitTest";
+import { applicationWindowCoversPoint } from "../desktopWindowHitTest";
 import { fileOpenKind } from "../fileOpenKind";
 import {
   buildDragRequest,
@@ -61,11 +61,13 @@ import {
   focusWindow,
   isFileWindow,
   isMediaPreviewWindow,
+  isSuperRenameWindow,
   isTextEditorWindow,
   minimizeWindow,
   openFileWindow,
   openMediaPreviewWindow,
   openPowerRenameWindow,
+  openSuperRenameWindow,
   openTextEditorWindow,
   reconcileWindowBounds,
   restoreWindow,
@@ -86,6 +88,7 @@ import {
 } from "../textEditorController";
 import type { TextEditorSession } from "../textEditorSession";
 import type { TextFileDescriptor } from "../textFiles";
+import { SuperRenameManager } from "../superRenameManager";
 import {
   clearAllWindowDialogs,
   clearWindowDialog,
@@ -113,6 +116,8 @@ import { OperationPreview, OperationPreviewContent } from "./OperationPreview";
 import { defaultRenameOptions } from "./powerRenameOptions";
 import { PowerRenameContent, RenameDialog } from "./RenameDialog";
 import { SingleRenameContent, SingleRenameDialog } from "./SingleRenameDialog";
+import { SuperRenameContent } from "./SuperRenameContent";
+import { SuperRenameDialog } from "./SuperRenameDialog";
 import { TextEditor } from "./TextEditor";
 import {
   TextEditorConfirm,
@@ -163,6 +168,19 @@ type PowerRenameInstance = {
   options: RenameOptions;
   submitting: boolean;
   submitError: string | null;
+};
+
+type SuperRenameInstance = {
+  id: string;
+  rootId: string;
+  directoryPath: string;
+  sourceTitle: string;
+  manager: SuperRenameManager;
+};
+
+type CompactSuperRenameTarget = {
+  rootId: string;
+  directoryPath: string;
 };
 
 type TextEditorConflictPrompt = {
@@ -237,6 +255,9 @@ export function FileWorkspace({
   const [powerRenameOptions, setPowerRenameOptions] = useState<RenameOptions | undefined>();
   const [powerRenameInstances, setPowerRenameInstancesState] = useState<Record<string, PowerRenameInstance>>({});
   const powerRenameInstancesRef = useRef(powerRenameInstances);
+  const [compactSuperRenameTarget, setCompactSuperRenameTarget] = useState<CompactSuperRenameTarget | null>(null);
+  const [superRenameInstances, setSuperRenameInstancesState] = useState<Record<string, SuperRenameInstance>>({});
+  const superRenameInstancesRef = useRef(superRenameInstances);
   const [mediaPreviewInstances, setMediaPreviewInstancesState] = useState<Record<string, MediaPreviewInstance>>({});
   const mediaPreviewInstancesRef = useRef(mediaPreviewInstances);
   const [compactTextEditor, setCompactTextEditorState] = useState<CompactTextEditorView | null>(null);
@@ -255,6 +276,7 @@ export function FileWorkspace({
   const sessionCounterRef = useRef(0);
   const windowCounterRef = useRef(0);
   const powerRenameCounterRef = useRef(0);
+  const superRenameCounterRef = useRef(0);
   const mediaPreviewCounterRef = useRef(0);
   const compactTextEditorCounterRef = useRef(0);
   const dialogCounterRef = useRef(0);
@@ -296,6 +318,10 @@ export function FileWorkspace({
     };
   }, [textEditors]);
 
+  useEffect(() => () => {
+    for (const instance of Object.values(superRenameInstancesRef.current)) instance.manager.destroy();
+  }, []);
+
   useEffect(() => {
     if (!hasDirtyTextEditors) return;
     function warnBeforeUnload(event: BeforeUnloadEvent) {
@@ -327,6 +353,14 @@ export function FileWorkspace({
     const next = update(powerRenameInstancesRef.current);
     powerRenameInstancesRef.current = next;
     setPowerRenameInstancesState(next);
+  }, []);
+
+  const commitSuperRenameInstances = useCallback((
+    update: (current: Record<string, SuperRenameInstance>) => Record<string, SuperRenameInstance>,
+  ) => {
+    const next = update(superRenameInstancesRef.current);
+    superRenameInstancesRef.current = next;
+    setSuperRenameInstancesState(next);
   }, []);
 
   const commitMediaPreviewInstances = useCallback((
@@ -588,6 +622,18 @@ export function FileWorkspace({
       }
       return items;
     }
+    if (isSuperRenameWindow(window)) {
+      const instance = superRenameInstances[window.instanceId];
+      if (instance) {
+        items.push({
+          id: window.id,
+          kind: window.kind,
+          title: labels.superRenameWindowTitle(instance.sourceTitle),
+          status: window.status,
+        });
+      }
+      return items;
+    }
     const instance = powerRenameInstances[window.instanceId];
     if (instance) {
       items.push({
@@ -675,6 +721,18 @@ export function FileWorkspace({
       {mkdirSessionId ? renderMkdirDialog(mkdirSessionId) : null}
       {singleRenameSessionId ? renderSingleRenameDialog(singleRenameSessionId) : null}
       {powerRenameSessionId ? renderPowerRenameDialog(powerRenameSessionId) : null}
+      {mode === "compact" && compactSuperRenameTarget ? (
+        <SuperRenameDialog
+          rootId={compactSuperRenameTarget.rootId}
+          directoryPath={compactSuperRenameTarget.directoryPath}
+          labels={labels}
+          onClose={() => setCompactSuperRenameTarget(null)}
+          onJobCreated={(id) => {
+            setCompactSuperRenameTarget(null);
+            handleJobCreated(id);
+          }}
+        />
+      ) : null}
       <JobsSheet open={jobsOpen} onOpenChange={setJobsOpen} eventsStore={jobEvents} labels={labels} />
     </>
   );
@@ -819,6 +877,20 @@ export function FileWorkspace({
             onSave={() => void saveTextEditor(window.id, session)}
           />
         </WindowFrame>
+      );
+    }
+
+    if (isSuperRenameWindow(window)) {
+      const instance = superRenameInstances[window.instanceId];
+      if (!instance) return null;
+      return (
+        <SuperRenameApplicationWindow
+          key={window.id}
+          {...frameProps}
+          title={labels.superRenameWindowTitle(instance.sourceTitle)}
+          instance={instance}
+          onJobCreated={(id) => completeSuperRenameJob(window.id, instance.id, id)}
+        />
       );
     }
 
@@ -1171,11 +1243,14 @@ export function FileWorkspace({
 
   function compactToolbarActions(which: CompactPane, selectedCount: number) {
     const sourceId = compactBindings[which];
+    const source = sessionsRef.current[sourceId];
+    const locationReady = source?.location.kind === "directory" && Boolean(source.location.rootId);
     const destinationPane = oppositePane(which);
     return createFileActions({
       destination: destinationPane === "left" ? labels.leftPane : labels.rightPane,
       destinationDirection: destinationPane,
       selectedCount,
+      locationReady,
       labels,
       commands: actionCommands(sourceId, (type) => openCompactOperation(which, type)),
     });
@@ -1258,6 +1333,15 @@ export function FileWorkspace({
       onPowerRename: () => {
         if (mode === "desktop") openPowerRenameForSession(sessionId);
         else setPowerRenameSessionId(sessionId);
+      },
+      onSuperRename: () => {
+        const session = sessionsRef.current[sessionId];
+        if (!session || session.location.kind !== "directory" || !session.location.rootId) return;
+        if (mode === "desktop") openSuperRenameForSession(sessionId);
+        else setCompactSuperRenameTarget({
+          rootId: session.location.rootId,
+          directoryPath: session.location.path,
+        });
       },
     };
   }
@@ -1548,6 +1632,28 @@ export function FileWorkspace({
     return windowId;
   }
 
+  function openSuperRenameForSession(sessionId: string) {
+    const session = sessionsRef.current[sessionId];
+    if (!session || session.location.kind !== "directory" || !session.location.rootId) return null;
+    const instanceId = `super-rename-${++superRenameCounterRef.current}`;
+    const instance: SuperRenameInstance = {
+      id: instanceId,
+      rootId: session.location.rootId,
+      directoryPath: session.location.path,
+      sourceTitle: titleForSession(session, roots, labels),
+      manager: new SuperRenameManager(session.location.rootId, session.location.path),
+    };
+    commitSuperRenameInstances((current) => ({ ...current, [instanceId]: instance }));
+    const windowId = `window-${++windowCounterRef.current}`;
+    commitWindowState((current) => openSuperRenameWindow(
+      current,
+      windowId,
+      instanceId,
+      desktopBoundsRef.current,
+    ));
+    return windowId;
+  }
+
   function openMediaPreviewWindowForSnapshot(snapshot: MediaGallerySnapshot) {
     const item = currentMediaItem(snapshot);
     if (!item) return null;
@@ -1622,6 +1728,13 @@ export function FileWorkspace({
       finalizeDesktopTextEditorClose(id, session, false);
       return;
     }
+    if (isSuperRenameWindow(target)) {
+      const instance = superRenameInstancesRef.current[target.instanceId];
+      if (instance?.manager.getSnapshot().submitting) return;
+      commitWindowState((current) => closeWindow(current, id));
+      removeSuperRenameInstance(target.instanceId);
+      return;
+    }
     if (!isFileWindow(target)) {
       const instance = powerRenameInstancesRef.current[target.instanceId];
       if (instance?.submitting) return;
@@ -1662,6 +1775,13 @@ export function FileWorkspace({
       delete next[id];
       return next;
     });
+  }
+
+  function removeSuperRenameInstance(id: string) {
+    const instance = superRenameInstancesRef.current[id];
+    if (!instance) return;
+    instance.manager.destroy();
+    commitSuperRenameInstances((current) => withoutKey(current, id));
   }
 
   function removeMediaPreviewInstance(id: string) {
@@ -1706,6 +1826,12 @@ export function FileWorkspace({
     }
   }
 
+  function completeSuperRenameJob(windowId: string, instanceId: string, jobId: string) {
+    commitWindowState((current) => closeWindow(current, windowId));
+    removeSuperRenameInstance(instanceId);
+    handleJobCreated(jobId);
+  }
+
   function activateTaskbarWindow(id: string) {
     setJobsOpen(false);
     const current = windowStateRef.current;
@@ -1742,6 +1868,7 @@ export function FileWorkspace({
     setMkdirSessionId(null);
     setSingleRenameSessionId(null);
     setPowerRenameSessionId(null);
+    setCompactSuperRenameTarget(null);
     commitWindowDialogs(clearAllWindowDialogs);
   }
 
@@ -2213,10 +2340,48 @@ export function FileWorkspace({
   }
 }
 
+type SuperRenameApplicationWindowProps = Omit<
+  ComponentProps<typeof WindowFrame>,
+  "children" | "icon" | "closeDisabled"
+> & {
+  instance: SuperRenameInstance;
+  onJobCreated(id: string): void;
+};
+
+function SuperRenameApplicationWindow({
+  instance,
+  onJobCreated,
+  labels,
+  ...frameProps
+}: SuperRenameApplicationWindowProps) {
+  const snapshot = useSyncExternalStore(
+    instance.manager.subscribe,
+    instance.manager.getSnapshot,
+    instance.manager.getSnapshot,
+  );
+  return (
+    <WindowFrame
+      {...frameProps}
+      labels={labels}
+      icon={<WandSparkles aria-hidden="true" />}
+      closeDisabled={snapshot.submitting}
+    >
+      <div className="super-rename-window-layout" data-source-title={instance.sourceTitle}>
+        <SuperRenameContent
+          manager={instance.manager}
+          labels={labels}
+          onClose={frameProps.onClose}
+          onJobCreated={onJobCreated}
+        />
+      </div>
+    </WindowFrame>
+  );
+}
+
 const pointerSensorOptions = { activationConstraint: { distance: 6 } } as const;
 
 const fileCollisionDetection: CollisionDetection = (args) => {
-  if (args.pointerCoordinates && powerRenameCoversPoint(args.pointerCoordinates.x, args.pointerCoordinates.y)) {
+  if (args.pointerCoordinates && applicationWindowCoversPoint(args.pointerCoordinates.x, args.pointerCoordinates.y)) {
     return [];
   }
   const collisions = pointerWithin(args);

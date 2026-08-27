@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
-import { powerRenameCoversPoint } from "./desktopWindowHitTest";
+import { applicationWindowCoversPoint } from "./desktopWindowHitTest";
 
-it("blocks file drops only when the top desktop window is PowerRename", () => {
+it("blocks file drops when the top desktop window is an application window", () => {
   const fileWindow = document.createElement("section");
   fileWindow.className = "desktop-window";
   fileWindow.dataset.windowKind = "file";
@@ -14,7 +14,14 @@ it("blocks file drops only when the top desktop window is PowerRename", () => {
   const powerRenameContent = document.createElement("div");
   powerRenameWindow.append(powerRenameContent);
 
-  expect(powerRenameCoversPoint(10, 20, () => [powerRenameContent, fileContent])).toBe(true);
-  expect(powerRenameCoversPoint(10, 20, () => [fileContent, powerRenameContent])).toBe(false);
-  expect(powerRenameCoversPoint(10, 20, () => [])).toBe(false);
+  const superRenameWindow = document.createElement("section");
+  superRenameWindow.className = "desktop-window";
+  superRenameWindow.dataset.windowKind = "superRename";
+  const superRenameContent = document.createElement("div");
+  superRenameWindow.append(superRenameContent);
+
+  expect(applicationWindowCoversPoint(10, 20, () => [powerRenameContent, fileContent])).toBe(true);
+  expect(applicationWindowCoversPoint(10, 20, () => [superRenameContent, fileContent])).toBe(true);
+  expect(applicationWindowCoversPoint(10, 20, () => [fileContent, superRenameContent])).toBe(false);
+  expect(applicationWindowCoversPoint(10, 20, () => [])).toBe(false);
 });

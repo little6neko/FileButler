@@ -40,7 +40,12 @@ export type TextEditorWindowRecord = BaseWindowRecord & {
   instanceId: string;
 };
 
-export type DesktopWindowRecord = FileWindowRecord | PowerRenameWindowRecord | MediaPreviewWindowRecord | TextEditorWindowRecord;
+export type SuperRenameWindowRecord = BaseWindowRecord & {
+  kind: "superRename";
+  instanceId: string;
+};
+
+export type DesktopWindowRecord = FileWindowRecord | PowerRenameWindowRecord | MediaPreviewWindowRecord | TextEditorWindowRecord | SuperRenameWindowRecord;
 
 export type WindowManagerState = {
   windows: DesktopWindowRecord[];
@@ -53,6 +58,7 @@ export const desktopWindowMinimum = { width: 560, height: 360 } as const;
 export const powerRenameWindowMinimum = { width: 720, height: 480 } as const;
 export const mediaPreviewWindowMinimum = { width: 420, height: 280 } as const;
 export const textEditorWindowMinimum = { width: 640, height: 400 } as const;
+export const superRenameWindowMinimum = { width: 760, height: 500 } as const;
 
 const desktopInset = 12;
 const cascadeOrigin = { x: 96, y: 40 } as const;
@@ -98,6 +104,15 @@ export function openTextEditorWindow(
   return openWindow(state, id, { kind: "textEditor", instanceId }, bounds);
 }
 
+export function openSuperRenameWindow(
+  state: WindowManagerState,
+  id: string,
+  instanceId: string,
+  bounds: DesktopBounds,
+): WindowManagerState {
+  return openWindow(state, id, { kind: "superRename", instanceId }, bounds);
+}
+
 function openWindow(
   state: WindowManagerState,
   id: string,
@@ -105,7 +120,8 @@ function openWindow(
     | Pick<FileWindowRecord, "kind" | "sessionId">
     | Pick<PowerRenameWindowRecord, "kind" | "instanceId">
     | Pick<MediaPreviewWindowRecord, "kind" | "instanceId">
-    | Pick<TextEditorWindowRecord, "kind" | "instanceId">,
+    | Pick<TextEditorWindowRecord, "kind" | "instanceId">
+    | Pick<SuperRenameWindowRecord, "kind" | "instanceId">,
   bounds: DesktopBounds,
 ): WindowManagerState {
   const rect = cascadeRect(bounds, state.cascadeIndex, windowMinimum(identity));
@@ -328,6 +344,7 @@ export function windowMinimum(window: Pick<DesktopWindowRecord, "kind">) {
   if (window.kind === "powerRename") return powerRenameWindowMinimum;
   if (window.kind === "mediaPreview") return mediaPreviewWindowMinimum;
   if (window.kind === "textEditor") return textEditorWindowMinimum;
+  if (window.kind === "superRename") return superRenameWindowMinimum;
   return desktopWindowMinimum;
 }
 
@@ -341,6 +358,10 @@ export function isMediaPreviewWindow(window: DesktopWindowRecord): window is Med
 
 export function isTextEditorWindow(window: DesktopWindowRecord): window is TextEditorWindowRecord {
   return window.kind === "textEditor";
+}
+
+export function isSuperRenameWindow(window: DesktopWindowRecord): window is SuperRenameWindowRecord {
+  return window.kind === "superRename";
 }
 
 function sameRect(left: WindowRect, right: WindowRect) {

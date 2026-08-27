@@ -31,6 +31,33 @@ it("renders running jobs before the mode switch with matching outlined styles", 
   expect(jobsButton.compareDocumentPosition(modeButton) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
+it("renders and activates an independent SuperRename taskbar window", async () => {
+  const onWindowActivate = vi.fn();
+  render(
+    <WorkspaceShell
+      labels={strings.en}
+      mode="desktop"
+      windows={[{ id: "window-super", kind: "superRename", title: "SuperRename — Albums", status: "normal" }]}
+      activeWindowId="window-super"
+      activeJobCount={0}
+      jobsOpen={false}
+      onModeChange={vi.fn()}
+      onWindowActivate={onWindowActivate}
+      onJobsToggle={vi.fn()}
+      languageControl={<span>Language selector</span>}
+      version="dev"
+    >
+      <p>Workspace</p>
+    </WorkspaceShell>,
+  );
+
+  const button = screen.getByRole("button", { name: "SuperRename — Albums" });
+  expect(button).toHaveAttribute("data-window-kind", "superRename");
+  expect(button).toHaveAttribute("aria-current", "page");
+  await userEvent.click(button);
+  expect(onWindowActivate).toHaveBeenCalledWith("window-super");
+});
+
 it("renders and activates a text editor taskbar window with its unsaved title", async () => {
   const onWindowActivate = vi.fn();
   render(

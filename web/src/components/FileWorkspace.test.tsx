@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import { api } from "../api/client";
-import type { Entry } from "../api/types";
+import type { Entry, SuperRenameInventory } from "../api/types";
 import { FileWorkspace } from "./FileWorkspace";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -20,6 +20,8 @@ vi.mock("../api/client", () => ({
     renamePreview: vi.fn(),
     renameCreateJob: vi.fn(),
     singleRenameCreateJob: vi.fn(),
+    superRenamePreview: vi.fn(),
+    superRenameCreateJob: vi.fn(),
     cancelJob: vi.fn(),
   },
 }));
@@ -31,6 +33,36 @@ const sourceEntries: Entry[] = [
 
 function mediaEntry(name: string, size = 1): Entry {
   return { name, relativePath: name, type: "file", size, mode: "", modifiedUnix: 0, isSymlink: false };
+}
+
+function workspaceSuperRenameInventory(
+  rootId = "source",
+  directoryPath = ".",
+): SuperRenameInventory {
+  return {
+    rootId,
+    directoryPath,
+    generatedAtUnix: 1,
+    groups: [{
+      path: directoryPath === "." ? "folder" : `${directoryPath}/album`,
+      name: directoryPath === "." ? "folder" : "album",
+      images: [{
+        sourcePath: directoryPath === "." ? "folder/photo.jpg" : `${directoryPath}/album/photo.jpg`,
+        name: "photo.jpg",
+        extension: ".jpg",
+        mediaKind: "image",
+      }],
+      videos: [],
+      unmatched: [],
+      directOccupiedPaths: [directoryPath === "." ? "folder/photo.jpg" : `${directoryPath}/album/photo.jpg`],
+      videoDirectory: {
+        status: "missing",
+        path: directoryPath === "." ? "folder/视频" : `${directoryPath}/album/视频`,
+        occupiedPaths: [],
+      },
+      recoveryResidues: [],
+    }],
+  };
 }
 
 beforeEach(() => {
@@ -57,6 +89,14 @@ beforeEach(() => {
   vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
   vi.mocked(api.renameCreateJob).mockReset();
   vi.mocked(api.singleRenameCreateJob).mockReset();
+  vi.mocked(api.superRenamePreview).mockReset();
+  vi.mocked(api.superRenamePreview).mockImplementation(async ({ rootId, directoryPath }) => ({
+    rootId,
+    directoryPath,
+    generatedAtUnix: 1,
+    groups: [],
+  }));
+  vi.mocked(api.superRenameCreateJob).mockReset();
   vi.mocked(api.cancelJob).mockReset();
 });
 
@@ -177,6 +217,7 @@ it.each([
   "delete",
   "mkdir",
   "PowerRename",
+  "SuperRename",
 ])("closes the compact %s dialog for a mode switch without restoring it later", async (actionLabel) => {
   render(<FileWorkspace initialMode="compact" persistMode={false} />);
   const leftPane = await screen.findByRole("region", { name: "Left pane" });
@@ -194,6 +235,20 @@ it.each([
   await userEvent.click(screen.getByRole("button", { name: "Switch to compact mode" }));
   expect(await screen.findByTestId("workspace")).toBeVisible();
   expect(document.querySelector("[data-slot='dialog-content']")).toBeNull();
+});
+
+it("opens compact SuperRename for the current directory without requiring a selection", async () => {
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  await screen.findByRole("region", { name: "Left pane" });
+  const toolbar = screen.getByRole("navigation", { name: "File actions" });
+  const action = within(toolbar).getByRole("button", { name: "SuperRename" });
+
+  expect(action).toBeEnabled();
+  await userEvent.click(action);
+
+  expect(await screen.findByRole("dialog")).toBeInTheDocument();
+  expect(await screen.findByText("No matching media")).toBeInTheDocument();
+  expect(api.superRenamePreview).toHaveBeenCalledWith({ rootId: "source", directoryPath: "." });
 });
 
 it("keeps an already submitted compact operation alive after its dialog closes for a mode switch", async () => {
@@ -686,6 +741,89 @@ it("keeps a submitted local request alive after its parent window closes", async
   expect(container.querySelector(".taskbar-window-button")).toBeNull();
 });
 
+it("opens independent SuperRename windows for current-directory snapshots without a selection", async () => {
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
+  const fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
+  await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
+  const toolbar = within(fileWindow).getByRole("navigation", { name: "File actions" });
+  expect(within(toolbar).getByRole("button", { name: "SuperRename" })).toBeEnabled();
+
+  fireEvent.contextMenu(await within(fileWindow).findByText("folder"), { clientX: 100, clientY: 100 });
+  const menu = await screen.findByRole("menu", { name: "File actions" });
+  await userEvent.click(within(menu).getByRole("menuitem", { name: "SuperRename" }));
+
+  await waitFor(() => expect(api.superRenamePreview).toHaveBeenCalledWith({
+    rootId: "source",
+    directoryPath: ".",
+  }));
+  expect(container.querySelectorAll(".desktop-window[data-window-kind='superRename']")).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "SuperRename — Source" })).toBeInTheDocument();
+
+  await userEvent.dblClick(within(fileWindow).getByText("folder"));
+  await waitFor(() => expect(api.browse).toHaveBeenCalledWith("source", "folder"));
+  await userEvent.click(within(toolbar).getByRole("button", { name: "SuperRename" }));
+
+  await waitFor(() => expect(api.superRenamePreview).toHaveBeenLastCalledWith({
+    rootId: "source",
+    directoryPath: "folder",
+  }));
+  expect(container.querySelectorAll(".desktop-window[data-window-kind='superRename']")).toHaveLength(2);
+  expect(screen.getByRole("button", { name: "SuperRename — Source" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "SuperRename — folder" })).toBeInTheDocument();
+});
+
+it("preserves a minimized SuperRename selection across compact mode round trips", async () => {
+  vi.mocked(api.superRenamePreview).mockResolvedValue(workspaceSuperRenameInventory());
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
+  const fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
+  await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
+  const toolbar = within(fileWindow).getByRole("navigation", { name: "File actions" });
+  await userEvent.click(within(toolbar).getByRole("button", { name: "SuperRename" }));
+  const superRenameWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='superRename']")!;
+  const candidate = await within(superRenameWindow).findByRole("checkbox", { name: "Select photo.jpg for SuperRename" });
+  await userEvent.click(candidate);
+  expect(candidate).not.toBeChecked();
+  await userEvent.click(within(superRenameWindow).getByRole("button", { name: "Minimize window" }));
+
+  await userEvent.click(screen.getByRole("button", { name: "Switch to compact mode" }));
+  await userEvent.click(screen.getByRole("button", { name: "Switch to full mode" }));
+  const taskbarButton = screen.getByRole("button", { name: "SuperRename — Source" });
+  expect(taskbarButton).toHaveAttribute("data-window-status", "minimized");
+  await userEvent.click(taskbarButton);
+
+  const restored = await screen.findByRole("checkbox", { name: "Select photo.jpg for SuperRename" });
+  expect(restored).not.toBeChecked();
+  expect(api.superRenamePreview).toHaveBeenCalledTimes(1);
+});
+
+it("locks and closes a SuperRename window around one background-job submission", async () => {
+  let resolveJob!: (job: { id: string }) => void;
+  vi.mocked(api.superRenamePreview).mockResolvedValue(workspaceSuperRenameInventory());
+  vi.mocked(api.superRenameCreateJob).mockReturnValue(new Promise((resolve) => { resolveJob = resolve; }));
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
+  const fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
+  await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
+  await userEvent.click(within(fileWindow).getByRole("button", { name: "SuperRename" }));
+  const superRenameWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='superRename']")!;
+  const execute = await within(superRenameWindow).findByRole("button", { name: "Rename 1 file" });
+
+  await userEvent.click(execute);
+  expect(api.superRenameCreateJob).toHaveBeenCalledWith({
+    rootId: "source",
+    directoryPath: ".",
+    selectedPaths: ["folder/photo.jpg"],
+  });
+  expect(within(superRenameWindow).getByRole("button", { name: "Close window" })).toBeDisabled();
+
+  await act(async () => resolveJob({ id: "super-rename-job" }));
+  await waitFor(() => expect(container.querySelector(".desktop-window[data-window-kind='superRename']")).toBeNull());
+  expect(screen.queryByRole("button", { name: "SuperRename — Source" })).not.toBeInTheDocument();
+  expect(toast.success).toHaveBeenCalledWith("Background job created");
+});
+
 it("opens a new focused PowerRename application window from each full-mode command", async () => {
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
@@ -955,14 +1093,14 @@ it("orders full-mode toolbar and context-menu actions", async () => {
 
   const toolbar = within(window).getByRole("navigation", { name: "File actions" });
   expect(within(toolbar).getAllByRole("button").map((button) => button.dataset.actionId)).toEqual([
-    "rename", "powerRename", "mkdir", "delete",
+    "rename", "powerRename", "superRename", "mkdir", "delete",
   ]);
 
   fireEvent.contextMenu(await within(window).findByText("a.txt"), { clientX: 100, clientY: 100 });
   const menu = await screen.findByRole("menu", { name: "File actions" });
   expect(within(menu).getAllByRole("menuitem").map((item) => item.dataset.actionId)).toEqual([
     "openInNewWindow", "clipboardCopy", "clipboardCut", "clipboardPaste",
-    "rename", "powerRename", "mkdir", "delete",
+    "rename", "powerRename", "superRename", "mkdir", "delete",
   ]);
 });
 

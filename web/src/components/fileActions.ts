@@ -11,6 +11,7 @@ import {
   ScanText,
   Scissors,
   Trash2,
+  WandSparkles,
   type LucideIcon,
 } from "lucide-react";
 import type { OpsRequest } from "../api/types";
@@ -27,6 +28,7 @@ export type FileActionId =
   | "mkdir"
   | "rename"
   | "powerRename"
+  | "superRename"
   | "delete"
   | "openInNewWindow";
 export type CommandOperation = Exclude<OpsRequest["type"], "mkdir">;
@@ -46,18 +48,21 @@ export type FileActionCommands = {
   onMkdir(): void;
   onRename(): void;
   onPowerRename(): void;
+  onSuperRename(): void;
 };
 
 export function createFileActions({
   destination,
   destinationDirection,
   selectedCount,
+  locationReady = true,
   labels,
   commands,
 }: {
   destination: string;
   destinationDirection: "left" | "right";
   selectedCount: number;
+  locationReady?: boolean;
   labels: UIStrings;
   commands: FileActionCommands;
 }): FileAction[] {
@@ -75,6 +80,7 @@ export function createFileActions({
     { id: "hardlink", label: labels.hardlink, icon: Link2, disabled: noSelection, run: () => commands.onOperation("hardlink") },
     { id: "rename", label: labels.rename, icon: Pencil, disabled: selectedCount !== 1, separatorBefore: true, run: commands.onRename },
     { id: "powerRename", label: labels.powerRename, icon: ScanText, disabled: noSelection, run: commands.onPowerRename },
+    { id: "superRename", label: labels.superRename, icon: WandSparkles, disabled: !locationReady, run: commands.onSuperRename },
     { id: "mkdir", label: labels.mkdir, icon: FolderPlus, disabled: false, run: commands.onMkdir },
     { id: "delete", label: labels.delete, icon: Trash2, disabled: noSelection, separatorBefore: true, destructive: true, run: () => commands.onOperation("delete") },
   ];
@@ -95,6 +101,7 @@ export function createWindowFileActions({
   return [
     { id: "rename", label: labels.rename, icon: Pencil, disabled: !locationReady || selectedCount !== 1, run: commands.onRename },
     { id: "powerRename", label: labels.powerRename, icon: ScanText, disabled: !locationReady || noSelection, run: commands.onPowerRename },
+    { id: "superRename", label: labels.superRename, icon: WandSparkles, disabled: !locationReady, run: commands.onSuperRename },
     { id: "mkdir", label: labels.mkdir, icon: FolderPlus, disabled: !locationReady, run: commands.onMkdir },
     {
       id: "delete",

@@ -5,11 +5,13 @@ import {
   focusWindow,
   isMediaPreviewWindow,
   isTextEditorWindow,
+  isSuperRenameWindow,
   minimizeWindow,
   openFileWindow,
   openMediaPreviewWindow,
   openPowerRenameWindow,
   openTextEditorWindow,
+  openSuperRenameWindow,
   reconcileWindowBounds,
   renderedWindowRect,
   resizeWindowRect,
@@ -109,16 +111,22 @@ describe("window manager", () => {
     state = openPowerRenameWindow(state, "window-rename", "rename-1", bounds);
     state = openMediaPreviewWindow(state, "window-media", "media-1", bounds);
     state = openTextEditorWindow(state, "window-text", "text-1", bounds);
+    state = openSuperRenameWindow(state, "window-super", "super-1", bounds);
 
     expect(state.windows).toMatchObject([
       { id: "window-file", kind: "file", sessionId: "session-1" },
       { id: "window-rename", kind: "powerRename", instanceId: "rename-1" },
       { id: "window-media", kind: "mediaPreview", instanceId: "media-1" },
       { id: "window-text", kind: "textEditor", instanceId: "text-1" },
+      { id: "window-super", kind: "superRename", instanceId: "super-1" },
     ]);
     expect(state.windows[1].rect).toMatchObject({ width: 720, height: 504 });
     expect(isMediaPreviewWindow(state.windows[2])).toBe(true);
     expect(isTextEditorWindow(state.windows[3])).toBe(true);
+    expect(isSuperRenameWindow(state.windows[4])).toBe(true);
+
+    state = setWindowRect(state, "window-super", { x: 0, y: 0, width: 100, height: 100 }, bounds);
+    expect(state.windows[4].restoreRect).toMatchObject({ width: 760, height: 500 });
 
     state = setWindowRect(state, "window-media", { x: 0, y: 0, width: 100, height: 100 }, bounds);
     expect(state.windows[2].restoreRect).toMatchObject({ width: 420, height: 280 });
@@ -139,11 +147,12 @@ describe("window manager", () => {
     });
 
     state = closeWindow(state, "window-rename");
-    expect(state.activeWindowId).toBe("window-text");
+    expect(state.activeWindowId).toBe("window-super");
     expect(state.windows).toMatchObject([
       { id: "window-file", kind: "file", sessionId: "session-1" },
       { id: "window-media", kind: "mediaPreview", instanceId: "media-1" },
       { id: "window-text", kind: "textEditor", instanceId: "text-1" },
+      { id: "window-super", kind: "superRename", instanceId: "super-1" },
     ]);
   });
 });

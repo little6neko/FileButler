@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Columns2, FileCode2, FileImage, FileVideo, Files, Languages, ListChecks, MonitorUp, ScanText } from "lucide-react";
+import { Columns2, FileCode2, FileImage, FileVideo, Files, Languages, ListChecks, MonitorUp, ScanText, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { UIStrings } from "../i18n";
 import type { MediaKind } from "../media";
@@ -10,7 +10,7 @@ export type WorkspaceMode = "compact" | "desktop";
 
 export type TaskbarWindow = {
   id: string;
-  kind: "file" | "powerRename" | "mediaPreview" | "textEditor";
+  kind: "file" | "powerRename" | "mediaPreview" | "textEditor" | "superRename";
   mediaKind?: MediaKind;
   title: string;
   status: WindowStatus;
@@ -70,6 +70,7 @@ export function WorkspaceShell({
                 onClick={() => onWindowActivate(window.id)}
               >
                 {window.kind === "powerRename" ? <ScanText />
+                  : window.kind === "superRename" ? <WandSparkles />
                   : window.kind === "mediaPreview"
                     ? window.mediaKind === "video" ? <FileVideo /> : <FileImage />
                     : window.kind === "textEditor" ? <FileCode2 />

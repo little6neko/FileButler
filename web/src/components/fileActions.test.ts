@@ -13,7 +13,7 @@ it("creates every toolbar action in display order", () => {
   });
 
   expect(actions.map((action) => action.id)).toEqual([
-    "copy", "move", "symlink", "hardlink", "rename", "powerRename", "mkdir", "delete",
+    "copy", "move", "symlink", "hardlink", "rename", "powerRename", "superRename", "mkdir", "delete",
   ]);
   expect(actions.find((action) => action.id === "rename")?.separatorBefore).toBe(true);
   expect(actions.find((action) => action.id === "delete")?.separatorBefore).toBe(true);
@@ -60,7 +60,7 @@ it("creates full-mode toolbar and clipboard actions in their display order", () 
     },
   });
 
-  expect(toolbar.map((action) => action.id)).toEqual(["rename", "powerRename", "mkdir", "delete"]);
+  expect(toolbar.map((action) => action.id)).toEqual(["rename", "powerRename", "superRename", "mkdir", "delete"]);
   expect(clipboard.map((action) => action.id)).toEqual([
     "openInNewWindow", "clipboardCopy", "clipboardCut", "clipboardPaste",
   ]);
@@ -70,7 +70,8 @@ it("creates full-mode toolbar and clipboard actions in their display order", () 
 it("uses the same enabled predicates as the existing toolbar", () => {
   const none = createFileActions({ destination: "Right pane", destinationDirection: "right", selectedCount: 0, labels: strings.en, commands: commands() });
   expect(none.find((action) => action.id === "mkdir")?.disabled).toBe(false);
-  expect(none.filter((action) => action.id !== "mkdir").every((action) => action.disabled)).toBe(true);
+  expect(none.find((action) => action.id === "superRename")?.disabled).toBe(false);
+  expect(none.filter((action) => action.id !== "mkdir" && action.id !== "superRename").every((action) => action.disabled)).toBe(true);
 
   const one = createFileActions({ destination: "Right pane", destinationDirection: "right", selectedCount: 1, labels: strings.en, commands: commands() });
   expect(one.find((action) => action.id === "rename")?.disabled).toBe(false);
@@ -96,5 +97,6 @@ function commands() {
     onMkdir: vi.fn(),
     onRename: vi.fn(),
     onPowerRename: vi.fn(),
+    onSuperRename: vi.fn(),
   };
 }

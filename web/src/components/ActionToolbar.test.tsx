@@ -42,5 +42,6 @@ function commandMocks(): FileActionCommands {
     onMkdir: vi.fn(),
     onRename: vi.fn(),
     onPowerRename: vi.fn(),
+    onSuperRename: vi.fn(),
   };
 }

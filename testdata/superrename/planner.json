@@ -1,0 +1,242 @@
+{
+  "classificationCases": [
+    { "name": "photo.avif", "kind": "image", "extension": ".avif" },
+    { "name": "photo.BMP", "kind": "image", "extension": ".BMP" },
+    { "name": "photo.gif", "kind": "image", "extension": ".gif" },
+    { "name": "photo.JPEG", "kind": "image", "extension": ".JPEG" },
+    { "name": "photo.jpg", "kind": "image", "extension": ".jpg" },
+    { "name": "photo.PNG", "kind": "image", "extension": ".PNG" },
+    { "name": "photo.svg", "kind": "image", "extension": ".svg" },
+    { "name": "photo.WEBP", "kind": "image", "extension": ".WEBP" },
+    { "name": "clip.m4v", "kind": "video", "extension": ".m4v" },
+    { "name": "clip.MKV", "kind": "video", "extension": ".MKV" },
+    { "name": "clip.mov", "kind": "video", "extension": ".mov" },
+    { "name": "clip.MP4", "kind": "video", "extension": ".MP4" },
+    { "name": "clip.ogg", "kind": "video", "extension": ".ogg" },
+    { "name": "clip.OGV", "kind": "video", "extension": ".OGV" },
+    { "name": "clip.webm", "kind": "video", "extension": ".webm" },
+    { "name": "archive.tar.jpg", "kind": "image", "extension": ".jpg" },
+    { "name": "notes.txt", "kind": null, "extension": ".txt" },
+    { "name": "README", "kind": null, "extension": "" }
+  ],
+  "paddingCases": [
+    { "count": 0, "padding": 2 },
+    { "count": 1, "padding": 2 },
+    { "count": 9, "padding": 2 },
+    { "count": 10, "padding": 2 },
+    { "count": 99, "padding": 2 },
+    { "count": 100, "padding": 3 },
+    { "count": 999, "padding": 3 },
+    { "count": 1000, "padding": 4 },
+    { "count": 9999, "padding": 4 },
+    { "count": 10000, "padding": 5 }
+  ],
+  "projectionCases": [
+    {
+      "name": "images preserve sorted order and extension spelling",
+      "groupPath": "albums/写真 A",
+      "kind": "image",
+      "candidates": [
+        { "sourcePath": "albums/写真 A/IMG_1.JPG", "name": "IMG_1.JPG", "extension": ".JPG", "mediaKind": "image" },
+        { "sourcePath": "albums/写真 A/IMG_2.png", "name": "IMG_2.png", "extension": ".png", "mediaKind": "image" },
+        { "sourcePath": "albums/写真 A/IMG_10.webp", "name": "IMG_10.webp", "extension": ".webp", "mediaKind": "image" }
+      ],
+      "selectedPaths": [
+        "albums/写真 A/IMG_1.JPG",
+        "albums/写真 A/IMG_2.png",
+        "albums/写真 A/IMG_10.webp"
+      ],
+      "targets": [
+        "albums/写真 A/01.JPG",
+        "albums/写真 A/02.png",
+        "albums/写真 A/03.webp"
+      ]
+    },
+    {
+      "name": "unselected videos do not consume a number",
+      "groupPath": "albums/B",
+      "kind": "video",
+      "candidates": [
+        { "sourcePath": "albums/B/clip-1.mp4", "name": "clip-1.mp4", "extension": ".mp4", "mediaKind": "video" },
+        { "sourcePath": "albums/B/clip-2.MKV", "name": "clip-2.MKV", "extension": ".MKV", "mediaKind": "video" },
+        { "sourcePath": "albums/B/clip-10.webm", "name": "clip-10.webm", "extension": ".webm", "mediaKind": "video" }
+      ],
+      "selectedPaths": [
+        "albums/B/clip-1.mp4",
+        "albums/B/clip-10.webm"
+      ],
+      "targets": [
+        "albums/B/视频/V01.mp4",
+        null,
+        "albums/B/视频/V02.webm"
+      ]
+    },
+    {
+      "name": "an existing numbered image may remain unchanged",
+      "groupPath": "albums/C",
+      "kind": "image",
+      "candidates": [
+        { "sourcePath": "albums/C/01.jpg", "name": "01.jpg", "extension": ".jpg", "mediaKind": "image" },
+        { "sourcePath": "albums/C/z.jpg", "name": "z.jpg", "extension": ".jpg", "mediaKind": "image" }
+      ],
+      "selectedPaths": [
+        "albums/C/01.jpg",
+        "albums/C/z.jpg"
+      ],
+      "targets": [
+        "albums/C/01.jpg",
+        "albums/C/02.jpg"
+      ]
+    }
+  ],
+  "planCases": [
+    {
+      "name": "selected source may vacate another target",
+      "inventory": {
+        "rootId": "media",
+        "directoryPath": "albums",
+        "generatedAtUnix": 1,
+        "groups": [
+          {
+            "path": "albums/A",
+            "name": "A",
+            "images": [
+              { "sourcePath": "albums/A/02.jpg", "name": "02.jpg", "extension": ".jpg", "mediaKind": "image" },
+              { "sourcePath": "albums/A/a.jpg", "name": "a.jpg", "extension": ".jpg", "mediaKind": "image" }
+            ],
+            "videos": [],
+            "unmatched": [],
+            "directOccupiedPaths": ["albums/A/02.jpg", "albums/A/a.jpg"],
+            "videoDirectory": { "status": "missing", "path": "albums/A/视频", "occupiedPaths": [] },
+            "recoveryResidues": []
+          }
+        ]
+      },
+      "selectedPaths": ["albums/A/02.jpg", "albums/A/a.jpg"],
+      "items": [
+        { "sourcePath": "albums/A/02.jpg", "targetPath": "albums/A/01.jpg", "errorCode": null },
+        { "sourcePath": "albums/A/a.jpg", "targetPath": "albums/A/02.jpg", "errorCode": null }
+      ]
+    },
+    {
+      "name": "unselected source keeps its occupied target",
+      "inventory": {
+        "rootId": "media",
+        "directoryPath": "albums",
+        "generatedAtUnix": 1,
+        "groups": [
+          {
+            "path": "albums/A",
+            "name": "A",
+            "images": [
+              { "sourcePath": "albums/A/01.jpg", "name": "01.jpg", "extension": ".jpg", "mediaKind": "image" },
+              { "sourcePath": "albums/A/a.jpg", "name": "a.jpg", "extension": ".jpg", "mediaKind": "image" }
+            ],
+            "videos": [],
+            "unmatched": [],
+            "directOccupiedPaths": ["albums/A/01.jpg", "albums/A/a.jpg"],
+            "videoDirectory": { "status": "missing", "path": "albums/A/视频", "occupiedPaths": [] },
+            "recoveryResidues": []
+          }
+        ]
+      },
+      "selectedPaths": ["albums/A/a.jpg"],
+      "items": [
+        { "sourcePath": "albums/A/a.jpg", "targetPath": "albums/A/01.jpg", "errorCode": "target_occupied" }
+      ]
+    },
+    {
+      "name": "existing video content occupies generated target",
+      "inventory": {
+        "rootId": "media",
+        "directoryPath": "albums",
+        "generatedAtUnix": 1,
+        "groups": [
+          {
+            "path": "albums/A",
+            "name": "A",
+            "images": [],
+            "videos": [
+              { "sourcePath": "albums/A/clip.mp4", "name": "clip.mp4", "extension": ".mp4", "mediaKind": "video" }
+            ],
+            "unmatched": [],
+            "directOccupiedPaths": ["albums/A/clip.mp4", "albums/A/视频"],
+            "videoDirectory": {
+              "status": "directory",
+              "path": "albums/A/视频",
+              "occupiedPaths": ["albums/A/视频/V01.mp4"]
+            },
+            "recoveryResidues": []
+          }
+        ]
+      },
+      "selectedPaths": ["albums/A/clip.mp4"],
+      "items": [
+        { "sourcePath": "albums/A/clip.mp4", "targetPath": "albums/A/视频/V01.mp4", "errorCode": "target_occupied" }
+      ]
+    },
+    {
+      "name": "blocking video entry conflicts with selected videos",
+      "inventory": {
+        "rootId": "media",
+        "directoryPath": "albums",
+        "generatedAtUnix": 1,
+        "groups": [
+          {
+            "path": "albums/A",
+            "name": "A",
+            "images": [],
+            "videos": [
+              { "sourcePath": "albums/A/clip.MKV", "name": "clip.MKV", "extension": ".MKV", "mediaKind": "video" }
+            ],
+            "unmatched": [
+              { "path": "albums/A/视频", "name": "视频", "kind": "file", "reason": "unsupported-extension" }
+            ],
+            "directOccupiedPaths": ["albums/A/clip.MKV", "albums/A/视频"],
+            "videoDirectory": { "status": "blocking-entry", "path": "albums/A/视频", "occupiedPaths": [] },
+            "recoveryResidues": []
+          }
+        ]
+      },
+      "selectedPaths": ["albums/A/clip.MKV"],
+      "items": [
+        { "sourcePath": "albums/A/clip.MKV", "targetPath": "albums/A/视频/V01.MKV", "errorCode": "video_directory_blocked" }
+      ]
+    },
+    {
+      "name": "recovery residue blocks every selected type",
+      "inventory": {
+        "rootId": "media",
+        "directoryPath": "albums",
+        "generatedAtUnix": 1,
+        "groups": [
+          {
+            "path": "albums/A",
+            "name": "A",
+            "images": [
+              { "sourcePath": "albums/A/a.jpg", "name": "a.jpg", "extension": ".jpg", "mediaKind": "image" }
+            ],
+            "videos": [
+              { "sourcePath": "albums/A/b.mp4", "name": "b.mp4", "extension": ".mp4", "mediaKind": "video" }
+            ],
+            "unmatched": [
+              { "path": "albums/A/.filebutler-superrename-old", "name": ".filebutler-superrename-old", "kind": "directory", "reason": "nested-directory" }
+            ],
+            "directOccupiedPaths": [
+              "albums/A/.filebutler-superrename-old",
+              "albums/A/a.jpg",
+              "albums/A/b.mp4"
+            ],
+            "videoDirectory": { "status": "missing", "path": "albums/A/视频", "occupiedPaths": [] },
+            "recoveryResidues": ["albums/A/.filebutler-superrename-old"]
+          }
+        ]
+      },
+      "selectedPaths": ["albums/A/a.jpg", "albums/A/b.mp4"],
+      "items": [
+        { "sourcePath": "albums/A/a.jpg", "targetPath": "albums/A/01.jpg", "errorCode": "recovery_required" },
+        { "sourcePath": "albums/A/b.mp4", "targetPath": "albums/A/视频/V01.mp4", "errorCode": "recovery_required" }
+      ]
+    }
+  ]
+}

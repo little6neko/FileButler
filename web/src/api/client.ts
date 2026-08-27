@@ -5,6 +5,9 @@ import type {
   RenameRequest,
   Root,
   SingleRenameRequest,
+  SuperRenameCreateJobRequest,
+  SuperRenameInventory,
+  SuperRenamePreviewRequest,
   TextDocument,
   TextSaveRequest,
   TextSaveResult,
@@ -77,6 +80,16 @@ export const api = {
     request<{ id: string }>("/api/rename/jobs", { method: "POST", body: JSON.stringify(payload) }),
   singleRenameCreateJob: (payload: SingleRenameRequest) =>
     request<{ id: string }>("/api/rename/single/jobs", { method: "POST", body: JSON.stringify(payload) }),
+  superRenamePreview: (payload: SuperRenamePreviewRequest) =>
+    request<SuperRenameInventory>("/api/super-rename/preview", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  superRenameCreateJob: (payload: SuperRenameCreateJobRequest) =>
+    request<{ id: string }>("/api/super-rename/jobs", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
   cancelJob: (id: string) =>
     request<{ id: string }>(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
 };

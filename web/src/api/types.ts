@@ -136,3 +136,59 @@ export type TextSaveResult = {
   byteSize: number;
   revision: string;
 };
+
+export type SuperRenameMediaKind = "image" | "video";
+export type SuperRenameEntryKind = "file" | "directory" | "symlink" | "other";
+export type SuperRenameUnmatchedReason =
+  | "unsupported-extension"
+  | "nested-directory"
+  | "symlink"
+  | "special";
+export type SuperRenameVideoDirectoryStatus = "missing" | "directory" | "blocking-entry";
+
+export type SuperRenameCandidate = {
+  sourcePath: string;
+  name: string;
+  extension: string;
+  mediaKind: SuperRenameMediaKind;
+};
+
+export type SuperRenameUnmatched = {
+  path: string;
+  name: string;
+  kind: SuperRenameEntryKind;
+  reason: SuperRenameUnmatchedReason;
+};
+
+export type SuperRenameVideoDirectory = {
+  status: SuperRenameVideoDirectoryStatus;
+  path: string;
+  occupiedPaths: string[];
+};
+
+export type SuperRenameInventoryGroup = {
+  path: string;
+  name: string;
+  images: SuperRenameCandidate[];
+  videos: SuperRenameCandidate[];
+  unmatched: SuperRenameUnmatched[];
+  directOccupiedPaths: string[];
+  videoDirectory: SuperRenameVideoDirectory;
+  recoveryResidues: string[];
+};
+
+export type SuperRenameInventory = {
+  rootId: string;
+  directoryPath: string;
+  generatedAtUnix: number;
+  groups: SuperRenameInventoryGroup[];
+};
+
+export type SuperRenamePreviewRequest = {
+  rootId: string;
+  directoryPath: string;
+};
+
+export type SuperRenameCreateJobRequest = SuperRenamePreviewRequest & {
+  selectedPaths: string[];
+};

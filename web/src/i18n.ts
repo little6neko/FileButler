@@ -66,6 +66,30 @@ export type UIStrings = {
   rename: string;
   powerRename: string;
   powerRenameWindowTitle(count: number): string;
+  superRename: string;
+  superRenameWindowTitle(directory: string): string;
+  superRenameDescription: string;
+  superRenameSummary(groups: number, selected: number, unmatched: number, conflicts: number): string;
+  superRenameCurrentItem: string;
+  superRenamePlannedResult: string;
+  superRenameNoMatches: string;
+  superRenameCanceled: string;
+  superRenameUnchanged: string;
+  superRenameNotRecursive: string;
+  superRenameUnsupported: string;
+  superRenameSymlink: string;
+  superRenameSpecial: string;
+  superRenameRecoveryRequired: string;
+  superRenameVideoWillCreate: string;
+  superRenameVideoWillReuse: string;
+  superRenameVideoBlocked: string;
+  superRenameSelectGroup(name: string): string;
+  superRenameSelectItem(name: string): string;
+  superRenameExpandGroup(name: string): string;
+  superRenameCollapseGroup(name: string): string;
+  superRenameExecute(count: number): string;
+  superRenameConfirmationRequired: string;
+  superRenameConflict(code: string): string;
   jobs: string;
   allJobs: string;
   runningJobs: string;
@@ -261,6 +285,35 @@ export const strings: Record<Language, UIStrings> = {
     rename: "Rename",
     powerRename: "PowerRename",
     powerRenameWindowTitle: (count) => `PowerRename — ${count} ${count === 1 ? "item" : "items"}`,
+    superRename: "SuperRename",
+    superRenameWindowTitle: (directory) => `SuperRename — ${directory}`,
+    superRenameDescription: "Number direct images and videos independently in each immediate subfolder.",
+    superRenameSummary: (groups, selected, unmatched, conflicts) => `${groups} folders · ${selected} selected · ${unmatched} unmatched · ${conflicts} conflicts`,
+    superRenameCurrentItem: "Current item",
+    superRenamePlannedResult: "Planned result",
+    superRenameNoMatches: "No matching media",
+    superRenameCanceled: "Canceled",
+    superRenameUnchanged: "Unchanged",
+    superRenameNotRecursive: "Not scanned recursively",
+    superRenameUnsupported: "Unsupported file type",
+    superRenameSymlink: "Symbolic link is not followed",
+    superRenameSpecial: "Special file is not supported",
+    superRenameRecoveryRequired: "Manual recovery required",
+    superRenameVideoWillCreate: "Video folder will be created",
+    superRenameVideoWillReuse: "Existing video folder will be reused",
+    superRenameVideoBlocked: "Video path is not a folder",
+    superRenameSelectGroup: (name) => `Select all matched media in ${name}`,
+    superRenameSelectItem: (name) => `Select ${name} for SuperRename`,
+    superRenameExpandGroup: (name) => `Expand ${name}`,
+    superRenameCollapseGroup: (name) => `Collapse ${name}`,
+    superRenameExecute: (count) => `Rename ${count} ${count === 1 ? "file" : "files"}`,
+    superRenameConfirmationRequired: "The directory changed. Review the refreshed preview and confirm again.",
+    superRenameConflict: (code) => ({
+      target_occupied: "Target is occupied",
+      duplicate_target: "Duplicate target",
+      video_directory_blocked: "Video path is blocked",
+      recovery_required: "Manual recovery required",
+    })[code] ?? "Conflict",
     jobs: "Jobs",
     allJobs: "All",
     runningJobs: "Running",
@@ -384,6 +437,7 @@ export const strings: Record<Language, UIStrings> = {
       ({
         rename: "Rename",
         power_rename: "PowerRename",
+        super_rename: "SuperRename",
       })[type] ?? type,
     dragSummary: (name, count) => count === 1 ? name : `${name} and ${count - 1} more`,
     dragDestination: (type, target) => `${strings.en.operationType(type)} to ${target}`,
@@ -471,6 +525,35 @@ export const strings: Record<Language, UIStrings> = {
     rename: "重命名",
     powerRename: "PowerRename",
     powerRenameWindowTitle: (count) => `PowerRename — ${count} 项`,
+    superRename: "SuperRename",
+    superRenameWindowTitle: (directory) => `SuperRename — ${directory}`,
+    superRenameDescription: "按每个一级子文件夹分别为直属图片和视频连续编号。",
+    superRenameSummary: (groups, selected, unmatched, conflicts) => `${groups} 个文件夹 · 已选 ${selected} 项 · ${unmatched} 项未匹配 · ${conflicts} 个冲突`,
+    superRenameCurrentItem: "当前项目",
+    superRenamePlannedResult: "计划结果",
+    superRenameNoMatches: "无匹配媒体",
+    superRenameCanceled: "已取消",
+    superRenameUnchanged: "无需更改",
+    superRenameNotRecursive: "不递归处理",
+    superRenameUnsupported: "不支持的文件类型",
+    superRenameSymlink: "不跟随符号链接",
+    superRenameSpecial: "不支持特殊文件",
+    superRenameRecoveryRequired: "需要手动恢复",
+    superRenameVideoWillCreate: "将新建“视频”文件夹",
+    superRenameVideoWillReuse: "将复用已有“视频”文件夹",
+    superRenameVideoBlocked: "“视频”路径不是文件夹",
+    superRenameSelectGroup: (name) => `选择 ${name} 中的全部匹配媒体`,
+    superRenameSelectItem: (name) => `选择 ${name} 进行 SuperRename`,
+    superRenameExpandGroup: (name) => `展开 ${name}`,
+    superRenameCollapseGroup: (name) => `折叠 ${name}`,
+    superRenameExecute: (count) => `重命名 ${count} 个文件`,
+    superRenameConfirmationRequired: "目录内容已变化，请检查刷新后的预览并再次确认。",
+    superRenameConflict: (code) => ({
+      target_occupied: "目标已被占用",
+      duplicate_target: "目标名称重复",
+      video_directory_blocked: "“视频”路径被阻塞",
+      recovery_required: "需要手动恢复",
+    })[code] ?? "存在冲突",
     jobs: "任务",
     allJobs: "全部",
     runningJobs: "进行中",
@@ -600,6 +683,7 @@ export const strings: Record<Language, UIStrings> = {
         mkdir: "新建文件夹",
         rename: "重命名",
         power_rename: "PowerRename",
+        super_rename: "SuperRename",
       })[type] ?? type,
     dragSummary: (name, count) => count === 1 ? name : `${name} 等 ${count} 项`,
     dragDestination: (type, target) => `${strings["zh-CN"].operationType(type)}到${target}`,

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { APIError, api } from "./client";
-import type { TextDocument, TextSaveRequest } from "./types";
+import type { SuperRenameInventory, TextDocument, TextSaveRequest } from "./types";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -69,6 +69,51 @@ describe("text API client", () => {
     const error = await api.textSave(request).catch((reason: unknown) => reason);
     expect(error).toBeInstanceOf(APIError);
     expect(error).toMatchObject({ status: 409, code: "revision_conflict", message: "changed elsewhere" });
+  });
+});
+
+describe("SuperRename API client", () => {
+  it("posts the current directory snapshot request and returns its inventory", async () => {
+    const inventory: SuperRenameInventory = {
+      rootId: "media",
+      directoryPath: "albums/写真 A",
+      generatedAtUnix: 1,
+      groups: [],
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: inventory }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.superRenamePreview({
+      rootId: "media",
+      directoryPath: "albums/写真 A",
+    })).resolves.toEqual(inventory);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/super-rename/preview",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify({ rootId: "media", directoryPath: "albums/写真 A" }),
+      }),
+    );
+  });
+
+  it("submits only selected source paths and preserves stale-preview errors", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
+      error: { code: "stale_preview", message: "refresh first" },
+    }, 409));
+    vi.stubGlobal("fetch", fetchMock);
+    const payload = {
+      rootId: "media",
+      directoryPath: "albums",
+      selectedPaths: ["albums/A/a.jpg"],
+    };
+
+    const error = await api.superRenameCreateJob(payload).catch((reason: unknown) => reason);
+    expect(error).toMatchObject({ status: 409, code: "stale_preview" });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/super-rename/jobs",
+      expect.objectContaining({ method: "POST", body: JSON.stringify(payload) }),
+    );
   });
 });
 

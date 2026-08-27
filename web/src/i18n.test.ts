@@ -32,6 +32,15 @@ it("formats PowerRename application window titles", () => {
   expect(strings["zh-CN"].powerRenameWindowTitle(3)).toBe("PowerRename — 3 项");
 });
 
+it("localizes SuperRename summaries, windows, and conflicts", () => {
+  expect(strings.en.superRenameWindowTitle("Albums")).toBe("SuperRename — Albums");
+  expect(strings["zh-CN"].superRenameWindowTitle("相册")).toBe("SuperRename — 相册");
+  expect(strings.en.superRenameSummary(3, 12, 2, 1)).toContain("12 selected");
+  expect(strings["zh-CN"].superRenameSummary(3, 12, 2, 1)).toContain("已选 12 项");
+  expect(strings.en.superRenameConflict("target_occupied")).toBe("Target is occupied");
+  expect(strings["zh-CN"].operationType("super_rename")).toBe("SuperRename");
+});
+
 it("localizes text editor actions, states, and cursor position", () => {
   expect(strings.en.textEditorLabel("main.go")).toBe("Edit main.go");
   expect(strings["zh-CN"].textEditorLabel("main.go")).toBe("编辑 main.go");

@@ -51,6 +51,9 @@ describe("SuperRenameTree", () => {
 
     const groupRow = screen.getByTestId("super-rename-group-albums/A");
     expect(within(groupRow).getByRole("checkbox", { name: "Select all matched media in A" })).toHaveAttribute("aria-checked", "mixed");
+    const canceledRow = screen.getByTestId("super-rename-item-albums/A/clip.mp4");
+    expect(canceledRow).not.toHaveClass("opacity-70");
+    expect(within(canceledRow).getByRole("checkbox", { name: "Select clip.mp4 for SuperRename" })).toBeEnabled();
     fireEvent.click(screen.getByRole("checkbox", { name: "Select photo.jpg for SuperRename" }));
     expect(onItemSelected).toHaveBeenCalledWith("albums/A/photo.jpg", false);
     fireEvent.click(within(groupRow).getByRole("checkbox", { name: "Select all matched media in A" }));

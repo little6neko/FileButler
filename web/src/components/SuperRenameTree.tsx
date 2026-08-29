@@ -222,7 +222,7 @@ function CandidateRow({
   const rowTone = item.conflict
     ? "bg-red-50/60 dark:bg-red-950/20"
     : !item.selected
-      ? "text-muted-foreground opacity-70"
+      ? "text-muted-foreground"
       : "bg-emerald-50/30 dark:bg-emerald-950/10";
   return (
     <TableRow className={rowTone} data-testid={`super-rename-item-${item.sourcePath}`}>

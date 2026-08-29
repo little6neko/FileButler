@@ -1,73 +1,68 @@
-# React + TypeScript + Vite
+# FileButler 前端
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+这里是 FileButler 的浏览器前端，使用 React、TypeScript、Vite、Tailwind CSS、Base UI 和 shadcn 风格组件构建。生产构建结果输出到 `web/dist`，由 Go 服务通过 `static_dir` 提供。
 
-Currently, two official plugins are available:
+## 环境与安装
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Docker 构建当前使用 Node.js 25。进入本目录后安装锁定依赖：
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm ci
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 常用命令
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+```bash
+# 启动 Vite 开发服务器
+npm run dev
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+# 运行单元和组件测试
+npm test -- --run
+
+# 监听模式运行测试
+npm test
+
+# ESLint 检查
+npm run lint
+
+# TypeScript 检查并生成生产资源
+npm run build
 ```
+
+当前 Vite 配置没有为 `/api` 设置开发代理，单独运行 `npm run dev` 只会启动前端资源服务器，无法完成登录和文件操作。完整联调时可自行配置同源 API 代理，或先执行生产构建，再由项目根目录的 Go 服务统一提供前端和 API。
+
+## 版本号
+
+前端从构建环境变量 `VITE_APP_VERSION` 读取版本号：
+
+```bash
+VITE_APP_VERSION=0.2.1 npm run build
+```
+
+未设置时界面显示 `dev`。Dockerfile 和发布工作流会自动注入镜像版本。
+
+## 目录说明
+
+| 路径 | 用途 |
+| --- | --- |
+| `src/components` | 工作区、文件窗、对话框、预览器、编辑器和基础 UI 组件。 |
+| `src/api` | 前后端 API 类型和请求封装。 |
+| `src/*.ts` | 选择、拖放、任务事件、窗口管理和 SuperRename 等领域逻辑。 |
+| `src/test` | Vitest/JSDOM 测试环境。 |
+| `e2e` | Playwright 浏览器端测试。 |
+| `public` | 不经过 Vite 转换的静态资源。 |
+| `dist` | 生产构建产物，不应手工修改。 |
+
+## 浏览器端测试
+
+Playwright 测试默认访问 `http://127.0.0.1:8080`。先启动一个使用测试目录和测试账号的 FileButler 服务，再运行：
+
+```bash
+PLAYWRIGHT_BASE_URL=http://127.0.0.1:8080 \
+FILEBUTLER_E2E_PASSWORD=long-password \
+npx playwright test
+```
+
+`FILEBUTLER_E2E_PASSWORD` 仅在测试环境需要初始化管理员时使用，不要把生产密码写入命令历史或仓库文件。
+
+完整的部署、配置和安全说明见项目根目录的 [`README.md`](../README.md)。

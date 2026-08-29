@@ -47,6 +47,11 @@ type Unmatched struct {
 	Reason UnmatchedReason `json:"reason"`
 }
 
+type DirectoryRef struct {
+	Path string `json:"path"`
+	Name string `json:"name"`
+}
+
 type VideoDirectory struct {
 	Status        VideoDirectoryStatus `json:"status"`
 	Path          string               `json:"path"`
@@ -59,6 +64,7 @@ type InventoryGroup struct {
 	Images              []Candidate    `json:"images"`
 	Videos              []Candidate    `json:"videos"`
 	Unmatched           []Unmatched    `json:"unmatched"`
+	ChildDirectories    []DirectoryRef `json:"childDirectories"`
 	DirectOccupiedPaths []string       `json:"directOccupiedPaths"`
 	VideoDirectory      VideoDirectory `json:"videoDirectory"`
 	RecoveryResidues    []string       `json:"recoveryResidues"`

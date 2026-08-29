@@ -97,6 +97,29 @@ describe("SuperRename API client", () => {
     );
   });
 
+  it("loads one nested group on demand", async () => {
+    const group = {
+      path: "albums/A/chapter",
+      name: "chapter",
+      images: [],
+      videos: [],
+      unmatched: [],
+      childDirectories: [],
+      directOccupiedPaths: [],
+      videoDirectory: { status: "missing" as const, path: "albums/A/chapter/视频", occupiedPaths: [] },
+      recoveryResidues: [],
+    };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ data: group }));
+    vi.stubGlobal("fetch", fetchMock);
+    const payload = { rootId: "media", directoryPath: "albums", groupPath: "albums/A/chapter" };
+
+    await expect(api.superRenameGroupPreview(payload)).resolves.toEqual(group);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/super-rename/group-preview",
+      expect.objectContaining({ method: "POST", body: JSON.stringify(payload) }),
+    );
+  });
+
   it("submits only selected source paths and preserves stale-preview errors", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
       error: { code: "stale_preview", message: "refresh first" },

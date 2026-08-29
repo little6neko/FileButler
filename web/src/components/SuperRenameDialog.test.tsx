@@ -23,6 +23,7 @@ describe("SuperRenameDialog", () => {
         labels={strings.en}
         onClose={vi.fn()}
         onJobCreated={vi.fn()}
+        onGroupJobCreated={vi.fn()}
       />,
     );
 

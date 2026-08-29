@@ -160,6 +160,11 @@ export type SuperRenameUnmatched = {
   reason: SuperRenameUnmatchedReason;
 };
 
+export type SuperRenameDirectoryRef = {
+  path: string;
+  name: string;
+};
+
 export type SuperRenameVideoDirectory = {
   status: SuperRenameVideoDirectoryStatus;
   path: string;
@@ -172,6 +177,7 @@ export type SuperRenameInventoryGroup = {
   images: SuperRenameCandidate[];
   videos: SuperRenameCandidate[];
   unmatched: SuperRenameUnmatched[];
+  childDirectories: SuperRenameDirectoryRef[];
   directOccupiedPaths: string[];
   videoDirectory: SuperRenameVideoDirectory;
   recoveryResidues: string[];
@@ -187,6 +193,10 @@ export type SuperRenameInventory = {
 export type SuperRenamePreviewRequest = {
   rootId: string;
   directoryPath: string;
+};
+
+export type SuperRenameGroupPreviewRequest = SuperRenamePreviewRequest & {
+  groupPath: string;
 };
 
 export type SuperRenameCreateJobRequest = SuperRenamePreviewRequest & {

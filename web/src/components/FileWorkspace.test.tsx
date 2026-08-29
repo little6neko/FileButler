@@ -21,6 +21,7 @@ vi.mock("../api/client", () => ({
     renameCreateJob: vi.fn(),
     singleRenameCreateJob: vi.fn(),
     superRenamePreview: vi.fn(),
+    superRenameGroupPreview: vi.fn(),
     superRenameCreateJob: vi.fn(),
     cancelJob: vi.fn(),
   },
@@ -54,6 +55,7 @@ function workspaceSuperRenameInventory(
       }],
       videos: [],
       unmatched: [],
+      childDirectories: [],
       directOccupiedPaths: [directoryPath === "." ? "folder/photo.jpg" : `${directoryPath}/album/photo.jpg`],
       videoDirectory: {
         status: "missing",
@@ -821,6 +823,29 @@ it("locks and closes a SuperRename window around one background-job submission",
   await act(async () => resolveJob({ id: "super-rename-job" }));
   await waitFor(() => expect(container.querySelector(".desktop-window[data-window-kind='superRename']")).toBeNull());
   expect(screen.queryByRole("button", { name: "SuperRename — Source" })).not.toBeInTheDocument();
+  expect(toast.success).toHaveBeenCalledWith("Background job created");
+});
+
+it("keeps the SuperRename window open after submitting one folder", async () => {
+  vi.mocked(api.superRenamePreview).mockResolvedValue(workspaceSuperRenameInventory());
+  vi.mocked(api.superRenameCreateJob).mockResolvedValue({ id: "super-rename-folder-job" });
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
+  const fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
+  await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
+  await userEvent.click(within(fileWindow).getByRole("button", { name: "SuperRename" }));
+  const superRenameWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='superRename']")!;
+
+  await userEvent.click(await within(superRenameWindow).findByRole("button", { name: "Rename folder now" }));
+
+  await waitFor(() => expect(api.superRenameCreateJob).toHaveBeenCalledWith({
+    rootId: "source",
+    directoryPath: ".",
+    selectedPaths: ["folder/photo.jpg"],
+  }));
+  expect(container.querySelector(".desktop-window[data-window-kind='superRename']")).toBe(superRenameWindow);
+  expect(within(superRenameWindow).getByText("No matching media")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "SuperRename — Source" })).toBeInTheDocument();
   expect(toast.success).toHaveBeenCalledWith("Background job created");
 });
 

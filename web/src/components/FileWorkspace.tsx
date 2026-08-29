@@ -731,6 +731,7 @@ export function FileWorkspace({
             setCompactSuperRenameTarget(null);
             handleJobCreated(id);
           }}
+          onGroupJobCreated={handleJobCreated}
         />
       ) : null}
       <JobsSheet open={jobsOpen} onOpenChange={setJobsOpen} eventsStore={jobEvents} labels={labels} />
@@ -890,6 +891,7 @@ export function FileWorkspace({
           title={labels.superRenameWindowTitle(instance.sourceTitle)}
           instance={instance}
           onJobCreated={(id) => completeSuperRenameJob(window.id, instance.id, id)}
+          onGroupJobCreated={handleJobCreated}
         />
       );
     }
@@ -2346,11 +2348,13 @@ type SuperRenameApplicationWindowProps = Omit<
 > & {
   instance: SuperRenameInstance;
   onJobCreated(id: string): void;
+  onGroupJobCreated(id: string): void;
 };
 
 function SuperRenameApplicationWindow({
   instance,
   onJobCreated,
+  onGroupJobCreated,
   labels,
   ...frameProps
 }: SuperRenameApplicationWindowProps) {
@@ -2364,7 +2368,7 @@ function SuperRenameApplicationWindow({
       {...frameProps}
       labels={labels}
       icon={<WandSparkles aria-hidden="true" />}
-      closeDisabled={snapshot.submitting}
+      closeDisabled={snapshot.submitting || snapshot.submittingGroups.size > 0}
     >
       <div className="super-rename-window-layout" data-source-title={instance.sourceTitle}>
         <SuperRenameContent
@@ -2372,6 +2376,7 @@ function SuperRenameApplicationWindow({
           labels={labels}
           onClose={frameProps.onClose}
           onJobCreated={onJobCreated}
+          onGroupJobCreated={onGroupJobCreated}
         />
       </div>
     </WindowFrame>

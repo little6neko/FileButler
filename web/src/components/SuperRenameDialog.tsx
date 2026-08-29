@@ -14,6 +14,7 @@ type SuperRenameDialogProps = {
   rootId: string;
   directoryPath: string;
   onJobCreated(id: string): void;
+  onGroupJobCreated(id: string): void;
   onClose(): void;
   labels?: UIStrings;
 };
@@ -22,6 +23,7 @@ export function SuperRenameDialog({
   rootId,
   directoryPath,
   onJobCreated,
+  onGroupJobCreated,
   onClose,
   labels = strings.en,
 }: SuperRenameDialogProps) {
@@ -31,7 +33,12 @@ export function SuperRenameDialog({
   useEffect(() => () => manager.destroy(), [manager]);
 
   return (
-    <Dialog open onOpenChange={(open) => { if (!open && !snapshot.submitting) onClose(); }}>
+    <Dialog
+      open
+      onOpenChange={(open) => {
+        if (!open && !snapshot.submitting && snapshot.submittingGroups.size === 0) onClose();
+      }}
+    >
       <DialogContent
         className="flex h-[min(860px,92vh)] flex-col sm:max-w-[min(1400px,96vw)]"
         showCloseButton={false}
@@ -45,6 +52,7 @@ export function SuperRenameDialog({
           labels={labels}
           onClose={onClose}
           onJobCreated={onJobCreated}
+          onGroupJobCreated={onGroupJobCreated}
         />
       </DialogContent>
     </Dialog>

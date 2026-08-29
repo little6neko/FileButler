@@ -38,6 +38,8 @@ it("localizes SuperRename summaries, windows, and conflicts", () => {
   expect(strings.en.superRenameSummary(3, 12, 2, 1)).toContain("12 selected");
   expect(strings["zh-CN"].superRenameSummary(3, 12, 2, 1)).toContain("已选 12 项");
   expect(strings.en.superRenameConflict("target_occupied")).toBe("Target is occupied");
+  expect(strings.en.superRenameGroupSubmit("Albums")).toBe("Rename Albums now");
+  expect(strings["zh-CN"].superRenameGroupSubmit("相册")).toBe("立即重命名 相册");
   expect(strings["zh-CN"].operationType("super_rename")).toBe("SuperRename");
 });
 

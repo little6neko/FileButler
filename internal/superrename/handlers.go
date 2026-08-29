@@ -21,6 +21,12 @@ type PreviewRequest struct {
 	DirectoryPath string `json:"directoryPath"`
 }
 
+type GroupPreviewRequest struct {
+	RootID        string `json:"rootId"`
+	DirectoryPath string `json:"directoryPath"`
+	GroupPath     string `json:"groupPath"`
+}
+
 type CreateJobRequest struct {
 	RootID        string   `json:"rootId"`
 	DirectoryPath string   `json:"directoryPath"`
@@ -47,6 +53,26 @@ func PreviewHandler(scanner Scanner) http.HandlerFunc {
 	}
 }
 
+func GroupPreviewHandler(scanner Scanner) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var request GroupPreviewRequest
+		if err := decodeStrictJSON(w, r, &request); err != nil {
+			writeDecodeError(w, err)
+			return
+		}
+		if request.RootID == "" || request.DirectoryPath == "" || request.GroupPath == "" {
+			writeError(w, http.StatusBadRequest, "invalid_request", "rootId, directoryPath and groupPath are required")
+			return
+		}
+		group, err := scanner.ScanGroup(r.Context(), request.RootID, request.DirectoryPath, request.GroupPath)
+		if err != nil {
+			writeGroupScanError(w, err)
+			return
+		}
+		writeData(w, http.StatusOK, group)
+	}
+}
+
 func CreateJobHandler(scanner Scanner, planner Planner, store jobs.Store, runner Runner) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var request CreateJobRequest
@@ -64,7 +90,7 @@ func CreateJobHandler(scanner Scanner, planner Planner, store jobs.Store, runner
 			return
 		}
 
-		inventory, err := scanner.Scan(r.Context(), request.RootID, request.DirectoryPath)
+		inventory, err := scanner.ScanSelection(r.Context(), request.RootID, request.DirectoryPath, request.SelectedPaths)
 		if err != nil {
 			writeScanError(w, err, true)
 			return
@@ -132,7 +158,7 @@ func writeDecodeError(w http.ResponseWriter, err error) {
 
 func writeScanError(w http.ResponseWriter, err error, staleContext bool) {
 	switch {
-	case errors.Is(err, roots.ErrUnknownRoot), errors.Is(err, roots.ErrInvalidPath), errors.Is(err, roots.ErrOutsideRoot):
+	case errors.Is(err, roots.ErrUnknownRoot), errors.Is(err, roots.ErrInvalidPath), errors.Is(err, roots.ErrOutsideRoot), errors.Is(err, ErrReservedDirectory):
 		writeError(w, http.StatusBadRequest, "invalid_request", "the requested root or directory path is invalid")
 	case os.IsPermission(err):
 		writeError(w, http.StatusForbidden, "permission_denied", "the directory cannot be read")
@@ -142,6 +168,21 @@ func writeScanError(w http.ResponseWriter, err error, staleContext bool) {
 		writeError(w, http.StatusNotFound, "not_found", "the directory does not exist")
 	case errors.Is(err, ErrNotDirectory):
 		writeError(w, http.StatusBadRequest, "invalid_request", "the requested path is not a real directory")
+	default:
+		writeError(w, http.StatusInternalServerError, "operation_failed", "unable to scan the directory")
+	}
+}
+
+func writeGroupScanError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, roots.ErrUnknownRoot), errors.Is(err, roots.ErrInvalidPath), errors.Is(err, roots.ErrOutsideRoot), errors.Is(err, ErrReservedDirectory):
+		writeError(w, http.StatusBadRequest, "invalid_request", "the requested root or group path is invalid")
+	case os.IsPermission(err):
+		writeError(w, http.StatusForbidden, "permission_denied", "the directory cannot be read")
+	case os.IsNotExist(err):
+		writeError(w, http.StatusNotFound, "not_found", "the directory does not exist")
+	case errors.Is(err, ErrNotDirectory):
+		writeError(w, http.StatusConflict, "stale_preview", "the directory changed; refresh the preview and confirm again")
 	default:
 		writeError(w, http.StatusInternalServerError, "operation_failed", "unable to scan the directory")
 	}

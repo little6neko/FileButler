@@ -9,6 +9,7 @@ import type {
 
 export type {
   SuperRenameCandidate,
+  SuperRenameDirectoryRef,
   SuperRenameEntryKind,
   SuperRenameInventory,
   SuperRenameInventoryGroup,

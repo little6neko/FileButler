@@ -3,6 +3,7 @@ package superrename
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path"
 	"path/filepath"
@@ -14,7 +15,10 @@ import (
 	"github.com/little6neko/filebutler/internal/roots"
 )
 
-var ErrNotDirectory = errors.New("superrename_not_directory")
+var (
+	ErrNotDirectory      = errors.New("superrename_not_directory")
+	ErrReservedDirectory = errors.New("superrename_reserved_directory")
+)
 
 const (
 	videoDirectoryName = "视频"
@@ -30,25 +34,9 @@ func (s Scanner) Scan(ctx context.Context, rootID string, directoryPath string) 
 	if err := ctx.Err(); err != nil {
 		return Inventory{}, err
 	}
-	resolved, err := s.Resolver.ResolveForWrite(rootID, directoryPath)
+	resolved, err := s.resolveDirectory(rootID, directoryPath)
 	if err != nil {
 		return Inventory{}, err
-	}
-	if resolved.Rel != "." {
-		requestedInfo, err := os.Lstat(resolved.Abs)
-		if err != nil {
-			return Inventory{}, err
-		}
-		if requestedInfo.Mode()&os.ModeSymlink != 0 {
-			return Inventory{}, ErrNotDirectory
-		}
-	}
-	info, err := os.Stat(resolved.CanonicalAbs)
-	if err != nil {
-		return Inventory{}, err
-	}
-	if !info.IsDir() {
-		return Inventory{}, ErrNotDirectory
 	}
 
 	entries, err := os.ReadDir(resolved.CanonicalAbs)
@@ -59,6 +47,9 @@ func (s Scanner) Scan(ctx context.Context, rootID string, directoryPath string) 
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
 			return Inventory{}, err
+		}
+		if strings.HasPrefix(entry.Name(), recoveryPrefix) {
+			continue
 		}
 		groupAbs := filepath.Join(resolved.CanonicalAbs, entry.Name())
 		groupInfo, err := os.Lstat(groupAbs)
@@ -85,16 +76,178 @@ func (s Scanner) Scan(ctx context.Context, rootID string, directoryPath string) 
 		return natsort.Less(groups[i].Name, groups[j].Name)
 	})
 
+	return Inventory{
+		RootID:          rootID,
+		DirectoryPath:   filepath.ToSlash(resolved.Rel),
+		GeneratedAtUnix: s.generatedAtUnix(),
+		Groups:          groups,
+	}, nil
+}
+
+func (s Scanner) ScanGroup(
+	ctx context.Context,
+	rootID string,
+	directoryPath string,
+	groupPath string,
+) (InventoryGroup, error) {
+	if err := ctx.Err(); err != nil {
+		return InventoryGroup{}, err
+	}
+	scope, err := s.resolveDirectory(rootID, directoryPath)
+	if err != nil {
+		return InventoryGroup{}, err
+	}
+	return s.scanResolvedGroup(ctx, rootID, scope, groupPath)
+}
+
+func (s Scanner) ScanSelection(
+	ctx context.Context,
+	rootID string,
+	directoryPath string,
+	selectedPaths []string,
+) (Inventory, error) {
+	if err := ctx.Err(); err != nil {
+		return Inventory{}, err
+	}
+	scope, err := s.resolveDirectory(rootID, directoryPath)
+	if err != nil {
+		return Inventory{}, err
+	}
+	groupPaths := make(map[string]struct{}, len(selectedPaths))
+	for _, selectedPath := range selectedPaths {
+		normalized, err := normalizeStrictRelativePath(selectedPath)
+		if err != nil {
+			return Inventory{}, err
+		}
+		groupPaths[path.Dir(normalized)] = struct{}{}
+	}
+	orderedPaths := make([]string, 0, len(groupPaths))
+	for groupPath := range groupPaths {
+		orderedPaths = append(orderedPaths, groupPath)
+	}
+	sort.SliceStable(orderedPaths, func(i, j int) bool {
+		return natsort.Less(orderedPaths[i], orderedPaths[j])
+	})
+	groups := make([]InventoryGroup, 0, len(orderedPaths))
+	for _, groupPath := range orderedPaths {
+		group, err := s.scanResolvedGroup(ctx, rootID, scope, groupPath)
+		if err != nil {
+			return Inventory{}, err
+		}
+		groups = append(groups, group)
+	}
+	return Inventory{
+		RootID:          rootID,
+		DirectoryPath:   filepath.ToSlash(scope.Rel),
+		GeneratedAtUnix: s.generatedAtUnix(),
+		Groups:          groups,
+	}, nil
+}
+
+func (s Scanner) resolveDirectory(rootID string, directoryPath string) (roots.ResolvedPath, error) {
+	resolved, err := s.Resolver.ResolveForWrite(rootID, directoryPath)
+	if err != nil {
+		return roots.ResolvedPath{}, err
+	}
+	if resolved.Rel != "." {
+		requestedInfo, err := os.Lstat(resolved.Abs)
+		if err != nil {
+			return roots.ResolvedPath{}, err
+		}
+		if requestedInfo.Mode()&os.ModeSymlink != 0 {
+			return roots.ResolvedPath{}, ErrNotDirectory
+		}
+	}
+	info, err := os.Stat(resolved.CanonicalAbs)
+	if err != nil {
+		return roots.ResolvedPath{}, err
+	}
+	if !info.IsDir() {
+		return roots.ResolvedPath{}, ErrNotDirectory
+	}
+	return resolved, nil
+}
+
+func (s Scanner) scanResolvedGroup(
+	ctx context.Context,
+	rootID string,
+	scope roots.ResolvedPath,
+	groupPath string,
+) (InventoryGroup, error) {
+	normalizedGroupPath, err := normalizeStrictRelativePath(groupPath)
+	if err != nil {
+		return InventoryGroup{}, err
+	}
+	scopePath := filepath.ToSlash(scope.Rel)
+	segments, err := strictDescendantSegments(scopePath, normalizedGroupPath)
+	if err != nil {
+		return InventoryGroup{}, err
+	}
+	currentAbs := scope.CanonicalAbs
+	for index, segment := range segments {
+		if strings.HasPrefix(segment, recoveryPrefix) || (index > 0 && segment == videoDirectoryName) {
+			return InventoryGroup{}, fmt.Errorf("%w: %s", ErrReservedDirectory, normalizedGroupPath)
+		}
+		currentAbs = filepath.Join(currentAbs, filepath.FromSlash(segment))
+		info, err := os.Lstat(currentAbs)
+		if err != nil {
+			return InventoryGroup{}, err
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return InventoryGroup{}, ErrNotDirectory
+		}
+	}
+	resolvedGroup, err := s.Resolver.ResolveForWrite(rootID, normalizedGroupPath)
+	if err != nil {
+		return InventoryGroup{}, err
+	}
+	if filepath.Clean(resolvedGroup.CanonicalAbs) != filepath.Clean(currentAbs) {
+		return InventoryGroup{}, ErrNotDirectory
+	}
+	return s.scanGroup(ctx, currentAbs, normalizedGroupPath, path.Base(normalizedGroupPath))
+}
+
+func normalizeStrictRelativePath(value string) (string, error) {
+	if value == "" {
+		return "", roots.ErrInvalidPath
+	}
+	normalized := strings.ReplaceAll(value, "\\", "/")
+	if strings.HasPrefix(normalized, "/") || isWindowsAbsolutePath(normalized) {
+		return "", roots.ErrInvalidPath
+	}
+	segments := strings.Split(normalized, "/")
+	for _, segment := range segments {
+		if segment == "" || segment == "." || segment == ".." {
+			return "", roots.ErrInvalidPath
+		}
+	}
+	return strings.Join(segments, "/"), nil
+}
+
+func strictDescendantSegments(scopePath string, groupPath string) ([]string, error) {
+	if scopePath == "." {
+		return strings.Split(groupPath, "/"), nil
+	}
+	if groupPath == scopePath {
+		return nil, roots.ErrInvalidPath
+	}
+	prefix := scopePath + "/"
+	if !strings.HasPrefix(groupPath, prefix) {
+		return nil, roots.ErrOutsideRoot
+	}
+	return strings.Split(strings.TrimPrefix(groupPath, prefix), "/"), nil
+}
+
+func isWindowsAbsolutePath(value string) bool {
+	return len(value) >= 3 && ((value[0] >= 'A' && value[0] <= 'Z') || (value[0] >= 'a' && value[0] <= 'z')) && value[1] == ':' && value[2] == '/'
+}
+
+func (s Scanner) generatedAtUnix() int64 {
 	now := time.Now()
 	if s.Now != nil {
 		now = s.Now()
 	}
-	return Inventory{
-		RootID:          rootID,
-		DirectoryPath:   filepath.ToSlash(resolved.Rel),
-		GeneratedAtUnix: now.UTC().Unix(),
-		Groups:          groups,
-	}, nil
+	return now.UTC().Unix()
 }
 
 func (s Scanner) scanGroup(ctx context.Context, groupAbs string, groupPath string, groupName string) (InventoryGroup, error) {
@@ -103,11 +256,12 @@ func (s Scanner) scanGroup(ctx context.Context, groupAbs string, groupPath strin
 		return InventoryGroup{}, err
 	}
 	group := InventoryGroup{
-		Path:      groupPath,
-		Name:      groupName,
-		Images:    []Candidate{},
-		Videos:    []Candidate{},
-		Unmatched: []Unmatched{},
+		Path:             groupPath,
+		Name:             groupName,
+		Images:           []Candidate{},
+		Videos:           []Candidate{},
+		Unmatched:        []Unmatched{},
+		ChildDirectories: []DirectoryRef{},
 		VideoDirectory: VideoDirectory{
 			Status:        VideoDirectoryMissing,
 			Path:          joinRelative(groupPath, videoDirectoryName),
@@ -174,7 +328,11 @@ func (s Scanner) scanGroup(ctx context.Context, groupAbs string, groupPath strin
 				group.Videos = append(group.Videos, candidate)
 			}
 		case EntryKindDirectory:
-			group.Unmatched = append(group.Unmatched, Unmatched{Path: entryPath, Name: name, Kind: kind, Reason: UnmatchedNestedDirectory})
+			if strings.HasPrefix(name, recoveryPrefix) {
+				group.Unmatched = append(group.Unmatched, Unmatched{Path: entryPath, Name: name, Kind: kind, Reason: UnmatchedNestedDirectory})
+			} else {
+				group.ChildDirectories = append(group.ChildDirectories, DirectoryRef{Path: entryPath, Name: name})
+			}
 		case EntryKindSymlink:
 			group.Unmatched = append(group.Unmatched, Unmatched{Path: entryPath, Name: name, Kind: kind, Reason: UnmatchedSymlink})
 		default:
@@ -186,6 +344,9 @@ func (s Scanner) scanGroup(ctx context.Context, groupAbs string, groupPath strin
 	sortCandidates(group.Videos)
 	sort.SliceStable(group.Unmatched, func(i, j int) bool {
 		return natsort.Less(group.Unmatched[i].Name, group.Unmatched[j].Name)
+	})
+	sort.SliceStable(group.ChildDirectories, func(i, j int) bool {
+		return natsort.Less(group.ChildDirectories[i].Name, group.ChildDirectories[j].Name)
 	})
 	sortPathsByBase(group.DirectOccupiedPaths)
 	sortPathsByBase(group.RecoveryResidues)

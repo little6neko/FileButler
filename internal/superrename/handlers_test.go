@@ -39,6 +39,52 @@ func TestPreviewHandlerReturnsSafeInventory(t *testing.T) {
 	}
 }
 
+func TestGroupPreviewHandlerReturnsOnlyOneDeepDirectoryLayer(t *testing.T) {
+	root := t.TempDir()
+	testutil.WriteFile(t, filepath.Join(root, "albums", "A", "chapter", "photo.jpg"), "x")
+	testutil.WriteFile(t, filepath.Join(root, "albums", "A", "chapter", "deeper", "hidden.jpg"), "x")
+	handler := GroupPreviewHandler(Scanner{Resolver: roots.NewResolver([]roots.Root{{ID: "media", Path: root}})})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, superRenameRequest(GroupPreviewRequest{
+		RootID:        "media",
+		DirectoryPath: "albums",
+		GroupPath:     "albums/A/chapter",
+	}, false))
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	var body struct {
+		Data InventoryGroup `json:"data"`
+	}
+	if err := json.NewDecoder(recorder.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if body.Data.Path != "albums/A/chapter" || len(body.Data.Images) != 1 {
+		t.Fatalf("group = %+v", body.Data)
+	}
+	if len(body.Data.ChildDirectories) != 1 || body.Data.ChildDirectories[0].Path != "albums/A/chapter/deeper" {
+		t.Fatalf("children = %+v", body.Data.ChildDirectories)
+	}
+	if strings.Contains(recorder.Body.String(), filepath.ToSlash(root)) {
+		t.Fatal("group preview exposed the mapped root absolute path")
+	}
+}
+
+func TestGroupPreviewHandlerRejectsReservedDirectory(t *testing.T) {
+	root := t.TempDir()
+	testutil.WriteFile(t, filepath.Join(root, "albums", "A", "视频", "old.mp4"), "x")
+	handler := GroupPreviewHandler(Scanner{Resolver: roots.NewResolver([]roots.Root{{ID: "media", Path: root}})})
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, superRenameRequest(GroupPreviewRequest{
+		RootID:        "media",
+		DirectoryPath: "albums",
+		GroupPath:     "albums/A/视频",
+	}, false))
+	if recorder.Code != http.StatusBadRequest || responseErrorCode(t, recorder) != "invalid_request" {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestCreateJobHandlerRejectsStaleAndConflictingSelectionsWithoutAJob(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -159,6 +205,37 @@ func TestCreateJobHandlerExecutesARealSuperRenameJob(t *testing.T) {
 		t.Fatalf("terminal = %+v", terminal)
 	}
 	assertFileContent(t, filepath.Join(root, "albums", "A", "01.jpg"), "photo")
+}
+
+func TestCreateJobHandlerExecutesParentAndDeepGroupsIndependently(t *testing.T) {
+	root := t.TempDir()
+	testutil.WriteFile(t, filepath.Join(root, "albums", "A", "parent.jpg"), "parent")
+	testutil.WriteFile(t, filepath.Join(root, "albums", "A", "chapter", "child.jpg"), "child")
+	resolver := roots.NewResolver([]roots.Root{{ID: "media", Path: root}})
+	store := jobs.NewStore()
+	subscription, err := store.Subscribe(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer subscription.Unsubscribe()
+	runner := Runner{Store: store, Executor: Executor{Resolver: resolver}}
+	handler := CreateJobHandler(Scanner{Resolver: resolver}, Planner{}, store, runner)
+	recorder := httptest.NewRecorder()
+	request := CreateJobRequest{
+		RootID:        "media",
+		DirectoryPath: "albums",
+		SelectedPaths: []string{"albums/A/parent.jpg", "albums/A/chapter/child.jpg"},
+	}
+	handler.ServeHTTP(recorder, superRenameRequest(request, true))
+	if recorder.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+	terminal := waitForTerminalJob(t, subscription.Events)
+	if terminal.Status != jobs.StatusCompleted || terminal.ProgressDone != 2 {
+		t.Fatalf("terminal = %+v", terminal)
+	}
+	assertFileContent(t, filepath.Join(root, "albums", "A", "01.jpg"), "parent")
+	assertFileContent(t, filepath.Join(root, "albums", "A", "chapter", "01.jpg"), "child")
 }
 
 type blockingGroupExecutor struct {

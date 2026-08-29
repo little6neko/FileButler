@@ -73,6 +73,11 @@ export type UIStrings = {
   superRenameCurrentItem: string;
   superRenamePlannedResult: string;
   superRenameNoMatches: string;
+  superRenameNotLoaded: string;
+  superRenameLoadingGroup: string;
+  superRenameLoadedNotSelected: string;
+  superRenameGroupCompleted: string;
+  superRenameGroupLoadFailed: string;
   superRenameCanceled: string;
   superRenameUnchanged: string;
   superRenameNotRecursive: string;
@@ -87,6 +92,8 @@ export type UIStrings = {
   superRenameSelectItem(name: string): string;
   superRenameExpandGroup(name: string): string;
   superRenameCollapseGroup(name: string): string;
+  superRenameGroupAction: string;
+  superRenameGroupSubmit(name: string): string;
   superRenameExecute(count: number): string;
   superRenameConfirmationRequired: string;
   superRenameConflict(code: string): string;
@@ -287,11 +294,16 @@ export const strings: Record<Language, UIStrings> = {
     powerRenameWindowTitle: (count) => `PowerRename — ${count} ${count === 1 ? "item" : "items"}`,
     superRename: "SuperRename",
     superRenameWindowTitle: (directory) => `SuperRename — ${directory}`,
-    superRenameDescription: "Number direct images and videos independently in each immediate subfolder.",
+    superRenameDescription: "Number direct images and videos independently in each folder; nested folders participate only when selected.",
     superRenameSummary: (groups, selected, unmatched, conflicts) => `${groups} folders · ${selected} selected · ${unmatched} unmatched · ${conflicts} conflicts`,
     superRenameCurrentItem: "Current item",
     superRenamePlannedResult: "Planned result",
     superRenameNoMatches: "No matching media",
+    superRenameNotLoaded: "Not loaded · not selected",
+    superRenameLoadingGroup: "Loading folder…",
+    superRenameLoadedNotSelected: "Loaded · not selected",
+    superRenameGroupCompleted: "This folder is complete",
+    superRenameGroupLoadFailed: "Load failed · expand or select to retry",
     superRenameCanceled: "Canceled",
     superRenameUnchanged: "Unchanged",
     superRenameNotRecursive: "Not scanned recursively",
@@ -306,6 +318,8 @@ export const strings: Record<Language, UIStrings> = {
     superRenameSelectItem: (name) => `Select ${name} for SuperRename`,
     superRenameExpandGroup: (name) => `Expand ${name}`,
     superRenameCollapseGroup: (name) => `Collapse ${name}`,
+    superRenameGroupAction: "Folder action",
+    superRenameGroupSubmit: (name) => `Rename ${name} now`,
     superRenameExecute: (count) => `Rename ${count} ${count === 1 ? "file" : "files"}`,
     superRenameConfirmationRequired: "The directory changed. Review the refreshed preview and confirm again.",
     superRenameConflict: (code) => ({
@@ -527,11 +541,16 @@ export const strings: Record<Language, UIStrings> = {
     powerRenameWindowTitle: (count) => `PowerRename — ${count} 项`,
     superRename: "SuperRename",
     superRenameWindowTitle: (directory) => `SuperRename — ${directory}`,
-    superRenameDescription: "按每个一级子文件夹分别为直属图片和视频连续编号。",
+    superRenameDescription: "按每个文件夹分别为直属图片和视频连续编号；深层文件夹仅在主动勾选后参与。",
     superRenameSummary: (groups, selected, unmatched, conflicts) => `${groups} 个文件夹 · 已选 ${selected} 项 · ${unmatched} 项未匹配 · ${conflicts} 个冲突`,
     superRenameCurrentItem: "当前项目",
     superRenamePlannedResult: "计划结果",
     superRenameNoMatches: "无匹配媒体",
+    superRenameNotLoaded: "未加载 · 默认不参与",
+    superRenameLoadingGroup: "正在加载文件夹…",
+    superRenameLoadedNotSelected: "已加载 · 未选择",
+    superRenameGroupCompleted: "本层已完成",
+    superRenameGroupLoadFailed: "加载失败 · 展开或勾选可重试",
     superRenameCanceled: "已取消",
     superRenameUnchanged: "无需更改",
     superRenameNotRecursive: "不递归处理",
@@ -546,6 +565,8 @@ export const strings: Record<Language, UIStrings> = {
     superRenameSelectItem: (name) => `选择 ${name} 进行 SuperRename`,
     superRenameExpandGroup: (name) => `展开 ${name}`,
     superRenameCollapseGroup: (name) => `折叠 ${name}`,
+    superRenameGroupAction: "文件夹操作",
+    superRenameGroupSubmit: (name) => `立即重命名 ${name}`,
     superRenameExecute: (count) => `重命名 ${count} 个文件`,
     superRenameConfirmationRequired: "目录内容已变化，请检查刷新后的预览并再次确认。",
     superRenameConflict: (code) => ({

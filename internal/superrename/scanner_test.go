@@ -57,11 +57,14 @@ func TestScannerBuildsNaturallySortedNonRecursiveInventory(t *testing.T) {
 	if got := candidateNames(group.Videos); !reflect.DeepEqual(got, []string{"clip2.MP4", "clip10.webm"}) {
 		t.Fatalf("videos = %v", got)
 	}
-	if got := unmatchedNames(group.Unmatched); !reflect.DeepEqual(got, []string{"linked.jpg", "nested", "notes.txt"}) {
+	if got := unmatchedNames(group.Unmatched); !reflect.DeepEqual(got, []string{"linked.jpg", "notes.txt"}) {
 		t.Fatalf("unmatched = %v", got)
 	}
-	if group.Unmatched[1].Reason != UnmatchedNestedDirectory {
-		t.Fatalf("nested reason = %q", group.Unmatched[1].Reason)
+	if got := directoryRefNames(group.ChildDirectories); !reflect.DeepEqual(got, []string{"nested"}) {
+		t.Fatalf("child directories = %v", got)
+	}
+	if group.ChildDirectories[0].Path != "albums/group2/nested" {
+		t.Fatalf("child path = %q", group.ChildDirectories[0].Path)
 	}
 	if group.VideoDirectory.Status != VideoDirectoryPresent || group.VideoDirectory.Path != "albums/group2/视频" {
 		t.Fatalf("video directory = %+v", group.VideoDirectory)
@@ -71,6 +74,74 @@ func TestScannerBuildsNaturallySortedNonRecursiveInventory(t *testing.T) {
 	}
 	if len(inventory.Groups[0].Images) != 0 || len(inventory.Groups[0].Videos) != 0 {
 		t.Fatalf("empty group unexpectedly matched: %+v", inventory.Groups[0])
+	}
+}
+
+func TestScannerScansOneDeepGroupWithoutRecursingIntoItsChildren(t *testing.T) {
+	root := t.TempDir()
+	testutil.WriteFile(t, filepath.Join(root, "albums", "A", "chapter", "photo2.jpg"), "x")
+	testutil.WriteFile(t, filepath.Join(root, "albums", "A", "chapter", "notes.txt"), "x")
+	testutil.WriteFile(t, filepath.Join(root, "albums", "A", "chapter", "part10", "deep.jpg"), "x")
+	testutil.WriteFile(t, filepath.Join(root, "albums", "A", "chapter", "part2", "deep.jpg"), "x")
+
+	scanner := Scanner{Resolver: roots.NewResolver([]roots.Root{{ID: "media", Path: root}})}
+	group, err := scanner.ScanGroup(context.Background(), "media", "albums", `albums\A\chapter`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if group.Path != "albums/A/chapter" || group.Name != "chapter" {
+		t.Fatalf("group = %+v", group)
+	}
+	if got := candidateNames(group.Images); !reflect.DeepEqual(got, []string{"photo2.jpg"}) {
+		t.Fatalf("images = %v", got)
+	}
+	if got := unmatchedNames(group.Unmatched); !reflect.DeepEqual(got, []string{"notes.txt"}) {
+		t.Fatalf("unmatched = %v", got)
+	}
+	if got := directoryRefNames(group.ChildDirectories); !reflect.DeepEqual(got, []string{"part2", "part10"}) {
+		t.Fatalf("child directories = %v", got)
+	}
+}
+
+func TestScannerRejectsUnsafeOrReservedDeepGroupPaths(t *testing.T) {
+	root := t.TempDir()
+	testutil.WriteFile(t, filepath.Join(root, "albums", "A", "deep", "photo.jpg"), "x")
+	testutil.WriteFile(t, filepath.Join(root, "albums", "A", "视频", "old.mp4"), "x")
+	testutil.WriteFile(t, filepath.Join(root, "albums", "A", ".filebutler-superrename-job-old", "staged.jpg"), "x")
+	testutil.WriteFile(t, filepath.Join(root, "albums", "视频", "photo.jpg"), "x")
+	if err := os.Symlink("deep", filepath.Join(root, "albums", "A", "linked")); err != nil {
+		t.Fatal(err)
+	}
+
+	scanner := Scanner{Resolver: roots.NewResolver([]roots.Root{{ID: "media", Path: root}})}
+	allowed, err := scanner.ScanGroup(context.Background(), "media", "albums", "albums/视频")
+	if err != nil || len(allowed.Images) != 1 {
+		t.Fatalf("top-level video-named group = %+v, error = %v", allowed, err)
+	}
+
+	tests := []struct {
+		name      string
+		groupPath string
+		want      error
+	}{
+		{name: "scope itself", groupPath: "albums", want: roots.ErrInvalidPath},
+		{name: "sibling scope", groupPath: "other/A", want: roots.ErrOutsideRoot},
+		{name: "parent traversal", groupPath: "albums/A/../deep", want: roots.ErrInvalidPath},
+		{name: "absolute", groupPath: "/albums/A", want: roots.ErrInvalidPath},
+		{name: "windows absolute", groupPath: `C:\albums\A`, want: roots.ErrInvalidPath},
+		{name: "video target", groupPath: "albums/A/视频", want: ErrReservedDirectory},
+		{name: "video descendant", groupPath: "albums/A/视频/sub", want: ErrReservedDirectory},
+		{name: "recovery target", groupPath: "albums/A/.filebutler-superrename-job-old", want: ErrReservedDirectory},
+		{name: "symlink", groupPath: "albums/A/linked", want: ErrNotDirectory},
+		{name: "symlink descendant", groupPath: "albums/A/linked/sub", want: ErrNotDirectory},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := scanner.ScanGroup(context.Background(), "media", "albums", test.groupPath)
+			if !errors.Is(err, test.want) {
+				t.Fatalf("error = %v, want %v", err, test.want)
+			}
+		})
 	}
 }
 
@@ -152,6 +223,14 @@ func candidateNames(candidates []Candidate) []string {
 }
 
 func unmatchedNames(items []Unmatched) []string {
+	names := make([]string, len(items))
+	for index, item := range items {
+		names[index] = item.Name
+	}
+	return names
+}
+
+func directoryRefNames(items []DirectoryRef) []string {
 	names := make([]string, len(items))
 	for index, item := range items {
 		names[index] = item.Name

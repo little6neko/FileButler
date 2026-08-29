@@ -14,6 +14,13 @@ it("formats hidden path segment labels in both supported languages", () => {
   expect(strings["zh-CN"].hiddenPathSegments(3)).toBe("显示 3 个隐藏文件夹");
 });
 
+it("formats directory navigation destinations without keyboard shortcuts", () => {
+  expect(strings.en.backToFolder("Pictures")).toBe('Back to "Pictures"');
+  expect(strings.en.forwardToFolder("Pictures")).toBe('Forward to "Pictures"');
+  expect(strings["zh-CN"].upToFolder("图片")).toBe("上移到“图片”");
+  expect(strings["zh-CN"].backToFolder("图片")).not.toContain("Alt");
+});
+
 it("localizes the drag operation selector", () => {
   expect(strings.en.operationMode).toBe("Operation");
   expect(strings["zh-CN"].operationMode).toBe("操作方式");

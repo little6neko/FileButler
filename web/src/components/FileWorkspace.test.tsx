@@ -132,6 +132,32 @@ function dispatchSelectAllShortcut({
   return event;
 }
 
+function dispatchBackShortcut({
+  target = document,
+  ctrlKey = false,
+  metaKey = false,
+  altKey = false,
+  shiftKey = false,
+}: {
+  target?: EventTarget;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  altKey?: boolean;
+  shiftKey?: boolean;
+} = {}) {
+  const event = new KeyboardEvent("keydown", {
+    key: "Backspace",
+    ctrlKey,
+    metaKey,
+    altKey,
+    shiftKey,
+    bubbles: true,
+    cancelable: true,
+  });
+  act(() => target.dispatchEvent(event));
+  return event;
+}
+
 function clickFileRowBlankFromStaleInputFocus(pane: HTMLElement, pathLabel: string, fileName: string) {
   const pathInput = within(pane).getByRole("textbox", { name: pathLabel });
   const statusBar = pane.querySelector<HTMLElement>("footer")!;
@@ -251,6 +277,175 @@ it("opens compact SuperRename for the current directory without requiring a sele
   expect(await screen.findByRole("dialog")).toBeInTheDocument();
   expect(await screen.findByText("No matching media")).toBeInTheDocument();
   expect(api.superRenamePreview).toHaveBeenCalledWith({ rootId: "source", directoryPath: "." });
+});
+
+it("keeps back and forward history independent for each file pane", async () => {
+  const folder = { ...sourceEntries[0] };
+  const other: Entry = {
+    name: "other",
+    relativePath: "other",
+    type: "directory",
+    size: 0,
+    mode: "",
+    modifiedUnix: 0,
+    isSymlink: false,
+  };
+  vi.mocked(api.browse).mockImplementation(async (rootId, path) => {
+    if (rootId !== "source") return [];
+    if (path === ".") return [folder, other];
+    return [];
+  });
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  const rightPane = await screen.findByRole("region", { name: "Right pane" });
+
+  await userEvent.dblClick(await within(leftPane).findByText("folder"));
+  await waitFor(() => expect(api.browse).toHaveBeenCalledWith("source", "folder"));
+  expect(within(leftPane).getByRole("button", { name: 'Back to "Source"' })).toBeEnabled();
+  expect(within(leftPane).getByRole("button", { name: 'Up to "Source"' })).toBeEnabled();
+  expect(within(rightPane).getByRole("button", { name: "Back" })).toBeDisabled();
+
+  await userEvent.click(within(leftPane).getByRole("button", { name: 'Back to "Source"' }));
+  expect(await within(leftPane).findByText("other")).toBeInTheDocument();
+  expect(within(leftPane).getByRole("button", { name: 'Forward to "folder"' })).toBeEnabled();
+
+  await userEvent.click(within(leftPane).getByRole("button", { name: 'Forward to "folder"' }));
+  await waitFor(() => expect(within(leftPane).getByRole("button", { name: 'Back to "Source"' })).toBeEnabled());
+  await userEvent.click(within(leftPane).getByRole("button", { name: 'Back to "Source"' }));
+  await userEvent.dblClick(await within(leftPane).findByText("other"));
+
+  await waitFor(() => expect(api.browse).toHaveBeenCalledWith("source", "other"));
+  expect(within(leftPane).getByRole("button", { name: "Forward" })).toBeDisabled();
+});
+
+it("uses bare Backspace for the active compact pane and consumes it at the start of history", async () => {
+  const folder = { ...sourceEntries[0] };
+  const other: Entry = {
+    name: "other",
+    relativePath: "other",
+    type: "directory",
+    size: 0,
+    mode: "",
+    modifiedUnix: 0,
+    isSymlink: false,
+  };
+  vi.mocked(api.browse).mockImplementation(async (rootId, path) => {
+    if (rootId === "source" && path === ".") return [folder, other];
+    return [];
+  });
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  const rightPane = await screen.findByRole("region", { name: "Right pane" });
+
+  await userEvent.dblClick(await within(leftPane).findByText("folder"));
+  await waitFor(() => expect(within(leftPane).getByRole("button", { name: 'Back to "Source"' })).toBeEnabled());
+
+  const backEvent = dispatchBackShortcut();
+
+  expect(backEvent.defaultPrevented).toBe(true);
+  expect(await within(leftPane).findByText("other")).toBeInTheDocument();
+  expect(within(rightPane).getByRole("button", { name: "Back" })).toBeDisabled();
+
+  const historyStartEvent = dispatchBackShortcut();
+  expect(historyStartEvent.defaultPrevented).toBe(true);
+  expect(within(leftPane).getByRole("button", { name: "Back" })).toBeDisabled();
+
+  expect(dispatchBackShortcut({ ctrlKey: true }).defaultPrevented).toBe(false);
+  expect(dispatchBackShortcut({ metaKey: true }).defaultPrevented).toBe(false);
+  expect(dispatchBackShortcut({ altKey: true }).defaultPrevented).toBe(false);
+  expect(dispatchBackShortcut({ shiftKey: true }).defaultPrevented).toBe(false);
+});
+
+it("uses Backspace only in the active desktop file window", async () => {
+  vi.mocked(api.browse).mockImplementation(async (rootId, path) => {
+    if (rootId === "source" && path === ".") return sourceEntries;
+    return [];
+  });
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const icon = await screen.findByRole("button", { name: "Open File Manager" });
+  await userEvent.click(icon);
+  await userEvent.click(icon);
+  const windows = container.querySelectorAll<HTMLElement>(".desktop-window[data-window-kind='file']");
+  const firstWindow = windows[0];
+  const secondWindow = windows[1];
+
+  await userEvent.dblClick(within(firstWindow).getByRole("button", { name: /Source/ }));
+  await userEvent.dblClick(within(secondWindow).getByRole("button", { name: /Source/ }));
+  await userEvent.dblClick(await within(firstWindow).findByText("folder"));
+  await userEvent.dblClick(await within(secondWindow).findByText("folder"));
+
+  expect(dispatchBackShortcut().defaultPrevented).toBe(true);
+  expect(await within(secondWindow).findByText("a.txt")).toBeInTheDocument();
+  expect(within(firstWindow).queryByText("a.txt")).not.toBeInTheDocument();
+
+  await userEvent.click(container.querySelectorAll<HTMLElement>(".taskbar-window-button")[0]);
+  expect(dispatchBackShortcut().defaultPrevented).toBe(true);
+  expect(await within(firstWindow).findByText("a.txt")).toBeInTheDocument();
+});
+
+it("keeps Backspace out of editable controls, dialogs, and menus", async () => {
+  vi.mocked(api.browse).mockImplementation(async (rootId, path) => {
+    if (rootId === "source" && path === ".") return sourceEntries;
+    return [];
+  });
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+
+  await userEvent.dblClick(await within(leftPane).findByText("folder"));
+  const backButton = await within(leftPane).findByRole("button", { name: 'Back to "Source"' });
+  const pathInput = within(leftPane).getByRole("textbox", { name: "Left pane path" });
+
+  expect(dispatchBackShortcut({ target: pathInput }).defaultPrevented).toBe(false);
+  expect(backButton).toBeEnabled();
+
+  await userEvent.click(screen.getByRole("button", { name: "mkdir" }));
+  const dialog = await screen.findByRole("dialog", { name: "Directory name" });
+  expect(dispatchBackShortcut({ target: dialog }).defaultPrevented).toBe(false);
+  expect(backButton).toBeEnabled();
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Directory name" })).not.toBeInTheDocument());
+
+  const menu = document.createElement("div");
+  menu.setAttribute("role", "menu");
+  document.body.append(menu);
+  expect(dispatchBackShortcut({ target: menu }).defaultPrevented).toBe(false);
+  expect(backButton).toBeEnabled();
+  menu.remove();
+
+  expect(dispatchBackShortcut().defaultPrevented).toBe(true);
+  expect(await within(leftPane).findByText("a.txt")).toBeInTheDocument();
+});
+
+it("does not send Backspace to a background file window from PowerRename", async () => {
+  const nestedFile: Entry = {
+    name: "nested.txt",
+    relativePath: "folder/nested.txt",
+    type: "file",
+    size: 1,
+    mode: "",
+    modifiedUnix: 0,
+    isSymlink: false,
+  };
+  vi.mocked(api.browse).mockImplementation(async (rootId, path) => {
+    if (rootId === "source" && path === ".") return sourceEntries;
+    if (rootId === "source" && path === "folder") return [nestedFile];
+    return [];
+  });
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
+  const fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
+  await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
+  await userEvent.dblClick(await within(fileWindow).findByText("folder"));
+  await userEvent.click(await within(fileWindow).findByLabelText("Select nested.txt"));
+  const toolbar = within(fileWindow).getByRole("navigation", { name: "File actions" });
+  await userEvent.click(within(toolbar).getByRole("button", { name: "PowerRename" }));
+  const powerRenameWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='powerRename']")!;
+
+  const event = dispatchBackShortcut({ target: powerRenameWindow });
+
+  expect(event.defaultPrevented).toBe(false);
+  expect(within(fileWindow).getByRole("button", { name: 'Back to "Source"' })).toBeEnabled();
+  expect(within(fileWindow).getByText("nested.txt")).toBeInTheDocument();
 });
 
 it("keeps an already submitted compact operation alive after its dialog closes for a mode switch", async () => {

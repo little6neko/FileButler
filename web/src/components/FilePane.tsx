@@ -1,7 +1,7 @@
 import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { CSSProperties, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent } from "react";
+import type { CSSProperties, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useDroppable } from "@dnd-kit/core";
-import { ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -52,6 +52,7 @@ type FilePaneProps = {
   pathRootLabel?: string;
   rootCatalogLabel?: string;
   onOpenRootCatalog?(): void;
+  navigation?: FilePaneNavigation;
   selectedPaths?: ReadonlySet<string>;
   selectionStore?: FileSelectionStore;
   onRootChange(rootId: string): void;
@@ -68,6 +69,15 @@ type FilePaneProps = {
   isActive?: boolean;
   loading?: boolean;
   error?: string | null;
+};
+
+type FilePaneNavigation = {
+  backTarget: string | null;
+  forwardTarget: string | null;
+  upTarget: string | null;
+  onBack(): void;
+  onForward(): void;
+  onUp(): void;
 };
 
 export function FilePane({
@@ -91,6 +101,7 @@ export function FilePane({
   pathRootLabel,
   rootCatalogLabel,
   onOpenRootCatalog,
+  navigation,
   selectedPaths,
   selectionStore,
   onRootChange,
@@ -319,6 +330,26 @@ export function FilePane({
     >
       <div className="pane-header" data-root-selector={showRootSelector ? "visible" : "hidden"}>
         <strong>{title}</strong>
+        <div className="pane-navigation">
+          <PaneNavigationButton
+            label={navigation?.backTarget ? labels.backToFolder(navigation.backTarget) : labels.back}
+            enabled={Boolean(navigation?.backTarget)}
+            onClick={() => navigation?.onBack()}
+            icon={<ArrowLeft />}
+          />
+          <PaneNavigationButton
+            label={navigation?.forwardTarget ? labels.forwardToFolder(navigation.forwardTarget) : labels.forward}
+            enabled={Boolean(navigation?.forwardTarget)}
+            onClick={() => navigation?.onForward()}
+            icon={<ArrowRight />}
+          />
+          <PaneNavigationButton
+            label={navigation?.upTarget ? labels.upToFolder(navigation.upTarget) : labels.up}
+            enabled={Boolean(navigation?.upTarget)}
+            onClick={() => navigation?.onUp()}
+            icon={<ArrowUp />}
+          />
+        </div>
         {!showRootSelector ? (
           <span className="root-marker" aria-label={labels.rootLabel(title)} title={pathRootLabel}>
             {pathRootLabel ?? "/"}
@@ -384,7 +415,14 @@ export function FilePane({
             </div>
           ) : null}
         </div>
-        <Button type="button" variant="outline" size="icon-sm" aria-label={labels.refreshLabel(title)} onClick={onRefresh}>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon-sm"
+          aria-label={labels.refreshLabel(title)}
+          title={labels.refresh}
+          onClick={onRefresh}
+        >
           <RefreshCw />
         </Button>
       </div>
@@ -763,6 +801,33 @@ const defaultTableWidth = Object.values(defaultColumnWidths).reduce((sum, width)
 const rightSelectionGutter = 24;
 const marqueeEdgeSize = 32;
 const marqueeMaxScrollSpeed = 18;
+
+function PaneNavigationButton({
+  label,
+  enabled,
+  onClick,
+  icon,
+}: {
+  label: string;
+  enabled: boolean;
+  onClick(): void;
+  icon: ReactNode;
+}) {
+  const button = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="icon-sm"
+      aria-label={label}
+      title={enabled ? label : undefined}
+      disabled={!enabled}
+      onClick={onClick}
+    >
+      {icon}
+    </Button>
+  );
+  return button;
+}
 
 const SelectAllCheckbox = memo(function SelectAllCheckbox({
   label,

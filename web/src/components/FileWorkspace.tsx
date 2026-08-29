@@ -25,6 +25,17 @@ import { toast } from "sonner";
 import { buildClipboardRequest, createAppClipboard, isEditableShortcutTarget, type AppClipboard } from "../appClipboard";
 import { api } from "../api/client";
 import type { Entry, OpsRequest, RenameOptions, Root } from "../api/types";
+import {
+  browserHistoryTarget,
+  createBrowserHistory,
+  moveBrowserHistory,
+  parentDirectoryLocation,
+  recordBrowserVisit,
+  type BrowserHistory,
+  type BrowserHistoryDirection,
+  type BrowserLocation,
+  type DirectoryLocation,
+} from "../browserHistory";
 import { applicationWindowCoversPoint } from "../desktopWindowHitTest";
 import { fileOpenKind } from "../fileOpenKind";
 import {
@@ -130,12 +141,10 @@ import { WindowFrame } from "./WindowFrame";
 import { WindowDialogLayer } from "./WindowDialogLayer";
 import { WorkspaceShell, type TaskbarWindow, type WorkspaceMode } from "./WorkspaceShell";
 
-type DirectoryLocation = { kind: "directory"; rootId: string; path: string };
-type BrowserLocation = DirectoryLocation | { kind: "virtual-root" };
-
 type BrowserSession = {
   id: string;
   location: BrowserLocation;
+  history: BrowserHistory;
   entries: Entry[];
   loading: boolean;
   error: string | null;
@@ -551,12 +560,31 @@ export function FileWorkspace({
 
   useEffect(() => {
     function handleShortcut(event: KeyboardEvent) {
-      if (event.defaultPrevented || !(event.ctrlKey || event.metaKey) || event.altKey) return;
-      if (isEditableShortcutTarget(event.target)) return;
+      if (event.defaultPrevented) return;
       const key = event.key.toLowerCase();
+      const isPlainBackspace = key === "backspace"
+        && !event.ctrlKey
+        && !event.metaKey
+        && !event.altKey
+        && !event.shiftKey;
+      const isCommandShortcut = (event.ctrlKey || event.metaKey) && !event.altKey;
+      if (!isPlainBackspace && !isCommandShortcut) return;
+      if (isEditableShortcutTarget(event.target)) return;
       const pageDialogOpen = Boolean(document.querySelector("[role='dialog']:not(.window-dialog-panel)"));
       const activeFileWindowId = activeFileWindowIdRef.current;
       const activeWindowDialogOpen = Boolean(activeFileWindowId && windowDialogsRef.current[activeFileWindowId]);
+      if (isPlainBackspace) {
+        if (
+          pageDialogOpen
+          || activeWindowDialogOpen
+          || document.querySelector("[role='alertdialog'], [role='menu'], [role='listbox']")
+        ) return;
+        const activeSessionId = activeSessionIdRef.current;
+        if (!activeSessionId) return;
+        event.preventDefault();
+        navigateSessionHistory(activeSessionId, "back");
+        return;
+      }
       if (key === "a") {
         event.preventDefault();
         window.getSelection()?.removeAllRanges();
@@ -1209,6 +1237,9 @@ export function FileWorkspace({
     dropWindowId?: string,
   ) {
     const location = session.location.kind === "directory" ? session.location : { kind: "directory" as const, rootId: "", path: "." };
+    const backTarget = browserHistoryTarget(session.history, "back");
+    const forwardTarget = browserHistoryTarget(session.history, "forward");
+    const upTarget = parentDirectoryLocation(location);
     return {
       paneKey: sessionId,
       dropLayer,
@@ -1228,6 +1259,14 @@ export function FileWorkspace({
       initialViewState: session.viewState,
       onViewStateChange: (viewState: FilePaneViewState) => updateSession(sessionId, (current) => ({ ...current, viewState })),
       selectionStore: session.selectionStore,
+      navigation: {
+        backTarget: directoryLocationName(backTarget, roots),
+        forwardTarget: directoryLocationName(forwardTarget, roots),
+        upTarget: directoryLocationName(upTarget, roots),
+        onBack: () => navigateSessionHistory(sessionId, "back"),
+        onForward: () => navigateSessionHistory(sessionId, "forward"),
+        onUp: () => navigateSessionUp(sessionId),
+      },
       loading: session.loading,
       error: session.error,
       onRootChange: (rootId: string) => setSessionLocation(sessionId, { kind: "directory", rootId, path: "." }),
@@ -1574,6 +1613,30 @@ export function FileWorkspace({
   }
 
   function setSessionLocation(id: string, location: BrowserLocation) {
+    const session = sessionsRef.current[id];
+    if (!session) return;
+    const history = session.location.kind === "directory" && location.kind === "directory"
+      ? recordBrowserVisit(session.history, session.location, location)
+      : createBrowserHistory();
+    applySessionLocation(id, location, history);
+  }
+
+  function navigateSessionHistory(id: string, direction: BrowserHistoryDirection) {
+    const session = sessionsRef.current[id];
+    if (!session || session.location.kind !== "directory") return;
+    const move = moveBrowserHistory(session.history, session.location, direction);
+    if (!move) return;
+    applySessionLocation(id, move.target, move.history);
+  }
+
+  function navigateSessionUp(id: string) {
+    const session = sessionsRef.current[id];
+    if (!session || session.location.kind !== "directory") return;
+    const parent = parentDirectoryLocation(session.location);
+    if (parent) setSessionLocation(id, parent);
+  }
+
+  function applySessionLocation(id: string, location: BrowserLocation, history: BrowserHistory) {
     clearFileDrag();
     const selection = sessionsRef.current[id]?.selectionStore;
     selection?.clear();
@@ -1581,6 +1644,7 @@ export function FileWorkspace({
     updateSession(id, (session) => ({
       ...session,
       location,
+      history,
       entries: [],
       loading: false,
       error: null,
@@ -2420,6 +2484,7 @@ function createBrowserSession(id: string, location: BrowserLocation): BrowserSes
   return {
     id,
     location,
+    history: createBrowserHistory(),
     entries: [],
     loading: false,
     error: null,
@@ -2444,6 +2509,12 @@ function resolveContextPasteTarget(session: BrowserSession | undefined, targetEn
     rootId: session.location.rootId,
     path: targetEntry?.type === "directory" ? targetEntry.relativePath : session.location.path,
   };
+}
+
+function directoryLocationName(location: DirectoryLocation | null, roots: Root[]) {
+  if (!location) return null;
+  if (location.path === ".") return roots.find((root) => root.id === location.rootId)?.name ?? location.rootId;
+  return basename(location.path);
 }
 
 function titleForSession(session: BrowserSession | undefined, roots: Root[], labels: UIStrings) {

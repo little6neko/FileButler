@@ -135,6 +135,52 @@ it("navigates to a typed path with Enter", async () => {
   expect(onPathChange).toHaveBeenCalledWith("photos/2026");
 });
 
+it("shows back, forward, and up controls before the path with destination tooltips", async () => {
+  const onBack = vi.fn();
+  const onForward = vi.fn();
+  const onUp = vi.fn();
+  const { container } = renderPane({
+    navigation: {
+      backTarget: "photos",
+      forwardTarget: null,
+      upTarget: "Pictures",
+      onBack,
+      onForward,
+      onUp,
+    },
+  });
+
+  const back = screen.getByRole("button", { name: 'Back to "photos"' });
+  const forward = screen.getByRole("button", { name: "Forward" });
+  const up = screen.getByRole("button", { name: 'Up to "Pictures"' });
+  const navigation = container.querySelector(".pane-navigation");
+  const pathInput = screen.getByLabelText("Left pane path");
+
+  expect(navigation).not.toBeNull();
+  expect(navigation!.compareDocumentPosition(pathInput) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+  expect(back).toBeEnabled();
+  expect(forward).toBeDisabled();
+  expect(up).toBeEnabled();
+  expect(back).toHaveAttribute("title", 'Back to "photos"');
+  expect(forward).not.toHaveAttribute("title");
+  expect(up).toHaveAttribute("title", 'Up to "Pictures"');
+  await userEvent.click(back);
+  await userEvent.click(up);
+
+  expect(onBack).toHaveBeenCalledOnce();
+  expect(onForward).not.toHaveBeenCalled();
+  expect(onUp).toHaveBeenCalledOnce();
+});
+
+it.each([
+  { labels: strings.en, accessibleName: "Left pane refresh", tooltip: "Refresh" },
+  { labels: strings["zh-CN"], accessibleName: "Left pane刷新", tooltip: "刷新" },
+])("shows the localized refresh tooltip", ({ labels, accessibleName, tooltip }) => {
+  renderPane({ labels });
+
+  expect(screen.getByRole("button", { name: accessibleName })).toHaveAttribute("title", tooltip);
+});
+
 it("displays non-root paths with a leading slash", () => {
   renderPane({ currentPath: "photos" });
 

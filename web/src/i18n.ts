@@ -206,6 +206,12 @@ export type UIStrings = {
   pathLabel(title: string): string;
   rootLabel(title: string): string;
   refreshLabel(title: string): string;
+  back: string;
+  forward: string;
+  up: string;
+  backToFolder(folder: string): string;
+  forwardToFolder(folder: string): string;
+  upToFolder(folder: string): string;
   hiddenPathSegments(count: number): string;
   selectEntry(name: string): string;
   operationMode: string;
@@ -437,6 +443,12 @@ export const strings: Record<Language, UIStrings> = {
     pathLabel: (title) => `${title} path`,
     rootLabel: (title) => `${title} root`,
     refreshLabel: (title) => `${title} refresh`,
+    back: "Back",
+    forward: "Forward",
+    up: "Up",
+    backToFolder: (folder) => `Back to "${folder}"`,
+    forwardToFolder: (folder) => `Forward to "${folder}"`,
+    upToFolder: (folder) => `Up to "${folder}"`,
     hiddenPathSegments: (count) => `Show ${count} hidden folders`,
     selectEntry: (name) => `Select ${name}`,
     operationMode: "Operation",
@@ -684,6 +696,12 @@ export const strings: Record<Language, UIStrings> = {
     pathLabel: (title) => `${title}路径`,
     rootLabel: (title) => `${title}根目录`,
     refreshLabel: (title) => `${title}刷新`,
+    back: "返回",
+    forward: "前进",
+    up: "上移",
+    backToFolder: (folder) => `返回到“${folder}”`,
+    forwardToFolder: (folder) => `前进到“${folder}”`,
+    upToFolder: (folder) => `上移到“${folder}”`,
     hiddenPathSegments: (count) => `显示 ${count} 个隐藏文件夹`,
     selectEntry: (name) => `选择 ${name}`,
     operationMode: "操作方式",

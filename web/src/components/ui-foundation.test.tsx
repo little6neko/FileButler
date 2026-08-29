@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Table } from "@/components/ui/table";
@@ -30,6 +31,15 @@ it("leaves vertical paint room for low input glyphs", () => {
   expect(input).toHaveValue("a_b_c.txt");
   expect(input).toHaveClass("h-8", "font-sans", "pt-0", "pb-px", "leading-5");
   expect(input).not.toHaveClass("py-0", "py-1");
+});
+
+it("gives every checkbox a clearly visible neutral border", () => {
+  render(<Checkbox aria-label="Select item" />);
+
+  expect(screen.getByRole("checkbox", { name: "Select item" })).toHaveClass(
+    "border-slate-400",
+    "dark:border-slate-500",
+  );
 });
 
 it("allows a parent to own table overflow without changing the default", () => {

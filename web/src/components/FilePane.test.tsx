@@ -888,6 +888,37 @@ it("renders a loading skeleton while browsing", () => {
   expect(screen.getByTestId("pane-loading")).toBeInTheDocument();
 });
 
+it("keeps rows mounted and preserves scroll while refreshing the current directory", () => {
+  const entries = [entry("a.txt"), entry("b.txt")];
+  const view = renderPane({ entries });
+  const fileList = view.container.querySelector(".file-list") as HTMLDivElement;
+  fileList.scrollTop = 96;
+
+  view.rerender(paneElement({ entries, loading: true }));
+
+  expect(view.container.querySelector(".file-list")).toBe(fileList);
+  expect(fileList.scrollTop).toBe(96);
+  expect(screen.queryByTestId("pane-loading")).not.toBeInTheDocument();
+  expect(screen.getByText("a.txt")).toBeInTheDocument();
+
+  view.rerender(paneElement({ entries: [entry("a-renamed.txt"), entry("b.txt")], loading: false }));
+
+  expect(view.container.querySelector(".file-list")).toBe(fileList);
+  expect(fileList.scrollTop).toBe(96);
+  expect(screen.getByText("a-renamed.txt")).toBeInTheDocument();
+});
+
+it("returns the file list to the top after changing directories", () => {
+  const view = renderPane({ entries: [entry("a.txt"), entry("b.txt")] });
+  const fileList = view.container.querySelector(".file-list") as HTMLDivElement;
+  fileList.scrollTop = 96;
+
+  view.rerender(paneElement({ currentPath: "folder", entries: [], loading: true }));
+
+  expect(fileList.scrollTop).toBe(0);
+  expect(screen.getByTestId("pane-loading")).toBeInTheDocument();
+});
+
 it("renders an empty directory message", () => {
   renderPane({ entries: [], loading: false, error: null });
   expect(screen.getByText("This directory is empty")).toBeInTheDocument();
@@ -940,6 +971,10 @@ function entry(name: string, type: "file" | "directory" | "symlink" | "other" = 
 }
 
 function renderPane(overrides: Partial<Parameters<typeof FilePane>[0]> = {}) {
+  return render(paneElement(overrides));
+}
+
+function paneElement(overrides: Partial<Parameters<typeof FilePane>[0]> = {}) {
   const props = {
     title: "Left pane",
     roots,
@@ -958,10 +993,10 @@ function renderPane(overrides: Partial<Parameters<typeof FilePane>[0]> = {}) {
     onActivate: vi.fn(),
     ...overrides,
   };
-  return render(
+  return (
     <DndContext>
       <FilePane {...props} />
-    </DndContext>,
+    </DndContext>
   );
 }
 

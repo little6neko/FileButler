@@ -212,6 +212,10 @@ export function FilePane({
   }, [currentPath]);
 
   useLayoutEffect(() => {
+    if (fileListRef.current) fileListRef.current.scrollTop = 0;
+  }, [currentPath, selectedRootId]);
+
+  useLayoutEffect(() => {
     const content = pathSegmentsContentRef.current;
     const measureRow = pathSegmentsMeasureRef.current;
     let disposed = false;
@@ -447,6 +451,7 @@ export function FilePane({
             className="file-list"
             data-testid={`file-list-${paneKey}`}
             ref={setFileListNode}
+            aria-busy={loading}
             onMouseDown={startDragSelection}
             onContextMenuCapture={(event) => {
               onActivate();
@@ -456,7 +461,7 @@ export function FilePane({
               refreshContextActions((version) => version + 1);
             }}
           >
-        {loading ? (
+        {loading && entries.length === 0 ? (
           <div data-testid="pane-loading" className="grid gap-1 p-2">
             {Array.from({ length: 8 }, (_, index) => <Skeleton key={index} className="h-7" />)}
           </div>

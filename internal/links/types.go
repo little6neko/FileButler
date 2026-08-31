@@ -40,6 +40,11 @@ var (
 	ErrInvalidRequest      = errors.New("invalid_link_request")
 	ErrIdentityUnsupported = errors.New("file_identity_unsupported")
 	ErrNotDirectory        = errors.New("link_destination_not_directory")
+	ErrInvalidStaging      = errors.New("invalid_link_staging")
+	ErrPlanConflict        = errors.New("link_plan_conflict")
+	ErrSourceChanged       = errors.New("link_source_changed")
+	ErrTargetExists        = errors.New("link_target_exists")
+	ErrStagingCleanup      = errors.New("link_staging_cleanup_failed")
 )
 
 type Request struct {

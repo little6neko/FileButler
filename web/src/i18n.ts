@@ -61,6 +61,11 @@ export type UIStrings = {
   copy: string;
   symlink: string;
   hardlink: string;
+  selectLinkSource: string;
+  cancelLinkSource(count: number): string;
+  createLinkAs: string;
+  linkSourceSelected(count: number): string;
+  linkSourceRequired: string;
   delete: string;
   mkdir: string;
   rename: string;
@@ -132,6 +137,14 @@ export type UIStrings = {
   ready: string;
   confirm: string;
   previewFailed: string;
+  linkPreviewTitle(type: string): string;
+  linkPreviewDescription(type: string, count: number): string;
+  linkSourceKind(kind: string): string;
+  linkPlannedWork: string;
+  linkCounts(directories: number, files: number, symlinks: number): string;
+  linkCreate(type: string, count: number): string;
+  linkConfirmationRequired: string;
+  linkError(code: string): string;
   mediaPreview: string;
   previousMedia: string;
   nextMedia: string;
@@ -293,6 +306,11 @@ export const strings: Record<Language, UIStrings> = {
     copy: "copy",
     symlink: "symlink",
     hardlink: "hardlink",
+    selectLinkSource: "Select link source",
+    cancelLinkSource: (count) => `Cancel selected link source (${count})`,
+    createLinkAs: "Create as…",
+    linkSourceSelected: (count) => `Selected ${count} ${count === 1 ? "link source" : "link sources"}`,
+    linkSourceRequired: "Select one or more link sources first",
     delete: "delete",
     mkdir: "mkdir",
     rename: "Rename",
@@ -369,6 +387,38 @@ export const strings: Record<Language, UIStrings> = {
     ready: "Ready",
     confirm: "Confirm",
     previewFailed: "Preview failed",
+    linkPreviewTitle: (type) => `${type === "hardlink" ? "Hard link" : "Symbolic link"} preview`,
+    linkPreviewDescription: (type, count) => `Review ${count} top-level ${count === 1 ? "source" : "sources"} before creating ${type === "hardlink" ? "hard links" : "symbolic links"}.`,
+    linkSourceKind: (kind) => ({
+      file: "File",
+      directory: "Folder",
+      symlink: "Symbolic link",
+      other: "Other",
+    })[kind] ?? kind,
+    linkPlannedWork: "Planned work",
+    linkCounts: (directories, files, symlinks) => [
+      directories ? `${directories} ${directories === 1 ? "folder" : "folders"}` : "",
+      files ? `${files} hard-linked ${files === 1 ? "file" : "files"}` : "",
+      symlinks ? `${symlinks} symbolic ${symlinks === 1 ? "link" : "links"}` : "",
+    ].filter(Boolean).join(" · "),
+    linkCreate: (type, count) => type === "hardlink"
+      ? `Create ${count === 1 ? "hard link" : "hard links"}`
+      : `Create ${count === 1 ? "symbolic link" : "symbolic links"}`,
+    linkConfirmationRequired: "The source or destination changed. Review the refreshed preview and confirm again.",
+    linkError: (code) => ({
+      target_exists: "The destination already exists",
+      missing_source: "The source no longer exists",
+      source_changed: "The source changed after preview",
+      unsupported_source: "This source type cannot be linked",
+      special_entry: "A special file is not supported",
+      cross_filesystem: "Hard links require the same filesystem",
+      destination_inside_source: "The destination is inside the source folder",
+      outside_root: "The path is outside mapped locations",
+      invalid_path: "The source or destination path is invalid",
+      operation_failed: "The link operation failed",
+      stale_preview: "The link preview is out of date",
+      plan_conflict: "The link plan contains conflicts",
+    })[code] ?? "",
     mediaPreview: "Media preview",
     previousMedia: "Previous media",
     nextMedia: "Next media",
@@ -546,6 +596,11 @@ export const strings: Record<Language, UIStrings> = {
     copy: "复制",
     symlink: "软链接",
     hardlink: "硬链接",
+    selectLinkSource: "选择源连接点",
+    cancelLinkSource: (count) => `取消选定的连接（${count} 项）`,
+    createLinkAs: "创建为…",
+    linkSourceSelected: (count) => `已选择 ${count} 个连接源`,
+    linkSourceRequired: "请先选择一个或多个连接源",
     delete: "删除",
     mkdir: "新建文件夹",
     rename: "重命名",
@@ -622,6 +677,36 @@ export const strings: Record<Language, UIStrings> = {
     ready: "就绪",
     confirm: "确认",
     previewFailed: "预览失败",
+    linkPreviewTitle: (type) => `${type === "hardlink" ? "硬链接" : "软链接"}预览`,
+    linkPreviewDescription: (type, count) => `创建${type === "hardlink" ? "硬链接" : "软链接"}前，请检查 ${count} 个顶层来源。`,
+    linkSourceKind: (kind) => ({
+      file: "文件",
+      directory: "文件夹",
+      symlink: "符号链接",
+      other: "其他",
+    })[kind] ?? kind,
+    linkPlannedWork: "计划内容",
+    linkCounts: (directories, files, symlinks) => [
+      directories ? `${directories} 个文件夹` : "",
+      files ? `${files} 个硬链接文件` : "",
+      symlinks ? `${symlinks} 个符号链接` : "",
+    ].filter(Boolean).join(" · "),
+    linkCreate: (type, count) => `创建 ${count} 个${type === "hardlink" ? "硬链接" : "软链接"}`,
+    linkConfirmationRequired: "来源或目标已经变化，请检查刷新后的预览并再次确认。",
+    linkError: (code) => ({
+      target_exists: "目标已存在",
+      missing_source: "来源已不存在",
+      source_changed: "来源在预览后发生了变化",
+      unsupported_source: "不支持为该来源创建链接",
+      special_entry: "不支持特殊文件",
+      cross_filesystem: "硬链接必须位于同一文件系统",
+      destination_inside_source: "目标位于来源文件夹内部",
+      outside_root: "路径位于映射位置之外",
+      invalid_path: "来源或目标路径无效",
+      operation_failed: "创建链接失败",
+      stale_preview: "链接预览已过期",
+      plan_conflict: "链接计划存在冲突",
+    })[code] ?? "",
     mediaPreview: "媒体预览",
     previousMedia: "上一个媒体",
     nextMedia: "下一个媒体",

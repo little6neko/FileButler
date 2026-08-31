@@ -68,3 +68,13 @@ it("localizes text editor actions, states, and cursor position", () => {
   expect(strings.en.editorSyntaxLoading("Python")).toBe("Loading Python…");
   expect(strings["zh-CN"].editorSyntaxLargeFile).toBe("纯文本（大文件）");
 });
+
+it("localizes link source actions, preview counts, and conflicts", () => {
+  expect(strings.en.selectLinkSource).toBe("Select link source");
+  expect(strings["zh-CN"].cancelLinkSource(3)).toBe("取消选定的连接（3 项）");
+  expect(strings.en.linkCounts(2, 3, 1)).toBe("2 folders · 3 hard-linked files · 1 symbolic link");
+  expect(strings["zh-CN"].linkCounts(2, 3, 1)).toBe("2 个文件夹 · 3 个硬链接文件 · 1 个符号链接");
+  expect(strings.en.linkError("target_exists")).toBe("The destination already exists");
+  expect(strings["zh-CN"].linkError("cross_filesystem")).toBe("硬链接必须位于同一文件系统");
+  expect(strings.en.linkError("unknown")).toBe("");
+});

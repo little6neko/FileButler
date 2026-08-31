@@ -8,6 +8,7 @@ import (
 	"github.com/little6neko/filebutler/internal/browser"
 	"github.com/little6neko/filebutler/internal/config"
 	"github.com/little6neko/filebutler/internal/jobs"
+	"github.com/little6neko/filebutler/internal/links"
 	"github.com/little6neko/filebutler/internal/ops"
 	"github.com/little6neko/filebutler/internal/rename"
 	"github.com/little6neko/filebutler/internal/roots"
@@ -25,6 +26,8 @@ type Deps struct {
 	OpsRunner         jobs.Runner
 	RenameRunner      jobs.Runner
 	SuperRenameRunner superrename.Runner
+	LinkPlanner       links.Planner
+	LinkRunner        links.Runner
 }
 
 func NewRouter(deps Deps) http.Handler {
@@ -36,6 +39,8 @@ func NewRouter(deps Deps) http.Handler {
 	if superRenameRunner.Executor == nil {
 		superRenameRunner.Executor = superrename.Executor{Resolver: deps.Roots}
 	}
+	linkRunner := deps.LinkRunner
+	linkRunner.Store = deps.JobStore
 	cookieName := deps.Config.Session.CookieName
 	if cookieName == "" {
 		cookieName = "filebutler_session"
@@ -64,6 +69,8 @@ func NewRouter(deps Deps) http.Handler {
 		protected.Post("/api/super-rename/preview", superrename.PreviewHandler(superRenameScanner))
 		protected.Post("/api/super-rename/group-preview", superrename.GroupPreviewHandler(superRenameScanner))
 		protected.Post("/api/super-rename/jobs", superrename.CreateJobHandler(superRenameScanner, superrename.Planner{}, deps.JobStore, superRenameRunner))
+		protected.Post("/api/links/preview", links.PreviewHandler(deps.LinkPlanner))
+		protected.Post("/api/links/jobs", links.CreateJobHandler(deps.LinkPlanner, deps.JobStore, linkRunner))
 		protected.Get("/api/jobs/events", jobs.EventsHandler(deps.JobStore))
 		protected.Post("/api/jobs/{id}/cancel", jobs.CancelHandler(deps.JobStore))
 	})

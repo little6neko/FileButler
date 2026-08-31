@@ -11,7 +11,6 @@ import (
 	"github.com/little6neko/filebutler/internal/auth"
 	"github.com/little6neko/filebutler/internal/browser"
 	"github.com/little6neko/filebutler/internal/jobs"
-	"github.com/little6neko/filebutler/internal/ops"
 	"github.com/little6neko/filebutler/internal/roots"
 )
 
@@ -187,7 +186,7 @@ func createRenameJob(w http.ResponseWriter, r *http.Request, store jobs.Store, r
 		writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 		return
 	}
-	id := ops.NewJobID()
+	id := jobs.NewID()
 	if err := store.Create(r.Context(), jobs.Job{ID: id, Type: jobType, Status: jobs.StatusPending, ActorID: user.ID, SourceRootID: rootID, ProgressTotal: len(plan.Items)}); err != nil {
 		writeError(w, http.StatusInternalServerError, "operation_failed", err.Error())
 		return

@@ -13,6 +13,7 @@ import (
 	"github.com/little6neko/filebutler/internal/browser"
 	"github.com/little6neko/filebutler/internal/config"
 	"github.com/little6neko/filebutler/internal/jobs"
+	"github.com/little6neko/filebutler/internal/links"
 	"github.com/little6neko/filebutler/internal/ops"
 	"github.com/little6neko/filebutler/internal/roots"
 	"github.com/little6neko/filebutler/internal/testutil"
@@ -56,6 +57,19 @@ func TestProtectedRoutesRequireLogin(t *testing.T) {
 func TestSuperRenameRoutesRequireLogin(t *testing.T) {
 	router := testRouter(t)
 	for _, path := range []string{"/api/super-rename/preview", "/api/super-rename/group-preview", "/api/super-rename/jobs"} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(`{}`))
+		request.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusUnauthorized {
+			t.Fatalf("%s status=%d body=%s", path, recorder.Code, recorder.Body.String())
+		}
+	}
+}
+
+func TestLinkRoutesRequireLogin(t *testing.T) {
+	router := testRouter(t)
+	for _, path := range []string{"/api/links/preview", "/api/links/jobs"} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(`{}`))
 		request.Header.Set("Content-Type", "application/json")
@@ -166,6 +180,30 @@ func TestSuperRenamePreviewEndpointReturnsAuthenticatedInventory(t *testing.T) {
 	}
 }
 
+func TestLinkPreviewEndpointReturnsAuthenticatedPlan(t *testing.T) {
+	root := t.TempDir()
+	testutil.WriteFile(t, filepath.Join(root, "set", "file.txt"), "source")
+	if err := os.MkdirAll(filepath.Join(root, "destination"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	router := testRouterWithRoot(t, root)
+	cookies := loginCookies(t, router)
+	recorder := postJSON(t, router, "/api/links/preview", map[string]any{
+		"type":       "hardlink",
+		"sourceRoot": "data",
+		"sources":    []string{"set/file.txt"},
+		"destRoot":   "data",
+		"destPath":   "destination",
+	}, cookies)
+	var body struct {
+		Data links.Preview `json:"data"`
+	}
+	decodeBody(t, recorder, &body)
+	if body.Data.HasConflict || body.Data.ProgressTotal != 1 || body.Data.PreviewRevision == "" {
+		t.Fatalf("body=%s", recorder.Body.String())
+	}
+}
+
 func TestMediaEndpointRequiresLogin(t *testing.T) {
 	root := t.TempDir()
 	testutil.WriteFile(t, filepath.Join(root, "photo.jpg"), "image-bytes")
@@ -233,13 +271,24 @@ func testRouterWithRoot(t *testing.T, root string) http.Handler {
 		t.Fatal(err)
 	}
 	jobStore := jobs.NewStore()
+	linkStaging := links.NewStagingManager(jobStore.RuntimeID())
+	linkMaintainer := links.StagingMaintainer{Manager: linkStaging, Jobs: jobStore}
+	linkPlanner := links.Planner{Resolver: resolver, Maintainer: linkMaintainer}
 	return NewRouter(Deps{
-		Config:     cfg,
-		Auth:       authSvc,
-		Roots:      resolver,
-		Browser:    browser.Service{Resolver: resolver},
-		OpsPlanner: ops.Planner{Resolver: resolver},
-		JobStore:   jobStore,
+		Config:      cfg,
+		Auth:        authSvc,
+		Roots:       resolver,
+		Browser:     browser.Service{Resolver: resolver, Maintainer: linkMaintainer},
+		OpsPlanner:  ops.Planner{Resolver: resolver},
+		JobStore:    jobStore,
+		LinkPlanner: linkPlanner,
+		LinkRunner: links.Runner{
+			Store: jobStore,
+			Executor: links.Executor{
+				Planner: linkPlanner,
+				Staging: linkStaging,
+			},
+		},
 	})
 }
 

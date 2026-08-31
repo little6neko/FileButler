@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"time"
 
 	"github.com/little6neko/filebutler/internal/auth"
 	"github.com/little6neko/filebutler/internal/jobs"
@@ -47,7 +46,7 @@ func CreateJobHandler(planner Planner, store jobs.Store, runner jobs.Runner) htt
 			writeError(w, http.StatusUnauthorized, "unauthorized", "authentication required")
 			return
 		}
-		id := NewJobID()
+		id := jobs.NewID()
 		if err := store.Create(r.Context(), jobs.Job{
 			ID:            id,
 			Type:          string(req.Type),
@@ -83,10 +82,6 @@ func (e JobExecutor) ExecuteItem(ctx context.Context, item jobs.ExecutableItem) 
 	})
 }
 
-func NewJobID() string {
-	return "job_" + strconvFormatInt(time.Now().UnixNano())
-}
-
 func writeData(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -97,18 +92,4 @@ func writeError(w http.ResponseWriter, status int, code string, message string) 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{"error": map[string]string{"code": code, "message": message}})
-}
-
-func strconvFormatInt(v int64) string {
-	if v == 0 {
-		return "0"
-	}
-	var buf [24]byte
-	pos := len(buf)
-	for v > 0 {
-		pos--
-		buf[pos] = byte('0' + v%10)
-		v /= 10
-	}
-	return string(buf[pos:])
 }

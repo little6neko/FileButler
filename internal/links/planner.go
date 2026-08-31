@@ -17,10 +17,11 @@ import (
 type identityReaderFunc func(string, bool) (FileIdentity, error)
 
 type Planner struct {
-	Resolver roots.Resolver
-	identity identityReaderFunc
-	lstat    func(string) (os.FileInfo, error)
-	readlink func(string) (string, error)
+	Resolver   roots.Resolver
+	Maintainer DirectoryMaintainer
+	identity   identityReaderFunc
+	lstat      func(string) (os.FileInfo, error)
+	readlink   func(string) (string, error)
 }
 
 type normalizedSource struct {
@@ -44,7 +45,7 @@ func (planner Planner) Plan(ctx context.Context, request Request) (Plan, error) 
 	if err := ctx.Err(); err != nil {
 		return Plan{}, err
 	}
-	normalized, err := planner.normalizeRequest(request)
+	normalized, err := planner.normalizeRequest(ctx, request)
 	if err != nil {
 		return Plan{}, err
 	}
@@ -82,7 +83,7 @@ func (planner Planner) Plan(ctx context.Context, request Request) (Plan, error) 
 	return Plan{Preview: preview, Groups: groups}, nil
 }
 
-func (planner Planner) normalizeRequest(request Request) (normalizedRequest, error) {
+func (planner Planner) normalizeRequest(ctx context.Context, request Request) (normalizedRequest, error) {
 	if request.Type != LinkHardlink && request.Type != LinkSymlink {
 		return normalizedRequest{}, fmt.Errorf("%w: unsupported link type", ErrInvalidRequest)
 	}
@@ -100,6 +101,11 @@ func (planner Planner) normalizeRequest(request Request) (normalizedRequest, err
 	destination, err := planner.Resolver.ResolveFollow(request.DestRoot, destPath)
 	if err != nil {
 		return normalizedRequest{}, err
+	}
+	if planner.Maintainer != nil {
+		if _, err := planner.Maintainer.Maintain(ctx, destination.Actual.Abs); err != nil {
+			return normalizedRequest{}, err
+		}
 	}
 	destinationInfo, err := planner.lstatReader()(destination.Actual.Abs)
 	if err != nil {

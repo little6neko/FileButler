@@ -10,7 +10,6 @@ import (
 
 	"github.com/little6neko/filebutler/internal/auth"
 	"github.com/little6neko/filebutler/internal/jobs"
-	"github.com/little6neko/filebutler/internal/ops"
 	"github.com/little6neko/filebutler/internal/roots"
 )
 
@@ -111,7 +110,7 @@ func CreateJobHandler(scanner Scanner, planner Planner, store jobs.Store, runner
 			return
 		}
 
-		jobID := ops.NewJobID()
+		jobID := jobs.NewID()
 		if err := store.Create(r.Context(), jobs.Job{
 			ID:            jobID,
 			Type:          "super_rename",

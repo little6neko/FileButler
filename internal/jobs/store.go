@@ -73,6 +73,28 @@ func (s Store) Available() bool {
 	return s.state != nil
 }
 
+func (s Store) RuntimeID() string {
+	if s.state == nil {
+		return ""
+	}
+	s.state.mu.Lock()
+	defer s.state.mu.Unlock()
+	return s.state.runtimeID
+}
+
+func (s Store) IsActive(ctx context.Context, id string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if s.state == nil {
+		return false, errors.New("job store is unavailable")
+	}
+	s.state.mu.Lock()
+	defer s.state.mu.Unlock()
+	_, exists := s.state.active[id]
+	return exists, nil
+}
+
 func (s Store) Create(ctx context.Context, job Job) error {
 	if err := ctx.Err(); err != nil {
 		return err

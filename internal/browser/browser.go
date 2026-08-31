@@ -41,7 +41,12 @@ type SymlinkResolution struct {
 }
 
 type Service struct {
-	Resolver roots.Resolver
+	Resolver   roots.Resolver
+	Maintainer DirectoryMaintainer
+}
+
+type DirectoryMaintainer interface {
+	Maintain(context.Context, string) (map[string]struct{}, error)
 }
 
 func (s Service) List(ctx context.Context, rootID string, rel string) ([]Entry, error) {
@@ -59,6 +64,13 @@ func (s Service) List(ctx context.Context, rootID string, rel string) ([]Entry, 
 	if !info.IsDir() {
 		return nil, ErrNotDirectory
 	}
+	var hidden map[string]struct{}
+	if s.Maintainer != nil {
+		hidden, err = s.Maintainer.Maintain(ctx, resolved.Actual.Abs)
+		if err != nil {
+			return nil, err
+		}
+	}
 	dirEntries, err := os.ReadDir(resolved.Actual.Abs)
 	if err != nil {
 		return nil, err
@@ -67,6 +79,9 @@ func (s Service) List(ctx context.Context, rootID string, rel string) ([]Entry, 
 	for _, dirEntry := range dirEntries {
 		if err := ctx.Err(); err != nil {
 			return nil, err
+		}
+		if _, hide := hidden[dirEntry.Name()]; hide {
+			continue
 		}
 		info, err := dirEntry.Info()
 		if err != nil {

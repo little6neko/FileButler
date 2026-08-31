@@ -153,6 +153,50 @@ func TestListDirectoryRejectsFilePath(t *testing.T) {
 	}
 }
 
+func TestListDirectoryUsesNarrowMaintainerToHideInternalEntries(t *testing.T) {
+	root := t.TempDir()
+	testutil.WriteFile(t, filepath.Join(root, "visible.txt"), "visible")
+	testutil.WriteFile(t, filepath.Join(root, ".internal", "payload"), "internal")
+	maintainer := &recordingDirectoryMaintainer{hidden: map[string]struct{}{`.internal`: {}}}
+	svc := Service{
+		Resolver:   roots.NewResolver([]roots.Root{{ID: "data", Name: "Data", Path: root}}),
+		Maintainer: maintainer,
+	}
+
+	entries, err := svc.List(context.Background(), "data", ".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 || entries[0].Name != "visible.txt" || maintainer.directory != root {
+		t.Fatalf("entries = %+v, maintained = %q", entries, maintainer.directory)
+	}
+}
+
+func TestListDirectoryReturnsMaintainerError(t *testing.T) {
+	root := t.TempDir()
+	want := errors.New("maintenance failed")
+	svc := Service{
+		Resolver: roots.NewResolver([]roots.Root{{ID: "data", Name: "Data", Path: root}}),
+		Maintainer: &recordingDirectoryMaintainer{
+			hidden: map[string]struct{}{`.internal`: {}}, err: want,
+		},
+	}
+	if _, err := svc.List(context.Background(), "data", "."); !errors.Is(err, want) {
+		t.Fatalf("err = %v, want %v", err, want)
+	}
+}
+
+type recordingDirectoryMaintainer struct {
+	hidden    map[string]struct{}
+	err       error
+	directory string
+}
+
+func (maintainer *recordingDirectoryMaintainer) Maintain(_ context.Context, directory string) (map[string]struct{}, error) {
+	maintainer.directory = directory
+	return maintainer.hidden, maintainer.err
+}
+
 func assertResolution(t *testing.T, entry Entry, want SymlinkResolution) {
 	t.Helper()
 	if entry.SymlinkResolution == nil || *entry.SymlinkResolution != want {

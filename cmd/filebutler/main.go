@@ -9,6 +9,7 @@ import (
 	"github.com/little6neko/filebutler/internal/browser"
 	"github.com/little6neko/filebutler/internal/config"
 	"github.com/little6neko/filebutler/internal/jobs"
+	"github.com/little6neko/filebutler/internal/links"
 	"github.com/little6neko/filebutler/internal/ops"
 	"github.com/little6neko/filebutler/internal/rename"
 	"github.com/little6neko/filebutler/internal/roots"
@@ -36,11 +37,15 @@ func main() {
 	resolver := roots.NewResolver(rootItems)
 	jobStore := jobs.NewStore()
 	opsExecutor := ops.Executor{Resolver: resolver}
+	linkStaging := links.NewStagingManager(jobStore.RuntimeID())
+	linkMaintainer := links.StagingMaintainer{Manager: linkStaging, Jobs: jobStore}
+	linkPlanner := links.Planner{Resolver: resolver, Maintainer: linkMaintainer}
+	linkBrowser := browser.Service{Resolver: resolver, Maintainer: linkMaintainer}
 	router := web.NewRouter(web.Deps{
 		Config:       cfg,
 		Auth:         authService,
 		Roots:        resolver,
-		Browser:      browser.Service{Resolver: resolver},
+		Browser:      linkBrowser,
 		OpsPlanner:   ops.Planner{Resolver: resolver},
 		JobStore:     jobStore,
 		OpsRunner:    jobs.Runner{Store: jobStore, Executor: ops.JobExecutor{Executor: opsExecutor}},
@@ -48,6 +53,14 @@ func main() {
 		SuperRenameRunner: superrename.Runner{
 			Store:    jobStore,
 			Executor: superrename.Executor{Resolver: resolver},
+		},
+		LinkPlanner: linkPlanner,
+		LinkRunner: links.Runner{
+			Store: jobStore,
+			Executor: links.Executor{
+				Planner: linkPlanner,
+				Staging: linkStaging,
+			},
 		},
 	})
 

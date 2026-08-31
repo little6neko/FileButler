@@ -36,6 +36,37 @@ func TestCreateAndSnapshotActiveJob(t *testing.T) {
 	}
 }
 
+func TestRuntimeIDAndActiveJobLookup(t *testing.T) {
+	store := newStore("runtime-a", 16, 16)
+	if store.RuntimeID() != "runtime-a" {
+		t.Fatalf("runtime ID = %q", store.RuntimeID())
+	}
+	active, err := store.IsActive(context.Background(), "job-1")
+	if err != nil || active {
+		t.Fatalf("missing active = %v, err = %v", active, err)
+	}
+	createTestJob(t, store, "job-1", 1)
+	active, err = store.IsActive(context.Background(), "job-1")
+	if err != nil || !active {
+		t.Fatalf("created active = %v, err = %v", active, err)
+	}
+	if err := store.Finish(context.Background(), "job-1", StatusCompleted, ""); err != nil {
+		t.Fatal(err)
+	}
+	active, err = store.IsActive(context.Background(), "job-1")
+	if err != nil || active {
+		t.Fatalf("finished active = %v, err = %v", active, err)
+	}
+
+	var unavailable Store
+	if unavailable.RuntimeID() != "" {
+		t.Fatalf("unavailable runtime ID = %q", unavailable.RuntimeID())
+	}
+	if _, err := unavailable.IsActive(context.Background(), "job"); err == nil {
+		t.Fatal("unavailable active lookup returned nil error")
+	}
+}
+
 func TestProgressEventsAreCoalescedWhileSnapshotsStayCurrent(t *testing.T) {
 	now := time.Date(2026, 8, 23, 10, 0, 0, 0, time.UTC)
 	store := newStore("runtime-a", 16, 16)

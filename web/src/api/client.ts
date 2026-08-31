@@ -1,5 +1,8 @@
 import type {
   Entry,
+  LinkJobRequest,
+  LinkPreview,
+  LinkRequest,
   OpsRequest,
   PlanItem,
   RenameRequest,
@@ -18,15 +21,21 @@ import type {
 export class APIError extends Error {
   code: string;
   status: number;
+  data?: unknown;
 
-  constructor(code: string, message: string, status: number) {
+  constructor(code: string, message: string, status: number, data?: unknown) {
     super(message);
     this.code = code;
     this.status = status;
+    this.data = data;
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(
+  path: string,
+  init?: RequestInit,
+  errorDataGuard?: (value: unknown) => boolean,
+): Promise<T> {
   const res = await fetch(path, {
     credentials: "include",
     headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
@@ -35,7 +44,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const body = await res.json().catch(() => ({}));
   if (!res.ok) {
     const error = body.error ?? { code: "http_error", message: res.statusText };
-    throw new APIError(error.code, error.message, res.status);
+    const data = errorDataGuard?.(body.data) ? body.data : undefined;
+    throw new APIError(error.code, error.message, res.status, data);
   }
   return body.data as T;
 }
@@ -97,6 +107,79 @@ export const api = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  linkPreview: (payload: LinkRequest) =>
+    request<LinkPreview>("/api/links/preview", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  linkCreateJob: (payload: LinkJobRequest) =>
+    request<{ id: string }>("/api/links/jobs", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }, isLinkPreview),
   cancelJob: (id: string) =>
     request<{ id: string }>(`/api/jobs/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
 };
+
+export function isLinkPreview(value: unknown): value is LinkPreview {
+  if (!isRecord(value)
+    || !isLinkType(value.type)
+    || typeof value.sourceRoot !== "string"
+    || typeof value.destRoot !== "string"
+    || typeof value.destPath !== "string"
+    || typeof value.previewRevision !== "string"
+    || !/^sha256:[0-9a-f]{64}$/.test(value.previewRevision)
+    || !isNonnegativeInteger(value.progressTotal)
+    || typeof value.hasConflict !== "boolean"
+    || !Array.isArray(value.items)) {
+    return false;
+  }
+  return value.items.every(isLinkPreviewItem);
+}
+
+function isLinkPreviewItem(value: unknown) {
+  if (!isRecord(value)
+    || typeof value.sourcePath !== "string"
+    || typeof value.destPath !== "string"
+    || !["file", "directory", "symlink", "other"].includes(String(value.sourceKind))
+    || !isLinkCounts(value.counts)
+    || typeof value.conflict !== "boolean") {
+    return false;
+  }
+  if (value.errorCode !== undefined && !isLinkErrorCode(value.errorCode)) return false;
+  return value.errorText === undefined || typeof value.errorText === "string";
+}
+
+function isLinkCounts(value: unknown) {
+  return isRecord(value)
+    && isNonnegativeInteger(value.directories)
+    && isNonnegativeInteger(value.files)
+    && isNonnegativeInteger(value.symlinks);
+}
+
+function isLinkType(value: unknown) {
+  return value === "hardlink" || value === "symlink";
+}
+
+function isLinkErrorCode(value: unknown) {
+  return [
+    "target_exists",
+    "missing_source",
+    "source_changed",
+    "unsupported_source",
+    "special_entry",
+    "cross_filesystem",
+    "destination_inside_source",
+    "outside_root",
+    "invalid_path",
+    "operation_failed",
+  ].includes(String(value));
+}
+
+function isNonnegativeInteger(value: unknown) {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

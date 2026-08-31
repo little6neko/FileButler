@@ -1,5 +1,12 @@
 export type Root = { id: string; name: string };
 
+export type SymlinkResolution = {
+  state: "mapped" | "unmapped" | "broken";
+  targetKind?: "file" | "directory" | "symlink" | "other";
+  targetRootId?: string;
+  targetPath?: string;
+};
+
 export type Entry = {
   name: string;
   relativePath: string;
@@ -9,6 +16,60 @@ export type Entry = {
   modifiedUnix: number;
   isSymlink: boolean;
   symlinkTarget?: string;
+  symlinkResolution?: SymlinkResolution;
+};
+
+export type LinkType = "hardlink" | "symlink";
+export type LinkSourceKind = "file" | "directory" | "symlink" | "other";
+export type LinkErrorCode =
+  | "target_exists"
+  | "missing_source"
+  | "source_changed"
+  | "unsupported_source"
+  | "special_entry"
+  | "cross_filesystem"
+  | "destination_inside_source"
+  | "outside_root"
+  | "invalid_path"
+  | "operation_failed";
+
+export type LinkRequest = {
+  type: LinkType;
+  sourceRoot: string;
+  sources: string[];
+  destRoot: string;
+  destPath: string;
+};
+
+export type LinkJobRequest = LinkRequest & {
+  previewRevision: string;
+};
+
+export type LinkCounts = {
+  directories: number;
+  files: number;
+  symlinks: number;
+};
+
+export type LinkPreviewItem = {
+  sourcePath: string;
+  destPath: string;
+  sourceKind: LinkSourceKind;
+  counts: LinkCounts;
+  conflict: boolean;
+  errorCode?: LinkErrorCode;
+  errorText?: string;
+};
+
+export type LinkPreview = {
+  type: LinkType;
+  sourceRoot: string;
+  destRoot: string;
+  destPath: string;
+  previewRevision: string;
+  progressTotal: number;
+  hasConflict: boolean;
+  items: LinkPreviewItem[];
 };
 
 export type RenameOptions = {

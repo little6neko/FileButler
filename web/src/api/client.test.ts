@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { APIError, api } from "./client";
-import type { SuperRenameInventory, TextDocument, TextSaveRequest } from "./types";
+import { APIError, api, isLinkPreview } from "./client";
+import type { LinkJobRequest, LinkPreview, LinkRequest, SuperRenameInventory, TextDocument, TextSaveRequest } from "./types";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -139,6 +139,89 @@ describe("SuperRename API client", () => {
     );
   });
 });
+
+describe("link API client", () => {
+  const request: LinkRequest = {
+    type: "hardlink",
+    sourceRoot: "source",
+    sources: ["写真 (A)/一.jpg"],
+    destRoot: "destination",
+    destPath: "archive",
+  };
+
+  it("posts link preview and job requests", async () => {
+    const preview = linkPreview();
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ data: preview }))
+      .mockResolvedValueOnce(jsonResponse({ data: { id: "job_1" } }, 201));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(api.linkPreview(request)).resolves.toEqual(preview);
+    const jobRequest: LinkJobRequest = { ...request, previewRevision: preview.previewRevision };
+    await expect(api.linkCreateJob(jobRequest)).resolves.toEqual({ id: "job_1" });
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/links/preview", expect.objectContaining({
+      method: "POST",
+      credentials: "include",
+      body: JSON.stringify(request),
+    }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/links/jobs", expect.objectContaining({
+      method: "POST",
+      body: JSON.stringify(jobRequest),
+    }));
+  });
+
+  it("keeps a valid latest preview on 409 errors", async () => {
+    const preview = linkPreview({ hasConflict: true });
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
+      error: { code: "stale_preview", message: "changed" },
+      data: preview,
+    }, 409)));
+
+    const error = await api.linkCreateJob({
+      ...request,
+      previewRevision: `sha256:${"b".repeat(64)}`,
+    }).catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(APIError);
+    expect(error).toMatchObject({ code: "stale_preview", status: 409, data: preview });
+  });
+
+  it("drops malformed error data without changing ordinary API errors", async () => {
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({
+      error: { code: "plan_conflict", message: "conflict" },
+      data: { previewRevision: "not-a-revision" },
+    }, 409)));
+    const error = await api.linkCreateJob({
+      ...request,
+      previewRevision: `sha256:${"b".repeat(64)}`,
+    }).catch((reason: unknown) => reason);
+    expect(error).toMatchObject({ code: "plan_conflict", status: 409, data: undefined });
+  });
+
+  it("validates complete link previews at runtime", () => {
+    expect(isLinkPreview(linkPreview())).toBe(true);
+    expect(isLinkPreview({ ...linkPreview(), items: [{ conflict: false }] })).toBe(false);
+  });
+});
+
+function linkPreview(overrides: Partial<LinkPreview> = {}): LinkPreview {
+  return {
+    type: "hardlink",
+    sourceRoot: "source",
+    destRoot: "destination",
+    destPath: "archive",
+    previewRevision: `sha256:${"a".repeat(64)}`,
+    progressTotal: 1,
+    hasConflict: false,
+    items: [{
+      sourcePath: "写真 (A)/一.jpg",
+      destPath: "archive/一.jpg",
+      sourceKind: "file",
+      counts: { directories: 0, files: 1, symlinks: 0 },
+      conflict: false,
+    }],
+    ...overrides,
+  };
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

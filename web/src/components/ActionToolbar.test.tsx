@@ -39,6 +39,7 @@ function actions(selectedCount: number, commands: FileActionCommands) {
 function commandMocks(): FileActionCommands {
   return {
     onOperation: vi.fn(),
+    onLink: vi.fn(),
     onMkdir: vi.fn(),
     onRename: vi.fn(),
     onPowerRename: vi.fn(),

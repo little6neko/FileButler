@@ -86,8 +86,10 @@ it("dispatches commands from the shared descriptors", () => {
   const actions = createFileActions({ destination: "Right pane", destinationDirection: "right", selectedCount: 1, labels: strings.en, commands: handlers });
 
   actions.find((action) => action.id === "copy")?.run();
+  actions.find((action) => action.id === "hardlink")?.run();
   actions.find((action) => action.id === "rename")?.run();
   expect(handlers.onOperation).toHaveBeenCalledWith("copy");
+  expect(handlers.onLink).toHaveBeenCalledWith("hardlink");
   expect(handlers.onRename).toHaveBeenCalledOnce();
 });
 
@@ -151,6 +153,7 @@ it("omits source selection on root cards while retaining active source actions",
 function commands() {
   return {
     onOperation: vi.fn(),
+    onLink: vi.fn(),
     onMkdir: vi.fn(),
     onRename: vi.fn(),
     onPowerRename: vi.fn(),

@@ -3,6 +3,7 @@ import type { Entry } from "./api/types";
 import {
   canMoveMedia,
   createMediaGallerySnapshot,
+  createSingleMediaSnapshot,
   currentMediaItem,
   moveMedia,
 } from "./mediaGallery";
@@ -75,5 +76,13 @@ describe("media gallery snapshots", () => {
   it("returns null when the requested media is not an immediate previewable item", () => {
     expect(createMediaGallerySnapshot("source", ".", [entry("notes.txt")], [], "notes.txt")).toBeNull();
     expect(createMediaGallerySnapshot("source", ".", [entry("nested.png", "folder/nested.png")], [], "folder/nested.png")).toBeNull();
+  });
+
+  it("creates an isolated snapshot for a mapped media link while retaining its display name", () => {
+    expect(createSingleMediaSnapshot("target", "albums/actual.jpg", "shortcut", "image")).toEqual({
+      rootId: "target",
+      items: [{ name: "shortcut", relativePath: "albums/actual.jpg", kind: "image" }],
+      index: 0,
+    });
   });
 });

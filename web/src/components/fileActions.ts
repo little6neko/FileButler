@@ -16,7 +16,7 @@ import {
   WandSparkles,
   type LucideIcon,
 } from "lucide-react";
-import type { OpsRequest } from "../api/types";
+import type { LinkType, OpsRequest } from "../api/types";
 import type { UIStrings } from "../i18n";
 
 export type FileActionId =
@@ -68,6 +68,7 @@ export type LinkSourceActionCommands = {
 
 export type FileActionCommands = {
   onOperation(type: CommandOperation): void;
+  onLink(type: LinkType): void;
   onMkdir(): void;
   onRename(): void;
   onPowerRename(): void;
@@ -100,8 +101,8 @@ export function createFileActions({
       disabled: noSelection,
       run: () => commands.onOperation("move"),
     },
-    { kind: "command", id: "symlink", label: labels.symlink, icon: Link, disabled: noSelection, run: () => commands.onOperation("symlink") },
-    { kind: "command", id: "hardlink", label: labels.hardlink, icon: Link2, disabled: noSelection, run: () => commands.onOperation("hardlink") },
+    { kind: "command", id: "symlink", label: labels.symlink, icon: Link, disabled: noSelection, run: () => commands.onLink("symlink") },
+    { kind: "command", id: "hardlink", label: labels.hardlink, icon: Link2, disabled: noSelection, run: () => commands.onLink("hardlink") },
     { kind: "command", id: "rename", label: labels.rename, icon: Pencil, disabled: selectedCount !== 1, separatorBefore: true, run: commands.onRename },
     { kind: "command", id: "powerRename", label: labels.powerRename, icon: ScanText, disabled: noSelection, run: commands.onPowerRename },
     { kind: "command", id: "superRename", label: labels.superRename, icon: WandSparkles, disabled: !locationReady, run: commands.onSuperRename },

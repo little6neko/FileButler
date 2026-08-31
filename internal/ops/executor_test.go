@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/little6neko/filebutler/internal/testutil"
@@ -30,35 +29,6 @@ func TestExecutorMovesFile(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(rootA, "a.txt")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("source still exists or unexpected err: %v", err)
-	}
-	assertContent(t, filepath.Join(rootB, "a.txt"), "hello")
-}
-
-func TestExecutorCreatesSymlink(t *testing.T) {
-	rootA, rootB, executor := executorFixture(t)
-	testutil.WriteFile(t, filepath.Join(rootA, "a.txt"), "hello")
-	item := PlanItem{Operation: OpSymlink, SourceRoot: "a", SourcePath: "a.txt", DestRoot: "b", DestPath: "a.txt"}
-	if err := executor.Execute(context.Background(), item); err != nil {
-		t.Fatal(err)
-	}
-	target, err := os.Readlink(filepath.Join(rootB, "a.txt"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if target != filepath.Join(rootA, "a.txt") {
-		t.Fatalf("target = %q", target)
-	}
-}
-
-func TestExecutorCreatesHardLink(t *testing.T) {
-	rootA, rootB, executor := executorFixture(t)
-	testutil.WriteFile(t, filepath.Join(rootA, "a.txt"), "hello")
-	item := PlanItem{Operation: OpHardlink, SourceRoot: "a", SourcePath: "a.txt", DestRoot: "b", DestPath: "a.txt"}
-	if err := executor.Execute(context.Background(), item); err != nil {
-		if runtime.GOOS == "windows" {
-			t.Skip(err)
-		}
-		t.Fatal(err)
 	}
 	assertContent(t, filepath.Join(rootB, "a.txt"), "hello")
 }

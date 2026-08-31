@@ -37,7 +37,7 @@ import {
   type DirectoryLocation,
 } from "../browserHistory";
 import { applicationWindowCoversPoint } from "../desktopWindowHitTest";
-import { fileOpenKind } from "../fileOpenKind";
+import { fileOpenKind, type FileOpenTarget } from "../fileOpenKind";
 import {
   buildDragRequest,
   buildFileDragSource,
@@ -60,15 +60,18 @@ import { JobEventsStore } from "../jobEvents";
 import { useOptionalJobEventsStore } from "../jobEventsContext";
 import {
   buildLinkSourceRequest,
+  buildLinkRequest,
   createLinkSource,
   isLinkSourceEntry,
   resolveLinkTarget,
   type LinkSource,
   type LinkTarget,
 } from "../linkSource";
+import type { MediaKind } from "../media";
 import {
   canMoveMedia,
   createMediaGallerySnapshot,
+  createSingleMediaSnapshot,
   currentMediaItem,
   moveMedia,
   type MediaDirection,
@@ -1346,7 +1349,11 @@ export function FileWorkspace({
       selectedCount,
       locationReady,
       labels,
-      commands: actionCommands(sourceId, (type) => openCompactOperation(which, type)),
+      commands: actionCommands(
+        sourceId,
+        (type) => openCompactOperation(which, type),
+        (type) => openCompactLink(which, type),
+      ),
     });
   }
 
@@ -1355,7 +1362,12 @@ export function FileWorkspace({
       selectedCount,
       locationReady,
       labels,
-      commands: actionCommands(sessionId, (type) => openSingleSessionOperation(windowId, sessionId, type), windowId),
+      commands: actionCommands(
+        sessionId,
+        (type) => openSingleSessionOperation(windowId, sessionId, type),
+        undefined,
+        windowId,
+      ),
     });
   }
 
@@ -1514,10 +1526,12 @@ export function FileWorkspace({
   function actionCommands(
     sessionId: string,
     onOperation: FileActionCommands["onOperation"],
+    onLink: FileActionCommands["onLink"] = () => {},
     windowId?: string,
   ): FileActionCommands {
     return {
       onOperation,
+      onLink,
       onMkdir: () => {
         if (mode === "desktop" && windowId) openMkdirWindowDialog(windowId, sessionId);
         else setMkdirSessionId(sessionId);
@@ -1618,6 +1632,30 @@ export function FileWorkspace({
         destRoot: type === "delete" ? undefined : destination?.location.kind === "directory" ? destination.location.rootId : undefined,
         destPath: type === "delete" ? undefined : destination?.location.kind === "directory" ? destination.location.path : undefined,
       },
+    });
+  }
+
+  function openCompactLink(which: CompactPane, type: LinkType) {
+    const source = sessionsRef.current[compactBindings[which]];
+    const destination = sessionsRef.current[compactBindings[oppositePane(which)]];
+    if (
+      !source
+      || source.location.kind !== "directory"
+      || !source.location.rootId
+      || !destination
+      || destination.location.kind !== "directory"
+      || !destination.location.rootId
+    ) return;
+    setActiveCompactPane(which);
+    setLinkPreviewState({
+      request: buildLinkRequest(
+        type,
+        source.location.rootId,
+        source.selectionStore.getOrderedPaths(),
+        { rootId: destination.location.rootId, path: destination.location.path },
+      ),
+      sourceCreatedAt: 0,
+      consumeLinkSource: false,
     });
   }
 
@@ -2146,16 +2184,23 @@ export function FileWorkspace({
     jobEvents.registerCreatedJob(id);
   }
 
-  function openMediaPreview(sessionId: string, entry: Entry) {
+  function openMediaPreview(
+    sessionId: string,
+    entry: Entry,
+    mediaKind: MediaKind,
+    target?: FileOpenTarget,
+  ) {
     const session = sessionsRef.current[sessionId];
     if (!session || session.location.kind !== "directory" || !session.location.rootId) return;
-    const snapshot = createMediaGallerySnapshot(
-      session.location.rootId,
-      session.location.path,
-      session.entries,
-      session.selectionStore.getVisibleOrder(),
-      entry.relativePath,
-    );
+    const snapshot = target
+      ? createSingleMediaSnapshot(target.rootId, target.path, entry.name, mediaKind)
+      : createMediaGallerySnapshot(
+        session.location.rootId,
+        session.location.path,
+        session.entries,
+        session.selectionStore.getVisibleOrder(),
+        entry.relativePath,
+      );
     if (!snapshot) return;
     if (mode === "desktop") {
       openMediaPreviewWindowForSnapshot(snapshot);
@@ -2166,23 +2211,39 @@ export function FileWorkspace({
 
   function openFile(sessionId: string, entry: Entry) {
     const openKind = fileOpenKind(entry);
+    if (openKind.kind === "directory") {
+      if (openKind.target) {
+        setSessionLocation(sessionId, {
+          kind: "directory",
+          rootId: openKind.target.rootId,
+          path: openKind.target.path,
+        });
+      }
+      return;
+    }
     if (openKind.kind === "media") {
-      openMediaPreview(sessionId, entry);
+      openMediaPreview(sessionId, entry, openKind.mediaKind, openKind.target);
       return;
     }
     if (openKind.kind !== "text") return;
     if (mode === "desktop") {
-      openTextEditor(sessionId, entry, openKind.text);
+      openTextEditor(sessionId, entry, openKind.text, openKind.target);
       return;
     }
-    openCompactTextEditor(sessionId, entry, openKind.text);
+    openCompactTextEditor(sessionId, entry, openKind.text, openKind.target);
   }
 
-  function openTextEditor(sessionId: string, entry: Entry, text: TextFileDescriptor) {
+  function openTextEditor(
+    sessionId: string,
+    entry: Entry,
+    text: TextFileDescriptor,
+    openTarget?: FileOpenTarget,
+  ) {
     const browserSession = sessionsRef.current[sessionId];
     if (!browserSession || browserSession.location.kind !== "directory" || !browserSession.location.rootId) return;
-    const { rootId } = browserSession.location;
-    const existingSession = textEditors.findByPath(rootId, entry.relativePath);
+    const rootId = openTarget?.rootId ?? browserSession.location.rootId;
+    const path = openTarget?.path ?? entry.relativePath;
+    const existingSession = textEditors.findByPath(rootId, path);
     if (existingSession) {
       const existingWindow = windowsByMostRecent(windowStateRef.current).find(
         (window) => isTextEditorWindow(window) && window.instanceId === existingSession.id,
@@ -2196,7 +2257,7 @@ export function FileWorkspace({
     const windowId = `window-${++windowCounterRef.current}`;
     const acquired = textEditors.acquire({
       rootId,
-      path: entry.relativePath,
+      path,
       fileName: entry.name,
       text,
     }, { kind: "desktop", id: windowId });
@@ -2217,12 +2278,17 @@ export function FileWorkspace({
     });
   }
 
-  function openCompactTextEditor(sessionId: string, entry: Entry, text: TextFileDescriptor) {
+  function openCompactTextEditor(
+    sessionId: string,
+    entry: Entry,
+    text: TextFileDescriptor,
+    openTarget?: FileOpenTarget,
+  ) {
     const browserSession = sessionsRef.current[sessionId];
     if (!browserSession || browserSession.location.kind !== "directory" || !browserSession.location.rootId) return;
     const target: CompactTextEditorOpenTarget = {
-      rootId: browserSession.location.rootId,
-      path: entry.relativePath,
+      rootId: openTarget?.rootId ?? browserSession.location.rootId,
+      path: openTarget?.path ?? entry.relativePath,
       fileName: entry.name,
       text,
     };

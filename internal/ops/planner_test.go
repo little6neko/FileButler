@@ -37,15 +37,15 @@ func TestPlanMoveDetectsMissingSource(t *testing.T) {
 	}
 }
 
-func TestPlanHardLinkRejectsDirectory(t *testing.T) {
-	rootA := t.TempDir()
-	rootB := t.TempDir()
-	planner := Planner{Resolver: testResolver(rootA, rootB)}
-	plan, err := planner.Plan(context.Background(), Request{Type: OpHardlink, SourceRoot: "a", Sources: []string{"."}, DestRoot: "b", DestPath: "."})
+func TestPlanRejectsRemovedLinkOperationBeforeResolvingSources(t *testing.T) {
+	planner := Planner{Resolver: testResolver(t.TempDir(), t.TempDir())}
+	plan, err := planner.Plan(context.Background(), Request{
+		Type: OperationType("hardlink"), SourceRoot: "missing", Sources: []string{"missing.txt"},
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !plan.HasConflict || plan.Items[0].ErrorCode != "hardlink_directory" {
+	if !plan.HasConflict || len(plan.Items) != 1 || plan.Items[0].ErrorCode != "invalid_request" {
 		t.Fatalf("plan = %+v", plan)
 	}
 }

@@ -36,6 +36,26 @@ func TestOpsDryRunReturnsPlan(t *testing.T) {
 	}
 }
 
+func TestOpsDryRunRejectsLegacyLinkTypes(t *testing.T) {
+	handler := DryRunHandler(Planner{Resolver: testResolver(t.TempDir(), t.TempDir())})
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, jsonReq(Request{
+		Type: OperationType("symlink"), SourceRoot: "a", Sources: []string{"a.txt"}, DestRoot: "b", DestPath: ".",
+	}))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+	var body struct {
+		Data Plan `json:"data"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if !body.Data.HasConflict || len(body.Data.Items) != 1 || body.Data.Items[0].ErrorCode != "invalid_request" {
+		t.Fatalf("plan=%+v", body.Data)
+	}
+}
+
 func TestOpsCreateJobRegistersActiveJob(t *testing.T) {
 	rootA := t.TempDir()
 	rootB := t.TempDir()

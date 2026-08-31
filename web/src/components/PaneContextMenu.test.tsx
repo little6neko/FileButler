@@ -14,7 +14,7 @@ it("renders every shared action and dispatches enabled items", async () => {
     destinationDirection: "right",
     selectedCount: 1,
     labels: strings.en,
-    commands: { onOperation: vi.fn(), onMkdir, onRename: vi.fn(), onPowerRename: vi.fn(), onSuperRename: vi.fn() },
+    commands: { onOperation: vi.fn(), onLink: vi.fn(), onMkdir, onRename: vi.fn(), onPowerRename: vi.fn(), onSuperRename: vi.fn() },
   });
   render(
     <div onClick={onParentClick}>
@@ -38,7 +38,7 @@ it("shows every empty-selection action while disabling all except mkdir", async 
     destinationDirection: "right",
     selectedCount: 0,
     labels: strings.en,
-    commands: { onOperation: vi.fn(), onMkdir: vi.fn(), onRename: vi.fn(), onPowerRename: vi.fn(), onSuperRename: vi.fn() },
+    commands: { onOperation: vi.fn(), onLink: vi.fn(), onMkdir: vi.fn(), onRename: vi.fn(), onPowerRename: vi.fn(), onSuperRename: vi.fn() },
   });
   render(
     <PaneContextMenu actions={actions} label={strings.en.fileActions}>

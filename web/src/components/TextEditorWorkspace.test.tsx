@@ -74,6 +74,51 @@ it("opens a loading text window immediately and fills it from one read request",
   expect(editorWindow).toHaveTextContent("Go");
 });
 
+it("reads and saves a mapped text link through its target while keeping the clicked link title", async () => {
+  const shortcut: Entry = {
+    name: "source-shortcut",
+    relativePath: "source-shortcut",
+    type: "symlink",
+    size: 0,
+    mode: "",
+    modifiedUnix: 0,
+    isSymlink: true,
+    symlinkResolution: {
+      state: "mapped",
+      targetKind: "file",
+      targetRootId: "target",
+      targetPath: "src/main.go",
+    },
+  };
+  vi.mocked(api.roots).mockResolvedValue([
+    { id: "source", name: "Source" },
+    { id: "target", name: "Target" },
+  ]);
+  vi.mocked(api.browse).mockImplementation(async (rootId, path) => (
+    rootId === "source" && path === "." ? [shortcut] : []
+  ));
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  await userEvent.click(await screen.findByRole("button", { name: "Open File Manager" }));
+  const fileWindow = container.querySelector<HTMLElement>('.desktop-window[data-window-kind="file"]')!;
+  await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
+
+  await userEvent.dblClick(await within(fileWindow).findByText("source-shortcut"));
+  const editorWindow = container.querySelector<HTMLElement>('.desktop-window[data-window-kind="textEditor"]')!;
+  expect(api.textRead).toHaveBeenCalledWith("target", "src/main.go");
+  expect(editorWindow).toHaveAttribute("aria-label", "source-shortcut");
+  expect(container.querySelector('.taskbar-window-button[data-window-kind="textEditor"]')).toHaveTextContent("source-shortcut");
+
+  const editor = await waitForEditor(editorWindow);
+  await userEvent.click(editor);
+  await userEvent.keyboard(" linked edit");
+  await userEvent.click(within(editorWindow).getByRole("button", { name: "Save" }));
+  expect(api.textSave).toHaveBeenCalledWith(expect.objectContaining({
+    rootId: "target",
+    path: "src/main.go",
+    content: expect.stringContaining("linked edit"),
+  }));
+});
+
 it("restores and focuses the existing window when the same path is opened again", async () => {
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
   const fileWindow = await openSourceWindow(container);

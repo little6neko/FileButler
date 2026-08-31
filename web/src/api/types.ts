@@ -98,7 +98,7 @@ export type RenameOptions = {
 };
 
 export type OpsRequest = {
-  type: "move" | "copy" | "symlink" | "hardlink" | "delete" | "mkdir";
+  type: "move" | "copy" | "delete" | "mkdir";
   sourceRoot: string;
   sources: string[];
   destRoot?: string;

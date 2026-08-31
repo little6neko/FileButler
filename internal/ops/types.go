@@ -5,8 +5,6 @@ type OperationType string
 const (
 	OpMove     OperationType = "move"
 	OpCopy     OperationType = "copy"
-	OpSymlink  OperationType = "symlink"
-	OpHardlink OperationType = "hardlink"
 	OpDelete   OperationType = "delete"
 	OpMkdir    OperationType = "mkdir"
 )

@@ -43,6 +43,24 @@ function mediaEntry(name: string, size = 1): Entry {
   return { name, relativePath: name, type: "file", size, mode: "", modifiedUnix: 0, isSymlink: false };
 }
 
+function mappedSymlink(
+  name: string,
+  targetKind: "file" | "directory",
+  targetRootId: string,
+  targetPath: string,
+): Entry {
+  return {
+    name,
+    relativePath: name,
+    type: "symlink",
+    size: 0,
+    mode: "",
+    modifiedUnix: 0,
+    isSymlink: true,
+    symlinkResolution: { state: "mapped", targetKind, targetRootId, targetPath },
+  };
+}
+
 function workspaceSuperRenameInventory(
   rootId = "source",
   directoryPath = ".",
@@ -349,6 +367,40 @@ it("keeps back and forward history independent for each file pane", async () => 
   expect(within(leftPane).getByRole("button", { name: "Forward" })).toBeDisabled();
 });
 
+it("follows a mapped directory link across roots with normal back, forward, and up history", async () => {
+  const shortcut = mappedSymlink("album-link", "directory", "target", "albums/2026");
+  vi.mocked(api.browse).mockImplementation(async (rootId, path) => {
+    if (rootId === "source" && path === ".") return [shortcut];
+    if (rootId === "target" && path === "albums/2026") return [mediaEntry("inside.jpg")];
+    if (rootId === "target" && path === "albums") return [{
+      name: "2026",
+      relativePath: "albums/2026",
+      type: "directory",
+      size: 0,
+      mode: "",
+      modifiedUnix: 0,
+      isSymlink: false,
+    }];
+    return [];
+  });
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+
+  await userEvent.dblClick(await within(leftPane).findByText("album-link"));
+  await waitFor(() => expect(api.browse).toHaveBeenCalledWith("target", "albums/2026"));
+  expect(await within(leftPane).findByText("inside.jpg")).toBeInTheDocument();
+  expect(within(leftPane).getByRole("button", { name: 'Back to "Source"' })).toBeEnabled();
+  expect(within(leftPane).getByRole("button", { name: 'Up to "albums"' })).toBeEnabled();
+
+  await userEvent.click(within(leftPane).getByRole("button", { name: 'Back to "Source"' }));
+  expect(await within(leftPane).findByText("album-link")).toBeInTheDocument();
+  await userEvent.click(within(leftPane).getByRole("button", { name: 'Forward to "2026"' }));
+  expect(await within(leftPane).findByText("inside.jpg")).toBeInTheDocument();
+  await userEvent.click(within(leftPane).getByRole("button", { name: 'Up to "albums"' }));
+  expect(await within(leftPane).findByText("2026")).toBeInTheDocument();
+  expect(api.browse).toHaveBeenCalledWith("target", "albums");
+});
+
 it("uses bare Backspace for the active compact pane and consumes it at the start of history", async () => {
   const folder = { ...sourceEntries[0] };
   const other: Entry = {
@@ -559,6 +611,47 @@ it("navigates a compact media snapshot and disables the first and last direction
   expect(within(dialog).getByRole("img", { name: "alpha.png" })).toHaveAttribute("src", "/media/alpha.png");
   expect(within(dialog).getByRole("button", { name: "Previous media" })).toBeDisabled();
   expect(within(dialog).getByRole("button", { name: "Next media" })).toBeEnabled();
+});
+
+it("opens mapped media through its target as an isolated gallery and ignores unsafe links", async () => {
+  const mapped = mappedSymlink("cover-shortcut", "file", "target", "albums/cover.jpg");
+  const broken: Entry = {
+    ...mappedSymlink("broken-link", "file", "target", "missing.jpg"),
+    symlinkResolution: { state: "broken" },
+  };
+  const unmapped: Entry = {
+    ...mappedSymlink("outside-link", "file", "target", "outside.jpg"),
+    symlinkResolution: { state: "unmapped" },
+  };
+  vi.mocked(api.browse).mockImplementation(async (rootId, path) => (
+    rootId === "source" && path === "."
+      ? [mapped, mediaEntry("neighbor.jpg"), broken, unmapped]
+      : []
+  ));
+  vi.mocked(api.mediaUrl).mockImplementation((rootId, path) => `/media/${rootId}/${path}`);
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+
+  await userEvent.dblClick(await within(leftPane).findByText("cover-shortcut"));
+  const dialog = await screen.findByRole("dialog", { name: "Media preview" });
+  expect(within(dialog).getByRole("img", { name: "cover-shortcut" })).toHaveAttribute(
+    "src",
+    "/media/target/albums/cover.jpg",
+  );
+  expect(within(dialog).getByRole("button", { name: "Previous media" })).toBeDisabled();
+  expect(within(dialog).getByRole("button", { name: "Next media" })).toBeDisabled();
+  expect(api.mediaUrl).toHaveBeenCalledWith("target", "albums/cover.jpg");
+  await userEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+
+  const browseCount = vi.mocked(api.browse).mock.calls.length;
+  vi.mocked(api.mediaUrl).mockClear();
+  vi.mocked(api.textRead).mockClear();
+  await userEvent.dblClick(within(leftPane).getByText("broken-link"));
+  await userEvent.dblClick(within(leftPane).getByText("outside-link"));
+  expect(api.browse).toHaveBeenCalledTimes(browseCount);
+  expect(api.mediaUrl).not.toHaveBeenCalled();
+  expect(api.textRead).not.toHaveBeenCalled();
+  expect(screen.queryByRole("dialog", { name: "Media preview" })).not.toBeInTheDocument();
 });
 
 it("opens reusable independent media windows for different files in full mode", async () => {
@@ -1404,6 +1497,55 @@ it("uses the compact context workflow without duplicating direct link commands",
   menu = await screen.findByRole("menu", { name: "File actions" });
   await user.click(within(menu).getByRole("menuitem", { name: "Cancel selected link source (2)" }));
   expect(within(leftPane).queryByLabelText("a.txt is a selected link source")).not.toBeInTheDocument();
+});
+
+it("runs compact toolbar links through the link API without consuming the saved page source", async () => {
+  const user = userEvent.setup();
+  vi.mocked(api.linkCreateJob).mockResolvedValue({ id: "toolbar-link-job" });
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  const rightPane = await screen.findByRole("region", { name: "Right pane" });
+
+  await user.click(within(rightPane).getByRole("combobox", { name: "Right pane root" }));
+  await user.click(await screen.findByRole("option", { name: "Target" }));
+  await waitFor(() => expect(api.browse).toHaveBeenCalledWith("target", "."));
+
+  const sourceName = await within(leftPane).findByText("a.txt");
+  fireEvent.contextMenu(sourceName, { clientX: 100, clientY: 100 });
+  const menu = await screen.findByRole("menu", { name: "File actions" });
+  await user.click(within(menu).getByRole("menuitem", { name: "Select link source" }));
+  expect(sourceName.closest("tr")).toHaveAttribute("data-link-source", "true");
+
+  const toolbar = screen.getByRole("navigation", { name: "File actions" });
+  await user.click(within(toolbar).getByRole("button", { name: "hardlink" }));
+  await waitFor(() => expect(api.linkPreview).toHaveBeenLastCalledWith({
+    type: "hardlink",
+    sourceRoot: "source",
+    sources: ["a.txt"],
+    destRoot: "target",
+    destPath: ".",
+  }));
+  expect(api.opsDryRun).not.toHaveBeenCalledWith(expect.objectContaining({ type: "hardlink" }));
+
+  let dialog = await screen.findByRole("dialog", { name: "Hard link preview" });
+  await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  expect(sourceName.closest("tr")).toHaveAttribute("data-link-source", "true");
+  expect(within(leftPane).getByLabelText("Select a.txt")).toBeChecked();
+
+  await user.click(within(toolbar).getByRole("button", { name: "hardlink" }));
+  dialog = await screen.findByRole("dialog", { name: "Hard link preview" });
+  await user.click(await within(dialog).findByRole("button", { name: "Create hard link" }));
+
+  expect(api.linkCreateJob).toHaveBeenCalledWith(expect.objectContaining({
+    type: "hardlink",
+    sourceRoot: "source",
+    sources: ["a.txt"],
+    destRoot: "target",
+    destPath: ".",
+  }));
+  await waitFor(() => expect(within(leftPane).getByLabelText("Select a.txt")).not.toBeChecked());
+  expect(sourceName.closest("tr")).toHaveAttribute("data-link-source", "true");
+  expect(toast.success).toHaveBeenCalledWith("Background job created");
 });
 
 it("replaces a link source and keeps it after the source window closes", async () => {

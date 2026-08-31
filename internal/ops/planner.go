@@ -17,6 +17,14 @@ func (p Planner) Plan(ctx context.Context, req Request) (Plan, error) {
 	if err := ctx.Err(); err != nil {
 		return Plan{}, err
 	}
+	if !supportedOperation(req.Type) {
+		return finalize([]PlanItem{{
+			Operation: req.Type,
+			Conflict:  true,
+			ErrorCode: "invalid_request",
+			ErrorText: "unsupported operation",
+		}}), nil
+	}
 	var items []PlanItem
 	if req.Type == OpMkdir {
 		destPath := filepath.ToSlash(filepath.Join(defaultPath(req.DestPath), req.NewName))
@@ -62,13 +70,7 @@ func (p Planner) Plan(ctx context.Context, req Request) (Plan, error) {
 		}
 		switch req.Type {
 		case OpDelete:
-		case OpMove, OpCopy, OpSymlink, OpHardlink:
-			if req.Type == OpHardlink && info.IsDir() {
-				item.Conflict = true
-				item.ErrorCode = "hardlink_directory"
-				item.ErrorText = "hard links are only supported for files"
-				break
-			}
+		case OpMove, OpCopy:
 			destPath := filepath.ToSlash(filepath.Join(defaultPath(req.DestPath), filepath.Base(src)))
 			item.DestRoot = req.DestRoot
 			item.DestPath = destPath
@@ -94,6 +96,15 @@ func (p Planner) Plan(ctx context.Context, req Request) (Plan, error) {
 		items = append(items, item)
 	}
 	return finalize(items), nil
+}
+
+func supportedOperation(operation OperationType) bool {
+	switch operation {
+	case OpMove, OpCopy, OpDelete, OpMkdir:
+		return true
+	default:
+		return false
+	}
 }
 
 func resolveOperationSource(resolver roots.Resolver, rootID string, rel string) (roots.MappedPath, error) {

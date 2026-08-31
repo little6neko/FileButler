@@ -47,6 +47,19 @@ export function createMediaGallerySnapshot(
   return index < 0 ? null : { rootId, items, index };
 }
 
+export function createSingleMediaSnapshot(
+  rootId: string,
+  targetPath: string,
+  displayName: string,
+  kind: MediaKind,
+): MediaGallerySnapshot {
+  return {
+    rootId,
+    items: [{ name: displayName, relativePath: targetPath, kind }],
+    index: 0,
+  };
+}
+
 export function currentMediaItem(snapshot: MediaGallerySnapshot): MediaGalleryItem | null {
   return snapshot.items[snapshot.index] ?? null;
 }

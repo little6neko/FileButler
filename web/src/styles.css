@@ -1385,6 +1385,13 @@ body {
   gap: 8px;
 }
 
+.file-action-submenu-arrow {
+  width: 14px;
+  height: 14px;
+  margin-left: auto;
+  flex: none;
+}
+
 [data-slot="menu-separator"].file-action-menu-separator {
   height: 1px;
   margin: 4px 2px;

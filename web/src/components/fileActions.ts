@@ -34,6 +34,7 @@ export type FileActionId =
 export type CommandOperation = Exclude<OpsRequest["type"], "mkdir">;
 
 export type FileAction = {
+  kind: "command";
   id: FileActionId;
   label: string;
   icon: LucideIcon;
@@ -42,6 +43,18 @@ export type FileAction = {
   destructive?: boolean;
   run(): void;
 };
+
+export type FileSubmenuAction = {
+  kind: "submenu";
+  id: string;
+  label: string;
+  icon: LucideIcon;
+  disabled: boolean;
+  separatorBefore?: boolean;
+  items: FileAction[];
+};
+
+export type FileContextAction = FileAction | FileSubmenuAction;
 
 export type FileActionCommands = {
   onOperation(type: CommandOperation): void;
@@ -68,21 +81,22 @@ export function createFileActions({
 }): FileAction[] {
   const noSelection = selectedCount === 0;
   return [
-    { id: "copy", label: labels.copyToPane(destination), icon: Copy, disabled: noSelection, run: () => commands.onOperation("copy") },
+    { kind: "command", id: "copy", label: labels.copyToPane(destination), icon: Copy, disabled: noSelection, run: () => commands.onOperation("copy") },
     {
+      kind: "command",
       id: "move",
       label: labels.moveToPane(destination),
       icon: destinationDirection === "left" ? MoveLeft : MoveRight,
       disabled: noSelection,
       run: () => commands.onOperation("move"),
     },
-    { id: "symlink", label: labels.symlink, icon: Link, disabled: noSelection, run: () => commands.onOperation("symlink") },
-    { id: "hardlink", label: labels.hardlink, icon: Link2, disabled: noSelection, run: () => commands.onOperation("hardlink") },
-    { id: "rename", label: labels.rename, icon: Pencil, disabled: selectedCount !== 1, separatorBefore: true, run: commands.onRename },
-    { id: "powerRename", label: labels.powerRename, icon: ScanText, disabled: noSelection, run: commands.onPowerRename },
-    { id: "superRename", label: labels.superRename, icon: WandSparkles, disabled: !locationReady, run: commands.onSuperRename },
-    { id: "mkdir", label: labels.mkdir, icon: FolderPlus, disabled: false, run: commands.onMkdir },
-    { id: "delete", label: labels.delete, icon: Trash2, disabled: noSelection, separatorBefore: true, destructive: true, run: () => commands.onOperation("delete") },
+    { kind: "command", id: "symlink", label: labels.symlink, icon: Link, disabled: noSelection, run: () => commands.onOperation("symlink") },
+    { kind: "command", id: "hardlink", label: labels.hardlink, icon: Link2, disabled: noSelection, run: () => commands.onOperation("hardlink") },
+    { kind: "command", id: "rename", label: labels.rename, icon: Pencil, disabled: selectedCount !== 1, separatorBefore: true, run: commands.onRename },
+    { kind: "command", id: "powerRename", label: labels.powerRename, icon: ScanText, disabled: noSelection, run: commands.onPowerRename },
+    { kind: "command", id: "superRename", label: labels.superRename, icon: WandSparkles, disabled: !locationReady, run: commands.onSuperRename },
+    { kind: "command", id: "mkdir", label: labels.mkdir, icon: FolderPlus, disabled: false, run: commands.onMkdir },
+    { kind: "command", id: "delete", label: labels.delete, icon: Trash2, disabled: noSelection, separatorBefore: true, destructive: true, run: () => commands.onOperation("delete") },
   ];
 }
 
@@ -99,11 +113,12 @@ export function createWindowFileActions({
 }): FileAction[] {
   const noSelection = selectedCount === 0;
   return [
-    { id: "rename", label: labels.rename, icon: Pencil, disabled: !locationReady || selectedCount !== 1, run: commands.onRename },
-    { id: "powerRename", label: labels.powerRename, icon: ScanText, disabled: !locationReady || noSelection, run: commands.onPowerRename },
-    { id: "superRename", label: labels.superRename, icon: WandSparkles, disabled: !locationReady, run: commands.onSuperRename },
-    { id: "mkdir", label: labels.mkdir, icon: FolderPlus, disabled: !locationReady, run: commands.onMkdir },
+    { kind: "command", id: "rename", label: labels.rename, icon: Pencil, disabled: !locationReady || selectedCount !== 1, run: commands.onRename },
+    { kind: "command", id: "powerRename", label: labels.powerRename, icon: ScanText, disabled: !locationReady || noSelection, run: commands.onPowerRename },
+    { kind: "command", id: "superRename", label: labels.superRename, icon: WandSparkles, disabled: !locationReady, run: commands.onSuperRename },
+    { kind: "command", id: "mkdir", label: labels.mkdir, icon: FolderPlus, disabled: !locationReady, run: commands.onMkdir },
     {
+      kind: "command",
       id: "delete",
       label: labels.delete,
       icon: Trash2,
@@ -135,14 +150,15 @@ export function createClipboardActions({
 }): FileAction[] {
   return [
     {
+      kind: "command",
       id: "openInNewWindow",
       label: labels.openInNewWindow,
       icon: ExternalLink,
       disabled: !canOpenInNewWindow,
       run: commands.onOpenInNewWindow,
     },
-    { id: "clipboardCopy", label: labels.clipboardCopy, icon: Copy, disabled: selectedCount === 0, run: commands.onCopy },
-    { id: "clipboardCut", label: labels.cut, icon: Scissors, disabled: selectedCount === 0, run: commands.onCut },
-    { id: "clipboardPaste", label: labels.paste, icon: ClipboardPaste, disabled: !canPaste, run: commands.onPaste },
+    { kind: "command", id: "clipboardCopy", label: labels.clipboardCopy, icon: Copy, disabled: selectedCount === 0, run: commands.onCopy },
+    { kind: "command", id: "clipboardCut", label: labels.cut, icon: Scissors, disabled: selectedCount === 0, run: commands.onCut },
+    { kind: "command", id: "clipboardPaste", label: labels.paste, icon: ClipboardPaste, disabled: !canPaste, run: commands.onPaste },
   ];
 }

@@ -4,7 +4,7 @@ import { HardDrive } from "lucide-react";
 import type { Root } from "../api/types";
 import type { FileDropData, FileDropFeedback } from "../fileDrag";
 import type { UIStrings } from "../i18n";
-import type { FileAction } from "./fileActions";
+import type { FileContextAction } from "./fileActions";
 import { PaneContextMenu } from "./PaneContextMenu";
 
 export function VirtualRootView({
@@ -27,7 +27,7 @@ export function VirtualRootView({
   labels: UIStrings;
   onActivate(): void;
   onOpenRoot(root: Root): void;
-  actionsForRoot(root: Root): FileAction[];
+  actionsForRoot(root: Root): FileContextAction[];
   dropLayer?: number;
 }) {
   return (
@@ -87,7 +87,7 @@ function RootCard({
   dropFeedback: FileDropFeedback | null;
   labels: UIStrings;
   onOpen(): void;
-  actions: FileAction[];
+  actions: FileContextAction[];
   dropLayer: number;
 }) {
   const target: FileDropData = {

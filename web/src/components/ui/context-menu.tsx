@@ -30,6 +30,14 @@ function ContextMenuSeparator({ className, ...props }: ComponentProps<typeof Con
   return <ContextMenuPrimitive.Separator data-slot="menu-separator" className={cn(className)} {...props} />;
 }
 
+function ContextMenuSubmenuRoot(props: ComponentProps<typeof ContextMenuPrimitive.SubmenuRoot>) {
+  return <ContextMenuPrimitive.SubmenuRoot {...props} />;
+}
+
+function ContextMenuSubmenuTrigger({ className, ...props }: ComponentProps<typeof ContextMenuPrimitive.SubmenuTrigger>) {
+  return <ContextMenuPrimitive.SubmenuTrigger data-slot="menu-item" data-submenu-trigger="" className={cn(className)} {...props} />;
+}
+
 export {
   ContextMenuItem,
   ContextMenuPopup,
@@ -37,5 +45,7 @@ export {
   ContextMenuPositioner,
   ContextMenuRoot,
   ContextMenuSeparator,
+  ContextMenuSubmenuRoot,
+  ContextMenuSubmenuTrigger,
   ContextMenuTrigger,
 };

@@ -13,6 +13,8 @@ var (
 	ErrUnknownRoot = errors.New("unknown_root")
 	ErrOutsideRoot = errors.New("outside_root")
 	ErrInvalidPath = errors.New("invalid_path")
+	ErrSymlinkLoop = errors.New("symlink_loop")
+	ErrPathExists  = errors.New("path_exists")
 )
 
 type Root struct {
@@ -29,7 +31,10 @@ type ResolvedPath struct {
 }
 
 type Resolver struct {
-	roots map[string]Root
+	roots    map[string]Root
+	mapped   []mappedRoot
+	lstat    func(string) (os.FileInfo, error)
+	readlink func(string) (string, error)
 }
 
 func NewResolver(input []Root) Resolver {
@@ -43,7 +48,33 @@ func NewResolver(input []Root) Resolver {
 		}
 		items[root.ID] = root
 	}
-	return Resolver{roots: items}
+	mapped := make([]mappedRoot, 0, len(items))
+	for _, root := range items {
+		canonical, err := filepath.EvalSymlinks(root.Path)
+		if err == nil {
+			canonical, err = filepath.Abs(canonical)
+		}
+		if err == nil {
+			canonical = filepath.Clean(canonical)
+		}
+		mapped = append(mapped, mappedRoot{
+			root:      root,
+			canonical: canonical,
+			err:       err,
+		})
+	}
+	sort.Slice(mapped, func(i, j int) bool {
+		if len(mapped[i].canonical) != len(mapped[j].canonical) {
+			return len(mapped[i].canonical) > len(mapped[j].canonical)
+		}
+		return mapped[i].root.ID < mapped[j].root.ID
+	})
+	return Resolver{
+		roots:    items,
+		mapped:   mapped,
+		lstat:    os.Lstat,
+		readlink: os.Readlink,
+	}
 }
 
 func (r Resolver) List() []Root {

@@ -1,5 +1,6 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
+import { Link2 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Entry } from "../api/types";
 import type { FileSelectionModifiers } from "../fileSelection";
@@ -26,6 +27,7 @@ type Props = {
   parentPath: string;
   entry: Entry;
   isCut?: boolean;
+  isLinkSource?: boolean;
   selectionStore: FileSelectionStore;
   dropFeedback: FileDropFeedback | null;
   labels: UIStrings;
@@ -43,6 +45,7 @@ export const FileRow = memo(function FileRow({
   parentPath,
   entry,
   isCut = false,
+  isLinkSource = false,
   selectionStore,
   dropFeedback,
   labels,
@@ -122,6 +125,7 @@ export const FileRow = memo(function FileRow({
       data-file-drag-source="true"
       data-dragging={isDragging ? "true" : "false"}
       data-clipboard-cut={isCut ? "true" : undefined}
+      data-link-source={isLinkSource ? "true" : undefined}
       data-drop-kind={entry.type === "directory" ? "directory" : undefined}
       data-drop-window-id={dropWindowId}
       data-drop-disabled={dropDisabled ? "true" : undefined}
@@ -161,6 +165,11 @@ export const FileRow = memo(function FileRow({
           </span>
           {entry.isSymlink && entry.symlinkTarget ? (
             <small className="truncate text-slate-400">{" -> "}{entry.symlinkTarget}</small>
+          ) : null}
+          {isLinkSource ? (
+            <span className="file-link-source-marker" aria-label={labels.linkSourceEntry(entry.name)} title={labels.linkSourceEntry(entry.name)}>
+              <Link2 aria-hidden="true" />
+            </span>
           ) : null}
         </span>
       </td>

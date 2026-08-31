@@ -24,7 +24,7 @@ import { FileCode2, FileImage, FileVideo, Files, ScanText, WandSparkles } from "
 import { toast } from "sonner";
 import { buildClipboardRequest, createAppClipboard, isEditableShortcutTarget, type AppClipboard } from "../appClipboard";
 import { api } from "../api/client";
-import type { Entry, OpsRequest, RenameOptions, Root } from "../api/types";
+import type { Entry, LinkRequest, LinkType, OpsRequest, RenameOptions, Root } from "../api/types";
 import {
   browserHistoryTarget,
   createBrowserHistory,
@@ -58,6 +58,14 @@ import { strings } from "../i18n";
 import type { LanguageMode, UIStrings } from "../i18n";
 import { JobEventsStore } from "../jobEvents";
 import { useOptionalJobEventsStore } from "../jobEventsContext";
+import {
+  buildLinkSourceRequest,
+  createLinkSource,
+  isLinkSourceEntry,
+  resolveLinkTarget,
+  type LinkSource,
+  type LinkTarget,
+} from "../linkSource";
 import {
   canMoveMedia,
   createMediaGallerySnapshot,
@@ -112,6 +120,7 @@ import { ActionToolbar } from "./ActionToolbar";
 import {
   createClipboardActions,
   createFileActions,
+  createLinkSourceActions,
   createWindowFileActions,
   type FileAction,
   type FileActionCommands,
@@ -121,6 +130,7 @@ import { FileDragOverlay } from "./FileDragOverlay";
 import { FilePane } from "./FilePane";
 import { JobsSheet } from "./JobsSheet";
 import { LanguageSelect } from "./LanguageSelect";
+import { LinkPreview, LinkPreviewContent } from "./LinkPreview";
 import { MediaPreview, MediaPreviewContent } from "./MediaPreview";
 import { MkdirContent, MkdirDialog } from "./MkdirDialog";
 import { OperationPreview, OperationPreviewContent } from "./OperationPreview";
@@ -167,6 +177,12 @@ type PreviewState = {
   request: OpsRequest;
   operationChoices?: readonly DragOperation[];
   clearMoveClipboard?: boolean;
+};
+
+type LinkPreviewState = {
+  request: LinkRequest;
+  sourceCreatedAt: number;
+  consumeLinkSource: boolean;
 };
 
 type PowerRenameInstance = {
@@ -255,6 +271,7 @@ export function FileWorkspace({
   const [rootsLoaded, setRootsLoaded] = useState(false);
   const [rootsError, setRootsError] = useState<string | null>(null);
   const [previewState, setPreviewState] = useState<PreviewState | null>(null);
+  const [linkPreviewState, setLinkPreviewState] = useState<LinkPreviewState | null>(null);
   const [mediaPreview, setMediaPreview] = useState<MediaPreviewState | null>(null);
   const [mkdirSessionId, setMkdirSessionId] = useState<string | null>(null);
   const [singleRenameSessionId, setSingleRenameSessionId] = useState<string | null>(null);
@@ -277,6 +294,8 @@ export function FileWorkspace({
   const [leftPanePercent, setLeftPanePercent] = useState(50);
   const [clipboard, setClipboard] = useState<AppClipboard | null>(null);
   const clipboardRef = useRef(clipboard);
+  const [linkSource, setLinkSourceState] = useState<LinkSource | null>(null);
+  const linkSourceRef = useRef(linkSource);
   const [windowState, setWindowStateValue] = useState<WindowManagerState>(() => createWindowManagerState());
   const windowStateRef = useRef(windowState);
   const [desktopBounds, setDesktopBoundsValue] = useState<DesktopBounds>(initialDesktopBounds);
@@ -719,6 +738,19 @@ export function FileWorkspace({
           }}
         />
       ) : null}
+      {linkPreviewState ? (
+        <LinkPreview
+          request={linkPreviewState.request}
+          labels={labels}
+          onClose={() => setLinkPreviewState(null)}
+          onJobCreated={(id) => {
+            const completed = linkPreviewState;
+            setLinkPreviewState(null);
+            if (completed.consumeLinkSource) consumeLinkSource(completed.sourceCreatedAt);
+            handleJobCreated(id);
+          }}
+        />
+      ) : null}
       {mediaPreview && compactMediaItem ? (
         <MediaPreview
           name={compactMediaItem.name}
@@ -1145,6 +1177,26 @@ export function FileWorkspace({
       );
     }
 
+    if (dialog.kind === "link") {
+      const descriptionId = `window-dialog-description-${dialog.dialogId}`;
+      return (
+        <WindowDialogLayer labelledBy={titleId} describedBy={descriptionId} size="operation" onClose={close}>
+          <LinkPreviewContent
+            request={dialog.request}
+            titleId={titleId}
+            descriptionId={descriptionId}
+            labels={labels}
+            onClose={close}
+            onSubmit={(request) => submitWindowDialogJob(
+              dialog,
+              () => api.linkCreateJob(request),
+              labels.jobCreationFailed,
+            )}
+          />
+        </WindowDialogLayer>
+      );
+    }
+
     const descriptionId = `window-dialog-description-${dialog.dialogId}`;
     return (
       <WindowDialogLayer labelledBy={titleId} describedBy={descriptionId} size="operation" onClose={close}>
@@ -1256,6 +1308,7 @@ export function FileWorkspace({
         && clipboard.sourceParentPath === location.path
         ? new Set(clipboard.paths)
         : undefined,
+      isLinkSource: (entry: Entry) => isLinkSourceEntry(linkSource, location.rootId, entry.relativePath),
       initialViewState: session.viewState,
       onViewStateChange: (viewState: FilePaneViewState) => updateSession(sessionId, (current) => ({ ...current, viewState })),
       selectionStore: session.selectionStore,
@@ -1309,7 +1362,7 @@ export function FileWorkspace({
   function contextActions(sessionId: string, selectedCount: number, compactPane?: CompactPane, windowId?: string) {
     const session = sessionsRef.current[sessionId];
     const locationReady = session?.location.kind === "directory" && Boolean(session.location.rootId);
-    const base = compactPane
+    const baseActions = compactPane
       ? compactToolbarActions(compactPane, selectedCount)
       : windowId
         ? windowToolbarActions(windowId, sessionId, selectedCount, locationReady)
@@ -1317,8 +1370,14 @@ export function FileWorkspace({
     const targetPath = contextTargetsRef.current[sessionId] ?? null;
     const targetEntry = session?.entries.find((entry) => entry.relativePath === targetPath);
     const pasteTarget = resolveContextPasteTarget(session, targetEntry);
-    if (compactPane) return base;
-
+    const linkTarget = session?.location.kind === "directory"
+      ? resolveLinkTarget({
+        kind: "directory",
+        rootId: session.location.rootId,
+        path: session.location.path,
+        entry: targetEntry,
+      })
+      : null;
     const clipboardActions = createClipboardActions({
       selectedCount,
       canPaste: Boolean(clipboardRef.current && pasteTarget),
@@ -1335,14 +1394,40 @@ export function FileWorkspace({
         },
       },
     });
+    const linkActions = createLinkSourceActions({
+      selectedCount,
+      sourceCount: linkSourceRef.current?.paths.length ?? 0,
+      canSelectSource: true,
+      canCreate: Boolean(linkTarget),
+      labels,
+      commands: {
+        onSelectSource: () => selectSessionLinkSource(sessionId),
+        onCancelSource: clearLinkSource,
+        onCreate: (type) => { if (linkTarget) openLinkCreation(type, linkTarget, windowId); },
+      },
+    });
+    if (compactPane) {
+      const transferActions = baseActions.filter((action) => action.id === "copy" || action.id === "move");
+      const ordinaryActions = baseActions.filter((action) => !["copy", "move", "hardlink", "symlink"].includes(action.id));
+      const compactClipboardActions = clipboardActions
+        .filter((action) => action.id !== "openInNewWindow")
+        .map((action, index) => index === 0 ? { ...action, separatorBefore: true } : action);
+      return [
+        ...transferActions,
+        ...compactClipboardActions,
+        ...linkActions,
+        ...ordinaryActions,
+      ];
+    }
     return [
       ...clipboardActions,
-      ...base.map((action, index) => index === 0 ? { ...action, separatorBefore: true } : action),
+      ...linkActions,
+      ...baseActions.map((action, index) => index === 0 ? { ...action, separatorBefore: true } : action),
     ];
   }
 
   function rootContextActions(windowId: string, root: Root) {
-    return createClipboardActions({
+    const clipboardActions = createClipboardActions({
       selectedCount: 0,
       canPaste: Boolean(clipboardRef.current),
       canOpenInNewWindow: false,
@@ -1354,6 +1439,76 @@ export function FileWorkspace({
         onOpenInNewWindow: () => undefined,
       },
     }).filter((action) => action.id === "clipboardPaste");
+    const target = resolveLinkTarget({ kind: "virtual-root", rootId: root.id });
+    const linkActions = createLinkSourceActions({
+      selectedCount: 0,
+      sourceCount: linkSourceRef.current?.paths.length ?? 0,
+      canSelectSource: false,
+      canCreate: Boolean(target),
+      labels,
+      commands: {
+        onSelectSource: () => undefined,
+        onCancelSource: clearLinkSource,
+        onCreate: (type) => { if (target) openLinkCreation(type, target, windowId); },
+      },
+    });
+    return [...clipboardActions, ...linkActions];
+  }
+
+  function setLinkSource(next: LinkSource | null) {
+    linkSourceRef.current = next;
+    setLinkSourceState(next);
+  }
+
+  function selectSessionLinkSource(sessionId: string) {
+    const session = sessionsRef.current[sessionId];
+    if (!session || session.location.kind !== "directory" || !session.location.rootId) return false;
+    const entries = selectedEntries(session);
+    const next = createLinkSource(
+      session.location.rootId,
+      session.location.path,
+      entries,
+      Math.max(Date.now(), (linkSourceRef.current?.createdAt ?? 0) + 1),
+    );
+    if (!next) {
+      toast.error(labels.linkSourceRequired);
+      return false;
+    }
+    setLinkSource(next);
+    toast.success(labels.linkSourceSelected(next.paths.length));
+    return true;
+  }
+
+  function clearLinkSource() {
+    setLinkSource(null);
+  }
+
+  function consumeLinkSource(sourceCreatedAt: number) {
+    if (linkSourceRef.current?.createdAt === sourceCreatedAt) clearLinkSource();
+  }
+
+  function openLinkCreation(type: LinkType, target: LinkTarget, windowId?: string) {
+    const source = linkSourceRef.current;
+    if (!source) {
+      toast.error(labels.linkSourceRequired);
+      return false;
+    }
+    const preview = {
+      request: buildLinkSourceRequest(source, target, type),
+      sourceCreatedAt: source.createdAt,
+      consumeLinkSource: true,
+    };
+    if (mode === "desktop" && windowId) {
+      openDialogForWindow({
+        dialogId: nextDialogId(),
+        windowId,
+        kind: "link",
+        ...preview,
+      });
+    } else {
+      setLinkPreviewState(preview);
+    }
+    return true;
   }
 
   function actionCommands(
@@ -1439,6 +1594,9 @@ export function FileWorkspace({
       if (dialog.kind === "operation" && dialog.clearMoveClipboard) {
         clipboardRef.current = null;
         setClipboard(null);
+      }
+      if (dialog.kind === "link" && dialog.consumeLinkSource) {
+        consumeLinkSource(dialog.sourceCreatedAt);
       }
       handleJobCreated(job.id);
     } catch (error) {
@@ -1930,6 +2088,7 @@ export function FileWorkspace({
   function dismissTransientUIForModeChange() {
     setJobsOpen(false);
     setPreviewState(null);
+    setLinkPreviewState(null);
     setMediaPreview(null);
     setMkdirSessionId(null);
     setSingleRenameSessionId(null);

@@ -1,5 +1,6 @@
 import {
   ClipboardPaste,
+  Combine,
   Copy,
   ExternalLink,
   FolderPlus,
@@ -11,6 +12,7 @@ import {
   ScanText,
   Scissors,
   Trash2,
+  Unlink,
   WandSparkles,
   type LucideIcon,
 } from "lucide-react";
@@ -25,6 +27,8 @@ export type FileActionId =
   | "move"
   | "symlink"
   | "hardlink"
+  | "selectLinkSource"
+  | "cancelLinkSource"
   | "mkdir"
   | "rename"
   | "powerRename"
@@ -55,6 +59,12 @@ export type FileSubmenuAction = {
 };
 
 export type FileContextAction = FileAction | FileSubmenuAction;
+
+export type LinkSourceActionCommands = {
+  onSelectSource(): void;
+  onCancelSource(): void;
+  onCreate(type: "hardlink" | "symlink"): void;
+};
 
 export type FileActionCommands = {
   onOperation(type: CommandOperation): void;
@@ -161,4 +171,69 @@ export function createClipboardActions({
     { kind: "command", id: "clipboardCut", label: labels.cut, icon: Scissors, disabled: selectedCount === 0, run: commands.onCut },
     { kind: "command", id: "clipboardPaste", label: labels.paste, icon: ClipboardPaste, disabled: !canPaste, run: commands.onPaste },
   ];
+}
+
+export function createLinkSourceActions({
+  selectedCount,
+  sourceCount,
+  canSelectSource,
+  canCreate,
+  labels,
+  commands,
+}: {
+  selectedCount: number;
+  sourceCount: number;
+  canSelectSource: boolean;
+  canCreate: boolean;
+  labels: UIStrings;
+  commands: LinkSourceActionCommands;
+}): FileContextAction[] {
+  const actions: FileContextAction[] = [];
+  if (canSelectSource) {
+    actions.push({
+      kind: "command",
+      id: "selectLinkSource",
+      label: labels.selectLinkSource,
+      icon: Link,
+      disabled: selectedCount === 0,
+      separatorBefore: true,
+      run: commands.onSelectSource,
+    });
+  }
+  if (sourceCount === 0) return actions;
+  actions.push({
+    kind: "command",
+    id: "cancelLinkSource",
+    label: labels.cancelLinkSource(sourceCount),
+    icon: Unlink,
+    disabled: false,
+    separatorBefore: actions.length === 0,
+    run: commands.onCancelSource,
+  });
+  actions.push({
+    kind: "submenu",
+    id: "createLinkAs",
+    label: labels.createLinkAs,
+    icon: Combine,
+    disabled: !canCreate,
+    items: [
+      {
+        kind: "command",
+        id: "hardlink",
+        label: labels.hardlink,
+        icon: Link2,
+        disabled: !canCreate,
+        run: () => commands.onCreate("hardlink"),
+      },
+      {
+        kind: "command",
+        id: "symlink",
+        label: labels.symlink,
+        icon: Link,
+        disabled: !canCreate,
+        run: () => commands.onCreate("symlink"),
+      },
+    ],
+  });
+  return actions;
 }

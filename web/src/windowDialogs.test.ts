@@ -31,13 +31,28 @@ describe("window dialog state", () => {
       kind: "operation",
       request: { type: "delete", sourceRoot: "root-c", sources: ["gone.txt"] },
     });
+    const link = dialog({
+      dialogId: "dialog-4",
+      windowId: "window-4",
+      kind: "link",
+      request: {
+        type: "hardlink",
+        sourceRoot: "root-a",
+        sources: ["photo.jpg"],
+        destRoot: "root-b",
+        destPath: "archive",
+      },
+      sourceCreatedAt: 42,
+      consumeLinkSource: true,
+    });
 
-    const state = [mkdir, rename, operation].reduce(openWindowDialog, {});
+    const state = [mkdir, rename, operation, link].reduce(openWindowDialog, {});
 
     expect(state).toEqual({
       "window-1": mkdir,
       "window-2": rename,
       "window-3": operation,
+      "window-4": link,
     });
   });
 

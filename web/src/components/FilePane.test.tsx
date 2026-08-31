@@ -98,6 +98,21 @@ it("exposes row selection state without changing checkbox behavior", async () =>
   expect(onSelectEntry).not.toHaveBeenCalled();
 });
 
+it("marks a link source without changing its checkbox or cut state", () => {
+  const { container } = renderPane({
+    selectedPaths: new Set<string>(),
+    cutPaths: new Set<string>(),
+    isLinkSource: (item) => item.relativePath === "file.txt",
+  });
+  const row = screen.getByText("file.txt").closest("tr");
+
+  expect(row).toHaveAttribute("data-link-source", "true");
+  expect(row).not.toHaveAttribute("data-clipboard-cut");
+  expect(screen.getByLabelText("Select file.txt")).not.toBeChecked();
+  expect(screen.getByLabelText("file.txt is a selected link source")).toBeInTheDocument();
+  expect(container.querySelector(".file-link-source-marker")).toHaveClass("file-link-source-marker");
+});
+
 it("updates only subscribed row and summary consumers from an external selection store", () => {
   const entries = [entry("a.txt", "file", 10), entry("b.txt", "file", 20)];
   const selectionStore = createFileSelectionStore(entries);

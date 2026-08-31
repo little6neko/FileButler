@@ -66,6 +66,7 @@ export type UIStrings = {
   createLinkAs: string;
   linkSourceSelected(count: number): string;
   linkSourceRequired: string;
+  linkSourceEntry(name: string): string;
   delete: string;
   mkdir: string;
   rename: string;
@@ -311,6 +312,7 @@ export const strings: Record<Language, UIStrings> = {
     createLinkAs: "Create as…",
     linkSourceSelected: (count) => `Selected ${count} ${count === 1 ? "link source" : "link sources"}`,
     linkSourceRequired: "Select one or more link sources first",
+    linkSourceEntry: (name) => `${name} is a selected link source`,
     delete: "delete",
     mkdir: "mkdir",
     rename: "Rename",
@@ -601,6 +603,7 @@ export const strings: Record<Language, UIStrings> = {
     createLinkAs: "创建为…",
     linkSourceSelected: (count) => `已选择 ${count} 个连接源`,
     linkSourceRequired: "请先选择一个或多个连接源",
+    linkSourceEntry: (name) => `${name} 是已选连接源`,
     delete: "删除",
     mkdir: "新建文件夹",
     rename: "重命名",

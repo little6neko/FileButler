@@ -1,4 +1,4 @@
-import type { Entry, OpsRequest } from "./api/types";
+import type { Entry, LinkRequest, OpsRequest } from "./api/types";
 import type { DragOperation } from "./fileDrag";
 
 type WindowDialogBase = {
@@ -27,10 +27,18 @@ export type OperationWindowDialog = WindowDialogBase & {
   clearMoveClipboard?: boolean;
 };
 
+export type LinkWindowDialog = WindowDialogBase & {
+  kind: "link";
+  request: LinkRequest;
+  sourceCreatedAt: number;
+  consumeLinkSource: boolean;
+};
+
 export type WindowDialogState =
   | MkdirWindowDialog
   | SingleRenameWindowDialog
-  | OperationWindowDialog;
+  | OperationWindowDialog
+  | LinkWindowDialog;
 
 export type WindowDialogs = Partial<Record<string, WindowDialogState>>;
 

@@ -1473,6 +1473,19 @@ body {
   gap: 6px;
 }
 
+.file-link-source-marker {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  color: #2563eb;
+}
+
+.file-link-source-marker svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.25;
+}
+
 .file-drag-handle {
   width: fit-content;
   min-width: 0;

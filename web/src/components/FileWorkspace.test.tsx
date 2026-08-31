@@ -3,13 +3,17 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import { api } from "../api/client";
-import type { Entry, SuperRenameInventory } from "../api/types";
+import type { Entry, LinkRequest, SuperRenameInventory } from "../api/types";
 import { FileWorkspace } from "./FileWorkspace";
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-vi.mock("../api/client", () => ({
-  api: {
+vi.mock("../api/client", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/client")>();
+  return {
+    ...actual,
+    api: {
+      ...actual.api,
     roots: vi.fn(),
     browse: vi.fn(),
     mediaUrl: vi.fn(),
@@ -23,9 +27,12 @@ vi.mock("../api/client", () => ({
     superRenamePreview: vi.fn(),
     superRenameGroupPreview: vi.fn(),
     superRenameCreateJob: vi.fn(),
+    linkPreview: vi.fn(),
+    linkCreateJob: vi.fn(),
     cancelJob: vi.fn(),
-  },
-}));
+    },
+  };
+});
 
 const sourceEntries: Entry[] = [
   { name: "folder", relativePath: "folder", type: "directory", size: 0, mode: "", modifiedUnix: 0, isSymlink: false },
@@ -67,6 +74,27 @@ function workspaceSuperRenameInventory(
   };
 }
 
+function linkPlan(request: LinkRequest) {
+  return {
+    type: request.type,
+    sourceRoot: request.sourceRoot,
+    destRoot: request.destRoot,
+    destPath: request.destPath,
+    previewRevision: `sha256:${"a".repeat(64)}`,
+    progressTotal: request.sources.length,
+    hasConflict: false,
+    items: request.sources.map((sourcePath) => ({
+      sourcePath,
+      destPath: `${request.destPath === "." ? "" : `${request.destPath}/`}${sourcePath.split("/").at(-1)}`,
+      sourceKind: "file" as const,
+      counts: request.type === "hardlink"
+        ? { directories: 0, files: 1, symlinks: 0 }
+        : { directories: 0, files: 0, symlinks: 1 },
+      conflict: false,
+    })),
+  };
+}
+
 beforeEach(() => {
   vi.mocked(toast.success).mockClear();
   vi.mocked(toast.error).mockClear();
@@ -99,6 +127,9 @@ beforeEach(() => {
     groups: [],
   }));
   vi.mocked(api.superRenameCreateJob).mockReset();
+  vi.mocked(api.linkPreview).mockReset();
+  vi.mocked(api.linkPreview).mockImplementation(async (request) => linkPlan(request));
+  vi.mocked(api.linkCreateJob).mockReset();
   vi.mocked(api.cancelJob).mockReset();
 });
 
@@ -1320,8 +1351,199 @@ it("orders full-mode toolbar and context-menu actions", async () => {
   const menu = await screen.findByRole("menu", { name: "File actions" });
   expect(within(menu).getAllByRole("menuitem").map((item) => item.dataset.actionId)).toEqual([
     "openInNewWindow", "clipboardCopy", "clipboardCut", "clipboardPaste",
+    "selectLinkSource",
     "rename", "powerRename", "superRename", "mkdir", "delete",
   ]);
+});
+
+it("uses the compact context workflow without duplicating direct link commands", async () => {
+  const user = userEvent.setup();
+  render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  const rightPane = await screen.findByRole("region", { name: "Right pane" });
+  await user.click(await within(leftPane).findByLabelText("Select a.txt"));
+  await user.click(within(leftPane).getByLabelText("Select folder"));
+
+  fireEvent.contextMenu(within(leftPane).getByText("a.txt"), { clientX: 100, clientY: 100 });
+  let menu = await screen.findByRole("menu", { name: "File actions" });
+  await user.click(within(menu).getByRole("menuitem", { name: "Select link source" }));
+
+  expect(toast.success).toHaveBeenCalledWith("Selected 2 link sources");
+  expect(within(leftPane).getByLabelText("a.txt is a selected link source")).toBeInTheDocument();
+  expect(within(leftPane).getByLabelText("folder is a selected link source")).toBeInTheDocument();
+  expect(within(rightPane).getByLabelText("a.txt is a selected link source")).toBeInTheDocument();
+  expect(within(leftPane).getByLabelText("Select a.txt")).toBeChecked();
+
+  fireEvent.contextMenu(rightPane.querySelector(".file-list")!, { clientX: 200, clientY: 180 });
+  menu = await screen.findByRole("menu", { name: "File actions" });
+  const parentIds = within(menu).getAllByRole("menuitem").map((item) => item.dataset.actionId);
+  expect(parentIds).toEqual([
+    "copy", "move",
+    "clipboardCopy", "clipboardCut", "clipboardPaste",
+    "selectLinkSource", "cancelLinkSource", "createLinkAs",
+    "rename", "powerRename", "superRename", "mkdir", "delete",
+  ]);
+  expect(parentIds).not.toContain("hardlink");
+  expect(parentIds).not.toContain("symlink");
+  await user.hover(within(menu).getByRole("menuitem", { name: "Create as…" }));
+  const submenu = await screen.findByRole("menu", { name: "Create as…" });
+  fireEvent.click(within(submenu).getByRole("menuitem", { name: "hardlink" }));
+
+  await waitFor(() => expect(api.linkPreview).toHaveBeenCalledWith({
+    type: "hardlink",
+    sourceRoot: "source",
+    sources: ["folder", "a.txt"],
+    destRoot: "source",
+    destPath: ".",
+  }));
+  expect(await screen.findByRole("dialog", { name: "Hard link preview" })).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  expect(within(leftPane).getByLabelText("a.txt is a selected link source")).toBeInTheDocument();
+
+  fireEvent.contextMenu(rightPane.querySelector(".file-list")!, { clientX: 200, clientY: 180 });
+  menu = await screen.findByRole("menu", { name: "File actions" });
+  await user.click(within(menu).getByRole("menuitem", { name: "Cancel selected link source (2)" }));
+  expect(within(leftPane).queryByLabelText("a.txt is a selected link source")).not.toBeInTheDocument();
+});
+
+it("replaces a link source and keeps it after the source window closes", async () => {
+  const user = userEvent.setup();
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const icon = await screen.findByRole("button", { name: "Open File Manager" });
+  await user.click(icon);
+  let fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
+  await user.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
+
+  fireEvent.contextMenu(await within(fileWindow).findByText("a.txt"), { clientX: 100, clientY: 100 });
+  let menu = await screen.findByRole("menu", { name: "File actions" });
+  await user.click(within(menu).getByRole("menuitem", { name: "Select link source" }));
+  expect(within(fileWindow).getByLabelText("a.txt is a selected link source")).toBeInTheDocument();
+
+  fireEvent.contextMenu(within(fileWindow).getByText("folder"), { clientX: 100, clientY: 100 });
+  menu = await screen.findByRole("menu", { name: "File actions" });
+  await user.click(within(menu).getByRole("menuitem", { name: "Select link source" }));
+  expect(within(fileWindow).queryByLabelText("a.txt is a selected link source")).not.toBeInTheDocument();
+  expect(within(fileWindow).getByLabelText("folder is a selected link source")).toBeInTheDocument();
+
+  await user.click(within(fileWindow).getByRole("button", { name: "Close window" }));
+  await user.click(icon);
+  fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
+  await user.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
+  expect(await within(fileWindow).findByLabelText("folder is a selected link source")).toBeInTheDocument();
+});
+
+it("opens a cross-root link preview inside the target window and consumes its source after job creation", async () => {
+  const user = userEvent.setup();
+  vi.mocked(api.linkCreateJob).mockResolvedValue({ id: "link-job" });
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  const icon = await screen.findByRole("button", { name: "Open File Manager" });
+  await user.click(icon);
+  const sourceWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
+  await user.dblClick(within(sourceWindow).getByRole("button", { name: /Source/ }));
+  const sourceName = await within(sourceWindow).findByText("a.txt");
+  fireEvent.contextMenu(sourceName, { clientX: 100, clientY: 100 });
+  let menu = await screen.findByRole("menu", { name: "File actions" });
+  await user.click(within(menu).getByRole("menuitem", { name: "Select link source" }));
+  expect(sourceName.closest("tr")).toHaveAttribute("data-link-source", "true");
+
+  await user.click(icon);
+  const windows = container.querySelectorAll<HTMLElement>(".desktop-window[data-window-kind='file']");
+  const targetWindow = windows[windows.length - 1];
+  fireEvent.contextMenu(within(targetWindow).getByRole("button", { name: /Target/ }), { clientX: 200, clientY: 180 });
+  menu = await screen.findByRole("menu", { name: "File actions" });
+  expect(within(menu).queryByRole("menuitem", { name: "Select link source" })).not.toBeInTheDocument();
+  expect(within(menu).getByRole("menuitem", { name: "Cancel selected link source (1)" })).toBeInTheDocument();
+  await user.hover(within(menu).getByRole("menuitem", { name: "Create as…" }));
+  const submenu = await screen.findByRole("menu", { name: "Create as…" });
+  fireEvent.click(within(submenu).getByRole("menuitem", { name: "symlink" }));
+
+  await waitFor(() => expect(api.linkPreview).toHaveBeenCalledWith({
+    type: "symlink",
+    sourceRoot: "source",
+    sources: ["a.txt"],
+    destRoot: "target",
+    destPath: ".",
+  }));
+  const dialog = await within(targetWindow).findByRole("dialog", { name: "Symbolic link preview" });
+  expect(within(sourceWindow).queryByRole("dialog")).not.toBeInTheDocument();
+  expect(container.querySelector("[data-slot='dialog-content']")).toBeNull();
+  await user.click(await within(dialog).findByRole("button", { name: "Create symbolic link" }));
+
+  expect(api.linkCreateJob).toHaveBeenCalledWith({
+    type: "symlink",
+    sourceRoot: "source",
+    sources: ["a.txt"],
+    destRoot: "target",
+    destPath: ".",
+    previewRevision: `sha256:${"a".repeat(64)}`,
+  });
+  await waitFor(() => expect(sourceName.closest("tr")).not.toHaveAttribute("data-link-source"));
+  expect(within(targetWindow).queryByRole("dialog")).not.toBeInTheDocument();
+  expect(toast.success).toHaveBeenCalledWith("Background job created");
+});
+
+it("targets a real folder itself but uses the current directory for files and blank space", async () => {
+  const user = userEvent.setup();
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  await user.click(await screen.findByRole("button", { name: "Open File Manager" }));
+  const fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
+  await user.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
+  const file = await within(fileWindow).findByText("a.txt");
+  fireEvent.contextMenu(file, { clientX: 100, clientY: 100 });
+  let menu = await screen.findByRole("menu", { name: "File actions" });
+  await user.click(within(menu).getByRole("menuitem", { name: "Select link source" }));
+
+  const targets: Array<{ element: Element; expected: string }> = [
+    { element: within(fileWindow).getByText("folder"), expected: "folder" },
+    { element: file, expected: "." },
+    { element: fileWindow.querySelector(".file-list")!, expected: "." },
+  ];
+  for (const target of targets) {
+    vi.mocked(api.linkPreview).mockClear();
+    fireEvent.contextMenu(target.element, { clientX: 160, clientY: 120 });
+    menu = await screen.findByRole("menu", { name: "File actions" });
+    await user.hover(within(menu).getByRole("menuitem", { name: "Create as…" }));
+    const submenu = await screen.findByRole("menu", { name: "Create as…" });
+    fireEvent.click(within(submenu).getByRole("menuitem", { name: "hardlink" }));
+    await waitFor(() => expect(api.linkPreview).toHaveBeenCalledWith(expect.objectContaining({
+      sourceRoot: "source",
+      sources: ["a.txt"],
+      destRoot: "source",
+      destPath: target.expected,
+    })));
+    await user.click(within(fileWindow).getByRole("button", { name: "Cancel" }));
+  }
+});
+
+it("keeps a link source after preview or job failure and across mode changes", async () => {
+  const user = userEvent.setup();
+  vi.mocked(api.linkCreateJob).mockRejectedValue(new Error("link unavailable"));
+  const { container } = render(<FileWorkspace initialMode="compact" persistMode={false} />);
+  const leftPane = await screen.findByRole("region", { name: "Left pane" });
+  const rightPane = await screen.findByRole("region", { name: "Right pane" });
+  const sourceName = await within(leftPane).findByText("a.txt");
+  fireEvent.contextMenu(sourceName, { clientX: 100, clientY: 100 });
+  let menu = await screen.findByRole("menu", { name: "File actions" });
+  await user.click(within(menu).getByRole("menuitem", { name: "Select link source" }));
+
+  fireEvent.contextMenu(rightPane.querySelector(".file-list")!, { clientX: 200, clientY: 180 });
+  menu = await screen.findByRole("menu", { name: "File actions" });
+  await user.hover(within(menu).getByRole("menuitem", { name: "Create as…" }));
+  fireEvent.click(within(await screen.findByRole("menu", { name: "Create as…" }))
+    .getByRole("menuitem", { name: "hardlink" }));
+  const create = await screen.findByRole("button", { name: "Create hard link" });
+  await waitFor(() => expect(create).toBeEnabled());
+  await user.click(create);
+
+  expect(await screen.findByRole("alert")).toHaveTextContent("link unavailable");
+  expect(sourceName.closest("tr")).toHaveAttribute("data-link-source", "true");
+  await user.click(screen.getByRole("button", { name: "Cancel" }));
+  await user.click(screen.getByRole("button", { name: "Switch to full mode" }));
+  const desktopSource = await screen.findAllByLabelText("a.txt is a selected link source");
+  expect(desktopSource.length).toBeGreaterThan(0);
+  await user.click(screen.getByRole("button", { name: "Switch to compact mode" }));
+  expect(await screen.findAllByLabelText("a.txt is a selected link source")).not.toHaveLength(0);
+  expect(container.querySelector("[data-slot='dialog-content']")).toBeNull();
 });
 
 it("reports empty keyboard clipboard commands without invoking native page clipboard behavior", async () => {

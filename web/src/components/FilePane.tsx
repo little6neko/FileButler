@@ -46,6 +46,7 @@ type FilePaneProps = {
   currentPath: string;
   entries: Entry[];
   cutPaths?: ReadonlySet<string>;
+  isLinkSource?(entry: Entry): boolean;
   initialViewState?: FilePaneViewState;
   onViewStateChange?(state: FilePaneViewState): void;
   showRootSelector?: boolean;
@@ -95,6 +96,7 @@ export function FilePane({
   currentPath,
   entries,
   cutPaths,
+  isLinkSource = () => false,
   initialViewState,
   onViewStateChange,
   showRootSelector = true,
@@ -545,6 +547,7 @@ export function FilePane({
                 parentPath={currentPath}
                 entry={entry}
                 isCut={cutPaths?.has(entry.relativePath)}
+                isLinkSource={isLinkSource(entry)}
                 selectionStore={selection}
                 dropFeedback={dropFeedback}
                 labels={labels}

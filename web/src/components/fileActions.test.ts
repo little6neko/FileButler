@@ -1,7 +1,7 @@
 import { MoveLeft, MoveRight } from "lucide-react";
 import { expect, it, vi } from "vitest";
 import { strings } from "../i18n";
-import { createClipboardActions, createFileActions, createWindowFileActions } from "./fileActions";
+import { createClipboardActions, createFileActions, createLinkSourceActions, createWindowFileActions } from "./fileActions";
 
 it("creates every toolbar action in display order", () => {
   const actions = createFileActions({
@@ -89,6 +89,63 @@ it("dispatches commands from the shared descriptors", () => {
   actions.find((action) => action.id === "rename")?.run();
   expect(handlers.onOperation).toHaveBeenCalledWith("copy");
   expect(handlers.onRename).toHaveBeenCalledOnce();
+});
+
+it("builds the conditional link source command group", () => {
+  const handlers = {
+    onSelectSource: vi.fn(),
+    onCancelSource: vi.fn(),
+    onCreate: vi.fn(),
+  };
+  const empty = createLinkSourceActions({
+    selectedCount: 0,
+    sourceCount: 0,
+    canSelectSource: true,
+    canCreate: true,
+    labels: strings.en,
+    commands: handlers,
+  });
+  expect(empty.map((action) => action.id)).toEqual(["selectLinkSource"]);
+  expect(empty[0].disabled).toBe(true);
+
+  const selected = createLinkSourceActions({
+    selectedCount: 2,
+    sourceCount: 3,
+    canSelectSource: true,
+    canCreate: true,
+    labels: strings.en,
+    commands: handlers,
+  });
+  expect(selected.map((action) => action.id)).toEqual([
+    "selectLinkSource", "cancelLinkSource", "createLinkAs",
+  ]);
+  expect(selected[1].label).toBe("Cancel selected link source (3)");
+  const submenu = selected[2];
+  expect(submenu.kind).toBe("submenu");
+  if (submenu.kind !== "submenu") throw new Error("missing link submenu");
+  expect(submenu.items.map((action) => action.id)).toEqual(["hardlink", "symlink"]);
+  submenu.items[0].run();
+  expect(handlers.onCreate).toHaveBeenCalledWith("hardlink");
+});
+
+it("omits source selection on root cards while retaining active source actions", () => {
+  const commands = { onSelectSource: vi.fn(), onCancelSource: vi.fn(), onCreate: vi.fn() };
+  expect(createLinkSourceActions({
+    selectedCount: 0,
+    sourceCount: 0,
+    canSelectSource: false,
+    canCreate: true,
+    labels: strings.en,
+    commands,
+  })).toEqual([]);
+  expect(createLinkSourceActions({
+    selectedCount: 0,
+    sourceCount: 1,
+    canSelectSource: false,
+    canCreate: true,
+    labels: strings.en,
+    commands,
+  }).map((action) => action.id)).toEqual(["cancelLinkSource", "createLinkAs"]);
 });
 
 function commands() {

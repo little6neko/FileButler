@@ -24,10 +24,9 @@ type Root struct {
 }
 
 type ResolvedPath struct {
-	Root         Root
-	Rel          string
-	Abs          string
-	CanonicalAbs string
+	Root Root
+	Rel  string
+	Abs  string
 }
 
 type Resolver struct {
@@ -100,50 +99,6 @@ func (r Resolver) Resolve(rootID string, rel string) (ResolvedPath, error) {
 		return ResolvedPath{}, fmt.Errorf("%w: %s", ErrOutsideRoot, rel)
 	}
 	return ResolvedPath{Root: root, Rel: cleanRel, Abs: abs}, nil
-}
-
-func (r Resolver) ResolveForWrite(rootID string, rel string) (ResolvedPath, error) {
-	resolved, err := r.Resolve(rootID, rel)
-	if err != nil {
-		return ResolvedPath{}, err
-	}
-	rootEval, err := filepath.EvalSymlinks(resolved.Root.Path)
-	if err != nil {
-		return ResolvedPath{}, err
-	}
-	checkPath := resolved.Abs
-	var suffix string
-	for {
-		eval, err := filepath.EvalSymlinks(checkPath)
-		if err == nil {
-			if !inside(rootEval, eval) {
-				return ResolvedPath{}, fmt.Errorf("%w: %s", ErrOutsideRoot, rel)
-			}
-			canonical := eval
-			if suffix != "" {
-				canonical = filepath.Clean(filepath.Join(eval, suffix))
-				if !inside(rootEval, canonical) {
-					return ResolvedPath{}, fmt.Errorf("%w: %s", ErrOutsideRoot, rel)
-				}
-			}
-			resolved.CanonicalAbs = canonical
-			return resolved, nil
-		}
-		if !os.IsNotExist(err) {
-			return ResolvedPath{}, err
-		}
-		parent := filepath.Dir(checkPath)
-		if parent == checkPath || !inside(resolved.Root.Path, parent) {
-			return ResolvedPath{}, fmt.Errorf("%w: %s", ErrOutsideRoot, rel)
-		}
-		name := filepath.Base(checkPath)
-		if suffix == "" {
-			suffix = name
-		} else {
-			suffix = filepath.Join(name, suffix)
-		}
-		checkPath = parent
-	}
 }
 
 func cleanRelative(rel string) (string, error) {

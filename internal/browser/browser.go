@@ -14,14 +14,30 @@ import (
 var ErrNotDirectory = errors.New("not_directory")
 
 type Entry struct {
-	Name          string `json:"name"`
-	RelativePath  string `json:"relativePath"`
-	Type          string `json:"type"`
-	Size          int64  `json:"size"`
-	Mode          string `json:"mode"`
-	ModifiedUnix  int64  `json:"modifiedUnix"`
-	IsSymlink     bool   `json:"isSymlink"`
-	SymlinkTarget string `json:"symlinkTarget,omitempty"`
+	Name              string             `json:"name"`
+	RelativePath      string             `json:"relativePath"`
+	Type              string             `json:"type"`
+	Size              int64              `json:"size"`
+	Mode              string             `json:"mode"`
+	ModifiedUnix      int64              `json:"modifiedUnix"`
+	IsSymlink         bool               `json:"isSymlink"`
+	SymlinkTarget     string             `json:"symlinkTarget,omitempty"`
+	SymlinkResolution *SymlinkResolution `json:"symlinkResolution,omitempty"`
+}
+
+type SymlinkState string
+
+const (
+	SymlinkMapped   SymlinkState = "mapped"
+	SymlinkUnmapped SymlinkState = "unmapped"
+	SymlinkBroken   SymlinkState = "broken"
+)
+
+type SymlinkResolution struct {
+	State        SymlinkState `json:"state"`
+	TargetKind   string       `json:"targetKind,omitempty"`
+	TargetRootID string       `json:"targetRootId,omitempty"`
+	TargetPath   string       `json:"targetPath,omitempty"`
 }
 
 type Service struct {
@@ -32,18 +48,18 @@ func (s Service) List(ctx context.Context, rootID string, rel string) ([]Entry, 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	resolved, err := s.Resolver.Resolve(rootID, rel)
+	resolved, err := s.Resolver.ResolveFollow(rootID, rel)
 	if err != nil {
 		return nil, err
 	}
-	info, err := os.Stat(resolved.Abs)
+	info, err := os.Stat(resolved.Actual.Abs)
 	if err != nil {
 		return nil, err
 	}
 	if !info.IsDir() {
 		return nil, ErrNotDirectory
 	}
-	dirEntries, err := os.ReadDir(resolved.Abs)
+	dirEntries, err := os.ReadDir(resolved.Actual.Abs)
 	if err != nil {
 		return nil, err
 	}
@@ -58,8 +74,8 @@ func (s Service) List(ctx context.Context, rootID string, rel string) ([]Entry, 
 		}
 		name := dirEntry.Name()
 		childRel := name
-		if resolved.Rel != "." {
-			childRel = filepath.ToSlash(filepath.Join(resolved.Rel, name))
+		if resolved.Requested.Rel != "." {
+			childRel = filepath.ToSlash(filepath.Join(resolved.Requested.Rel, name))
 		}
 		entry := Entry{
 			Name:         name,
@@ -71,12 +87,14 @@ func (s Service) List(ctx context.Context, rootID string, rel string) ([]Entry, 
 			IsSymlink:    info.Mode()&os.ModeSymlink != 0,
 		}
 		if entry.IsSymlink {
-			target, err := os.Readlink(filepath.Join(resolved.Abs, name))
+			target, err := os.Readlink(filepath.Join(resolved.Actual.Abs, name))
 			if err != nil {
 				return nil, err
 			}
 			entry.Type = "symlink"
 			entry.SymlinkTarget = target
+			resolution := s.resolveSymlink(rootID, childRel)
+			entry.SymlinkResolution = &resolution
 		}
 		out = append(out, entry)
 	}
@@ -84,6 +102,26 @@ func (s Service) List(ctx context.Context, rootID string, rel string) ([]Entry, 
 		return natsort.Less(out[i].Name, out[j].Name)
 	})
 	return out, nil
+}
+
+func (s Service) resolveSymlink(rootID string, rel string) SymlinkResolution {
+	resolved, err := s.Resolver.ResolveFollow(rootID, rel)
+	if errors.Is(err, roots.ErrOutsideRoot) {
+		return SymlinkResolution{State: SymlinkUnmapped}
+	}
+	if err != nil {
+		return SymlinkResolution{State: SymlinkBroken}
+	}
+	info, err := os.Lstat(resolved.Actual.Abs)
+	if err != nil {
+		return SymlinkResolution{State: SymlinkBroken}
+	}
+	return SymlinkResolution{
+		State:        SymlinkMapped,
+		TargetKind:   entryType(info),
+		TargetRootID: resolved.Actual.Root.ID,
+		TargetPath:   filepath.ToSlash(resolved.Actual.Rel),
+	}
 }
 
 func entryType(info os.FileInfo) string {

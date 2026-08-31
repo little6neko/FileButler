@@ -75,6 +75,53 @@ func TestExecutorDeletesFile(t *testing.T) {
 	}
 }
 
+func TestExecutorMovesUnmappedSymlinkWithoutTouchingTarget(t *testing.T) {
+	rootA, rootB, executor := executorFixture(t)
+	outside := t.TempDir()
+	target := filepath.Join(outside, "target.txt")
+	testutil.WriteFile(t, target, "outside")
+	link := filepath.Join(rootA, "link.txt")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	item := PlanItem{Operation: OpMove, SourceRoot: "a", SourcePath: "link.txt", DestRoot: "b", DestPath: "moved.txt"}
+	if err := executor.Execute(context.Background(), item); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(link); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("source link err = %v", err)
+	}
+	movedTarget, err := os.Readlink(filepath.Join(rootB, "moved.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if movedTarget != target {
+		t.Fatalf("moved link target = %q, want %q", movedTarget, target)
+	}
+	assertContent(t, target, "outside")
+}
+
+func TestExecutorDeletesUnmappedSymlinkWithoutTouchingTarget(t *testing.T) {
+	rootA, _, executor := executorFixture(t)
+	outside := t.TempDir()
+	target := filepath.Join(outside, "target.txt")
+	testutil.WriteFile(t, target, "outside")
+	link := filepath.Join(rootA, "link.txt")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+
+	item := PlanItem{Operation: OpDelete, SourceRoot: "a", SourcePath: "link.txt"}
+	if err := executor.Execute(context.Background(), item); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Lstat(link); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("link err = %v", err)
+	}
+	assertContent(t, target, "outside")
+}
+
 func TestExecutorCopiesDirectoryRecursively(t *testing.T) {
 	rootA, rootB, executor := executorFixture(t)
 	testutil.WriteFile(t, filepath.Join(rootA, "dir", "child.txt"), "hello")

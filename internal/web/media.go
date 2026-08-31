@@ -18,12 +18,12 @@ func mediaHandler(resolver roots.Resolver) http.HandlerFunc {
 			Error(w, http.StatusUnsupportedMediaType, "unsupported_media", "media preview only supports image and video files")
 			return
 		}
-		resolved, err := resolver.ResolveForWrite(r.URL.Query().Get("rootId"), rel)
+		resolved, err := resolver.ResolveFollow(r.URL.Query().Get("rootId"), rel)
 		if err != nil {
 			Error(w, http.StatusBadRequest, "invalid_request", err.Error())
 			return
 		}
-		file, err := os.Open(resolved.Abs)
+		file, err := os.Open(resolved.Actual.Abs)
 		if err != nil {
 			status := http.StatusInternalServerError
 			code := "operation_failed"

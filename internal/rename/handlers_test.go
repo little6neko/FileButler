@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -51,6 +52,34 @@ func TestRenameCreateJobRejectsConflictingPlan(t *testing.T) {
 	handler.ServeHTTP(rec, req)
 	if rec.Code != http.StatusConflict {
 		t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestRenameExecutorRenamesUnmappedSymlinkEntry(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+	target := filepath.Join(outside, "target.txt")
+	testutil.WriteFile(t, target, "outside")
+	if err := os.Symlink(target, filepath.Join(root, "before.txt")); err != nil {
+		t.Fatal(err)
+	}
+	executor := Executor{Resolver: roots.NewResolver([]roots.Root{{ID: "data", Name: "Data", Path: root}})}
+
+	err := executor.ExecuteItem(context.Background(), jobs.ExecutableItem{
+		Action: "rename", SourceRoot: "data", SourcePath: "before.txt", DestRoot: "data", DestPath: "after.txt",
+	})
+	if err != nil {
+		t.Fatalf("ExecuteItem: %v", err)
+	}
+	linkTarget, err := os.Readlink(filepath.Join(root, "after.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if linkTarget != target {
+		t.Fatalf("link target = %q, want %q", linkTarget, target)
+	}
+	if body, err := os.ReadFile(target); err != nil || string(body) != "outside" {
+		t.Fatalf("outside target = %q, err = %v", body, err)
 	}
 }
 

@@ -32,34 +32,34 @@ func (s *Service) Read(rootID, path string) (Document, error) {
 	if !IsSupported(path) {
 		return Document{}, ErrUnsupportedText
 	}
-	resolved, err := s.resolver.ResolveForWrite(rootID, path)
+	resolved, err := s.resolver.ResolveFollow(rootID, path)
 	if err != nil {
-		return Document{}, err
+		return Document{}, normalizeFileError(err)
 	}
-	return readDocument(resolved.CanonicalAbs)
+	return readDocument(resolved.Actual.Abs)
 }
 
 func (s *Service) Save(request SaveRequest) (SaveResult, error) {
 	if !IsSupported(request.Path) {
 		return SaveResult{}, ErrUnsupportedText
 	}
-	initial, err := s.resolver.ResolveForWrite(request.RootID, request.Path)
+	initial, err := s.resolver.ResolveFollow(request.RootID, request.Path)
 	if err != nil {
-		return SaveResult{}, err
+		return SaveResult{}, normalizeFileError(err)
 	}
-	key := filepath.Clean(initial.CanonicalAbs)
+	key := filepath.Clean(initial.Actual.Abs)
 	unlock := s.locks.lock(key)
 	defer unlock()
 
-	resolved, err := s.resolver.ResolveForWrite(request.RootID, request.Path)
+	resolved, err := s.resolver.ResolveFollow(request.RootID, request.Path)
 	if err != nil {
-		return SaveResult{}, err
+		return SaveResult{}, normalizeFileError(err)
 	}
-	if filepath.Clean(resolved.CanonicalAbs) != key {
+	if filepath.Clean(resolved.Actual.Abs) != key {
 		return SaveResult{}, ErrTargetChanged
 	}
 
-	raw, mode, err := readRawRegular(resolved.CanonicalAbs)
+	raw, mode, err := readRawRegular(resolved.Actual.Abs)
 	if err != nil {
 		return SaveResult{}, err
 	}
@@ -78,7 +78,7 @@ func (s *Service) Save(request SaveRequest) (SaveResult, error) {
 	if int64(len(encoded)) > MaxFileSize {
 		return SaveResult{}, ErrTooLarge
 	}
-	if err := s.atomicWrite(resolved.CanonicalAbs, encoded, mode); err != nil {
+	if err := s.atomicWrite(resolved.Actual.Abs, encoded, mode); err != nil {
 		return SaveResult{}, err
 	}
 	return SaveResult{ByteSize: int64(len(encoded)), Revision: Revision(encoded)}, nil

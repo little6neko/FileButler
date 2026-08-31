@@ -81,11 +81,11 @@ func (e Executor) ExecuteGroup(ctx context.Context, jobID string, rootID string,
 	}
 
 	fs := e.fs()
-	groupResolved, err := e.Resolver.ResolveForWrite(rootID, group.Path)
+	groupResolved, err := e.Resolver.ResolveEntry(rootID, group.Path)
 	if err != nil {
 		return err
 	}
-	groupInfo, err := fs.Lstat(groupResolved.Abs)
+	groupInfo, err := fs.Lstat(groupResolved.Actual.Abs)
 	if err != nil {
 		return err
 	}
@@ -93,7 +93,7 @@ func (e Executor) ExecuteGroup(ctx context.Context, jobID string, rootID string,
 		return ErrExecutionStale
 	}
 
-	items, videoAbs, err := e.prepareItems(rootID, group, groupResolved.Abs, fs)
+	items, videoAbs, err := e.prepareItems(rootID, group, groupResolved.Actual.Abs, fs)
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func (e Executor) ExecuteGroup(ctx context.Context, jobID string, rootID string,
 		return nil
 	}
 
-	stageDirectory, err := fs.MkdirTemp(groupResolved.Abs, recoveryPrefix+sanitizeJobID(jobID)+"-*")
+	stageDirectory, err := fs.MkdirTemp(groupResolved.Actual.Abs, recoveryPrefix+sanitizeJobID(jobID)+"-*")
 	if err != nil {
 		return err
 	}
@@ -181,7 +181,7 @@ func (e Executor) prepareItems(rootID string, group PlanGroup, groupAbs string, 
 		return nil, "", fmt.Errorf("%w: invalid group path", ErrExecutionStale)
 	}
 	videoPath := joinRelative(group.Path, videoDirectoryName)
-	videoResolved, err := e.Resolver.ResolveForWrite(rootID, videoPath)
+	videoResolved, err := resolveExistingOrCreate(e.Resolver, rootID, videoPath)
 	if err != nil {
 		return nil, "", err
 	}
@@ -225,32 +225,40 @@ func (e Executor) prepareItems(rootID string, group PlanGroup, groupAbs string, 
 			changedSources[item.SourcePath] = struct{}{}
 		}
 
-		sourceResolved, err := e.Resolver.ResolveForWrite(rootID, item.SourcePath)
+		sourceResolved, err := e.Resolver.ResolveEntry(rootID, item.SourcePath)
 		if err != nil {
 			return nil, "", err
 		}
-		targetResolved, err := e.Resolver.ResolveForWrite(rootID, item.TargetPath)
-		if err != nil {
-			return nil, "", err
+		var targetAbs string
+		targetResolved, targetErr := resolveExistingOrCreate(e.Resolver, rootID, item.TargetPath)
+		if targetErr == nil {
+			targetAbs = targetResolved.Actual.Abs
+		} else if item.MediaKind == MediaKindVideo && group.CreateVideoDirectory && os.IsNotExist(targetErr) {
+			targetAbs = filepath.Join(videoResolved.Actual.Abs, path.Base(item.TargetPath))
+			if _, mapErr := e.Resolver.MapPath(targetAbs); mapErr != nil {
+				return nil, "", mapErr
+			}
+		} else {
+			return nil, "", targetErr
 		}
-		if filepath.Clean(filepath.Dir(sourceResolved.Abs)) != filepath.Clean(groupAbs) {
+		if filepath.Clean(filepath.Dir(sourceResolved.Actual.Abs)) != filepath.Clean(groupAbs) {
 			return nil, "", fmt.Errorf("%w: resolved source is outside group", ErrExecutionStale)
 		}
-		info, err := fs.Lstat(sourceResolved.Abs)
+		info, err := fs.Lstat(sourceResolved.Actual.Abs)
 		if err != nil {
 			return nil, "", fmt.Errorf("%w: source %s: %v", ErrExecutionStale, item.SourcePath, err)
 		}
 		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
 			return nil, "", fmt.Errorf("%w: source is not a regular file", ErrExecutionStale)
 		}
-		items = append(items, executionItem{plan: item, sourceAbs: sourceResolved.Abs, targetAbs: targetResolved.Abs})
+		items = append(items, executionItem{plan: item, sourceAbs: sourceResolved.Actual.Abs, targetAbs: targetAbs})
 	}
 	if group.CreateVideoDirectory && !hasVideo {
 		return nil, "", fmt.Errorf("%w: video directory requested without selected videos", ErrExecutionStale)
 	}
 
 	if hasVideo {
-		videoInfo, err := fs.Lstat(videoResolved.Abs)
+		videoInfo, err := fs.Lstat(videoResolved.Actual.Abs)
 		switch {
 		case os.IsNotExist(err) && group.CreateVideoDirectory:
 		case os.IsNotExist(err):
@@ -279,7 +287,15 @@ func (e Executor) prepareItems(rootID string, group PlanGroup, groupAbs string, 
 			return nil, "", fmt.Errorf("%w: target %s is occupied", ErrExecutionStale, item.plan.TargetPath)
 		}
 	}
-	return items, videoResolved.Abs, nil
+	return items, videoResolved.Actual.Abs, nil
+}
+
+func resolveExistingOrCreate(resolver roots.Resolver, rootID string, rel string) (roots.MappedPath, error) {
+	resolved, err := resolver.ResolveEntry(rootID, rel)
+	if err == nil || !os.IsNotExist(err) {
+		return resolved, err
+	}
+	return resolver.ResolveCreate(rootID, rel)
 }
 
 func stageSources(fs executorFileSystem, items []executionItem) error {

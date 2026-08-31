@@ -109,6 +109,47 @@ func TestServiceReadRejectsOutsideSymlinkAndAllowsInsideSymlink(t *testing.T) {
 	}
 }
 
+func TestServiceReadsAndSavesSymlinkAcrossMappedRoots(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	other := filepath.Join(base, "other")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(other, "target.txt")
+	if err := os.MkdirAll(other, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(root, "linked.txt")
+	if err := os.Symlink(target, link); err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(roots.NewResolver([]roots.Root{
+		{ID: "root", Name: "Root", Path: root},
+		{ID: "other", Name: "Other", Path: other},
+	}))
+
+	document, err := service.Read("root", "linked.txt")
+	if err != nil || document.Content != "old" {
+		t.Fatalf("Read document = %+v, err = %v", document, err)
+	}
+	if _, err := service.Save(SaveRequest{
+		RootID: "root", Path: "linked.txt", Content: "new", Encoding: document.Encoding,
+		LineEnding: LineEndingLF, Revision: document.Revision,
+	}); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("link info = %v, err = %v", info, err)
+	}
+	if got, err := os.ReadFile(target); err != nil || string(got) != "new" {
+		t.Fatalf("target = %q, err = %v", got, err)
+	}
+}
+
 func TestServiceSaveChecksRevisionAndPreservesPermissions(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "notes.txt")

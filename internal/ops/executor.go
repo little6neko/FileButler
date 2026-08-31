@@ -19,66 +19,57 @@ func (e Executor) Execute(ctx context.Context, item PlanItem) error {
 	}
 	switch item.Operation {
 	case OpMove:
-		src, err := e.Resolver.ResolveForWrite(item.SourceRoot, item.SourcePath)
+		src, err := resolveOperationSource(e.Resolver, item.SourceRoot, item.SourcePath)
 		if err != nil {
 			return err
 		}
-		dest, err := e.Resolver.ResolveForWrite(item.DestRoot, item.DestPath)
+		dest, err := e.Resolver.ResolveCreate(item.DestRoot, item.DestPath)
 		if err != nil {
 			return err
 		}
-		if err := os.MkdirAll(filepath.Dir(dest.Abs), 0o755); err != nil {
-			return err
-		}
-		return os.Rename(src.Abs, dest.Abs)
+		return os.Rename(src.Actual.Abs, dest.Actual.Abs)
 	case OpCopy:
-		src, err := e.Resolver.ResolveForWrite(item.SourceRoot, item.SourcePath)
+		src, err := resolveOperationSource(e.Resolver, item.SourceRoot, item.SourcePath)
 		if err != nil {
 			return err
 		}
-		dest, err := e.Resolver.ResolveForWrite(item.DestRoot, item.DestPath)
+		dest, err := e.Resolver.ResolveCreate(item.DestRoot, item.DestPath)
 		if err != nil {
 			return err
 		}
-		return copyPath(ctx, src.Abs, dest.Abs)
+		return copyPath(ctx, src.Actual.Abs, dest.Actual.Abs)
 	case OpSymlink:
-		src, err := e.Resolver.ResolveForWrite(item.SourceRoot, item.SourcePath)
+		src, err := resolveOperationSource(e.Resolver, item.SourceRoot, item.SourcePath)
 		if err != nil {
 			return err
 		}
-		dest, err := e.Resolver.ResolveForWrite(item.DestRoot, item.DestPath)
+		dest, err := e.Resolver.ResolveCreate(item.DestRoot, item.DestPath)
 		if err != nil {
 			return err
 		}
-		if err := os.MkdirAll(filepath.Dir(dest.Abs), 0o755); err != nil {
-			return err
-		}
-		return os.Symlink(src.Abs, dest.Abs)
+		return os.Symlink(src.Actual.Abs, dest.Actual.Abs)
 	case OpHardlink:
-		src, err := e.Resolver.ResolveForWrite(item.SourceRoot, item.SourcePath)
+		src, err := resolveOperationSource(e.Resolver, item.SourceRoot, item.SourcePath)
 		if err != nil {
 			return err
 		}
-		dest, err := e.Resolver.ResolveForWrite(item.DestRoot, item.DestPath)
+		dest, err := e.Resolver.ResolveCreate(item.DestRoot, item.DestPath)
 		if err != nil {
 			return err
 		}
-		if err := os.MkdirAll(filepath.Dir(dest.Abs), 0o755); err != nil {
-			return err
-		}
-		return os.Link(src.Abs, dest.Abs)
+		return os.Link(src.Actual.Abs, dest.Actual.Abs)
 	case OpDelete:
-		src, err := e.Resolver.ResolveForWrite(item.SourceRoot, item.SourcePath)
+		src, err := resolveOperationSource(e.Resolver, item.SourceRoot, item.SourcePath)
 		if err != nil {
 			return err
 		}
-		return os.RemoveAll(src.Abs)
+		return os.RemoveAll(src.Actual.Abs)
 	case OpMkdir:
-		dest, err := e.Resolver.ResolveForWrite(item.DestRoot, item.DestPath)
+		dest, err := e.Resolver.ResolveCreate(item.DestRoot, item.DestPath)
 		if err != nil {
 			return err
 		}
-		return os.Mkdir(dest.Abs, 0o755)
+		return os.Mkdir(dest.Actual.Abs, 0o755)
 	default:
 		return os.ErrInvalid
 	}

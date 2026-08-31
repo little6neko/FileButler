@@ -161,27 +161,23 @@ func resolveRenameInputs(ctx context.Context, resolver roots.Resolver, rootID st
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		resolved, err := resolver.Resolve(rootID, rel)
+		resolved, err := resolver.ResolveEntry(rootID, rel)
 		if err != nil {
 			return nil, err
 		}
-		info, err := os.Lstat(resolved.Abs)
+		info, err := os.Lstat(resolved.Actual.Abs)
 		if err != nil {
 			return nil, err
 		}
-		inputs = append(inputs, InputItem{RelativePath: rel, IsDir: info.IsDir(), AbsPath: resolved.Abs})
+		inputs = append(inputs, InputItem{RelativePath: rel, IsDir: info.IsDir(), AbsPath: resolved.Actual.Abs})
 	}
 	return inputs, nil
 }
 
 func existingPathFunc(resolver roots.Resolver, rootID string) func(path string) bool {
 	return func(path string) bool {
-		resolved, err := resolver.Resolve(rootID, filepath.ToSlash(path))
-		if err != nil {
-			return true
-		}
-		_, err = os.Lstat(resolved.Abs)
-		return err == nil
+		_, err := resolver.ResolveEntry(rootID, filepath.ToSlash(path))
+		return err == nil || !os.IsNotExist(err)
 	}
 }
 
@@ -212,15 +208,18 @@ func (e Executor) ExecuteItem(ctx context.Context, item jobs.ExecutableItem) err
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	src, err := e.Resolver.ResolveForWrite(item.SourceRoot, item.SourcePath)
+	src, err := e.Resolver.ResolveEntry(item.SourceRoot, item.SourcePath)
 	if err != nil {
 		return err
 	}
-	dest, err := e.Resolver.ResolveForWrite(item.DestRoot, item.DestPath)
+	if item.SourceRoot == item.DestRoot && filepath.Clean(item.SourcePath) == filepath.Clean(item.DestPath) {
+		return nil
+	}
+	dest, err := e.Resolver.ResolveCreate(item.DestRoot, item.DestPath)
 	if err != nil {
 		return err
 	}
-	return os.Rename(src.Abs, dest.Abs)
+	return os.Rename(src.Actual.Abs, dest.Actual.Abs)
 }
 
 func writeData(w http.ResponseWriter, status int, value any) {

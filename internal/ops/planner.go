@@ -21,32 +21,33 @@ func (p Planner) Plan(ctx context.Context, req Request) (Plan, error) {
 	if req.Type == OpMkdir {
 		destPath := filepath.ToSlash(filepath.Join(defaultPath(req.DestPath), req.NewName))
 		item := PlanItem{Operation: req.Type, DestRoot: req.DestRoot, DestPath: destPath}
-		if dest, err := p.Resolver.ResolveForWrite(req.DestRoot, destPath); err != nil {
-			item.Conflict = true
-			item.ErrorCode = errorCode(err)
-			item.ErrorText = err.Error()
-		} else if _, err := os.Lstat(dest.Abs); err == nil {
+		if _, err := p.Resolver.ResolveCreate(req.DestRoot, destPath); errorsIs(err, roots.ErrPathExists) {
 			item.Conflict = true
 			item.ErrorCode = "target_exists"
 			item.ErrorText = "destination already exists"
-		} else if !os.IsNotExist(err) {
+		} else if err != nil {
 			item.Conflict = true
-			item.ErrorCode = "operation_failed"
+			item.ErrorCode = errorCode(err)
 			item.ErrorText = err.Error()
 		}
 		return finalize([]PlanItem{item}), nil
 	}
 	for _, src := range req.Sources {
 		item := PlanItem{Operation: req.Type, SourceRoot: req.SourceRoot, SourcePath: src}
-		source, srcErr := p.Resolver.ResolveForWrite(req.SourceRoot, src)
+		source, srcErr := resolveOperationSource(p.Resolver, req.SourceRoot, src)
 		if srcErr != nil {
 			item.Conflict = true
-			item.ErrorCode = errorCode(srcErr)
-			item.ErrorText = srcErr.Error()
+			if os.IsNotExist(srcErr) {
+				item.ErrorCode = "missing_source"
+				item.ErrorText = "source does not exist"
+			} else {
+				item.ErrorCode = errorCode(srcErr)
+				item.ErrorText = srcErr.Error()
+			}
 			items = append(items, item)
 			continue
 		}
-		info, statErr := os.Lstat(source.Abs)
+		info, statErr := os.Lstat(source.Actual.Abs)
 		if statErr != nil {
 			item.Conflict = true
 			if os.IsNotExist(statErr) {
@@ -71,23 +72,19 @@ func (p Planner) Plan(ctx context.Context, req Request) (Plan, error) {
 			destPath := filepath.ToSlash(filepath.Join(defaultPath(req.DestPath), filepath.Base(src)))
 			item.DestRoot = req.DestRoot
 			item.DestPath = destPath
-			dest, err := p.Resolver.ResolveForWrite(req.DestRoot, destPath)
-			if err != nil {
-				item.Conflict = true
-				item.ErrorCode = errorCode(err)
-				item.ErrorText = err.Error()
-			} else if (req.Type == OpMove || req.Type == OpCopy) && info.IsDir() && pathInside(source.CanonicalAbs, dest.CanonicalAbs) {
-				item.Conflict = true
-				item.ErrorCode = "destination_inside_source"
-				item.ErrorText = "destination cannot be inside the source directory"
-			} else if _, err := os.Lstat(dest.Abs); err == nil {
+			dest, err := p.Resolver.ResolveCreate(req.DestRoot, destPath)
+			if errorsIs(err, roots.ErrPathExists) {
 				item.Conflict = true
 				item.ErrorCode = "target_exists"
 				item.ErrorText = "destination already exists"
-			} else if !os.IsNotExist(err) {
+			} else if err != nil {
 				item.Conflict = true
-				item.ErrorCode = "operation_failed"
+				item.ErrorCode = errorCode(err)
 				item.ErrorText = err.Error()
+			} else if (req.Type == OpMove || req.Type == OpCopy) && info.IsDir() && pathInside(source.Actual.Abs, dest.Actual.Abs) {
+				item.Conflict = true
+				item.ErrorCode = "destination_inside_source"
+				item.ErrorText = "destination cannot be inside the source directory"
 			}
 		default:
 			item.Conflict = true
@@ -97,6 +94,14 @@ func (p Planner) Plan(ctx context.Context, req Request) (Plan, error) {
 		items = append(items, item)
 	}
 	return finalize(items), nil
+}
+
+func resolveOperationSource(resolver roots.Resolver, rootID string, rel string) (roots.MappedPath, error) {
+	cleaned := filepath.Clean(defaultPath(rel))
+	if cleaned == "." {
+		return resolver.ResolveFollow(rootID, rel)
+	}
+	return resolver.ResolveEntry(rootID, rel)
 }
 
 func finalize(items []PlanItem) Plan {

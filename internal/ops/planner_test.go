@@ -63,6 +63,30 @@ func TestPlanDeleteHasNoDestination(t *testing.T) {
 	}
 }
 
+func TestPlanAllowsOperatingOnUnmappedSymlinkEntry(t *testing.T) {
+	base := t.TempDir()
+	root := filepath.Join(base, "root")
+	outside := filepath.Join(base, "outside")
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	testutil.WriteFile(t, filepath.Join(outside, "target.txt"), "outside")
+	if err := os.Symlink(filepath.Join(outside, "target.txt"), filepath.Join(root, "link.txt")); err != nil {
+		t.Fatal(err)
+	}
+	planner := Planner{Resolver: roots.NewResolver([]roots.Root{{ID: "root", Name: "Root", Path: root}})}
+
+	plan, err := planner.Plan(context.Background(), Request{
+		Type: OpDelete, SourceRoot: "root", Sources: []string{"link.txt"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.HasConflict {
+		t.Fatalf("plan = %+v", plan)
+	}
+}
+
 func TestPlanMkdirDetectsExistingPath(t *testing.T) {
 	rootA := t.TempDir()
 	testutil.WriteFile(t, filepath.Join(rootA, "new"), "x")

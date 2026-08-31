@@ -39,7 +39,7 @@ func (s Scanner) Scan(ctx context.Context, rootID string, directoryPath string) 
 		return Inventory{}, err
 	}
 
-	entries, err := os.ReadDir(resolved.CanonicalAbs)
+	entries, err := os.ReadDir(resolved.Actual.Abs)
 	if err != nil {
 		return Inventory{}, err
 	}
@@ -51,7 +51,7 @@ func (s Scanner) Scan(ctx context.Context, rootID string, directoryPath string) 
 		if strings.HasPrefix(entry.Name(), recoveryPrefix) {
 			continue
 		}
-		groupAbs := filepath.Join(resolved.CanonicalAbs, entry.Name())
+		groupAbs := filepath.Join(resolved.Actual.Abs, entry.Name())
 		groupInfo, err := os.Lstat(groupAbs)
 		if os.IsNotExist(err) {
 			continue
@@ -62,7 +62,7 @@ func (s Scanner) Scan(ctx context.Context, rootID string, directoryPath string) 
 		if groupInfo.Mode()&os.ModeSymlink != 0 || !groupInfo.IsDir() {
 			continue
 		}
-		groupPath := joinRelative(filepath.ToSlash(resolved.Rel), entry.Name())
+		groupPath := joinRelative(filepath.ToSlash(resolved.Requested.Rel), entry.Name())
 		group, err := s.scanGroup(ctx, groupAbs, groupPath, entry.Name())
 		if os.IsNotExist(err) {
 			continue
@@ -78,7 +78,7 @@ func (s Scanner) Scan(ctx context.Context, rootID string, directoryPath string) 
 
 	return Inventory{
 		RootID:          rootID,
-		DirectoryPath:   filepath.ToSlash(resolved.Rel),
+		DirectoryPath:   filepath.ToSlash(resolved.Requested.Rel),
 		GeneratedAtUnix: s.generatedAtUnix(),
 		Groups:          groups,
 	}, nil
@@ -138,32 +138,32 @@ func (s Scanner) ScanSelection(
 	}
 	return Inventory{
 		RootID:          rootID,
-		DirectoryPath:   filepath.ToSlash(scope.Rel),
+		DirectoryPath:   filepath.ToSlash(scope.Requested.Rel),
 		GeneratedAtUnix: s.generatedAtUnix(),
 		Groups:          groups,
 	}, nil
 }
 
-func (s Scanner) resolveDirectory(rootID string, directoryPath string) (roots.ResolvedPath, error) {
-	resolved, err := s.Resolver.ResolveForWrite(rootID, directoryPath)
+func (s Scanner) resolveDirectory(rootID string, directoryPath string) (roots.MappedPath, error) {
+	requested, err := s.Resolver.Resolve(rootID, directoryPath)
 	if err != nil {
-		return roots.ResolvedPath{}, err
+		return roots.MappedPath{}, err
 	}
-	if resolved.Rel != "." {
-		requestedInfo, err := os.Lstat(resolved.Abs)
-		if err != nil {
-			return roots.ResolvedPath{}, err
-		}
-		if requestedInfo.Mode()&os.ModeSymlink != 0 {
-			return roots.ResolvedPath{}, ErrNotDirectory
-		}
+	var resolved roots.MappedPath
+	if requested.Rel == "." {
+		resolved, err = s.Resolver.ResolveFollow(rootID, directoryPath)
+	} else {
+		resolved, err = s.Resolver.ResolveEntry(rootID, directoryPath)
 	}
-	info, err := os.Stat(resolved.CanonicalAbs)
 	if err != nil {
-		return roots.ResolvedPath{}, err
+		return roots.MappedPath{}, err
 	}
-	if !info.IsDir() {
-		return roots.ResolvedPath{}, ErrNotDirectory
+	info, err := os.Lstat(resolved.Actual.Abs)
+	if err != nil {
+		return roots.MappedPath{}, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return roots.MappedPath{}, ErrNotDirectory
 	}
 	return resolved, nil
 }
@@ -171,19 +171,19 @@ func (s Scanner) resolveDirectory(rootID string, directoryPath string) (roots.Re
 func (s Scanner) scanResolvedGroup(
 	ctx context.Context,
 	rootID string,
-	scope roots.ResolvedPath,
+	scope roots.MappedPath,
 	groupPath string,
 ) (InventoryGroup, error) {
 	normalizedGroupPath, err := normalizeStrictRelativePath(groupPath)
 	if err != nil {
 		return InventoryGroup{}, err
 	}
-	scopePath := filepath.ToSlash(scope.Rel)
+	scopePath := filepath.ToSlash(scope.Requested.Rel)
 	segments, err := strictDescendantSegments(scopePath, normalizedGroupPath)
 	if err != nil {
 		return InventoryGroup{}, err
 	}
-	currentAbs := scope.CanonicalAbs
+	currentAbs := scope.Actual.Abs
 	for index, segment := range segments {
 		if strings.HasPrefix(segment, recoveryPrefix) || (index > 0 && segment == videoDirectoryName) {
 			return InventoryGroup{}, fmt.Errorf("%w: %s", ErrReservedDirectory, normalizedGroupPath)
@@ -197,11 +197,11 @@ func (s Scanner) scanResolvedGroup(
 			return InventoryGroup{}, ErrNotDirectory
 		}
 	}
-	resolvedGroup, err := s.Resolver.ResolveForWrite(rootID, normalizedGroupPath)
+	resolvedGroup, err := s.Resolver.ResolveEntry(rootID, normalizedGroupPath)
 	if err != nil {
 		return InventoryGroup{}, err
 	}
-	if filepath.Clean(resolvedGroup.CanonicalAbs) != filepath.Clean(currentAbs) {
+	if filepath.Clean(resolvedGroup.Actual.Abs) != filepath.Clean(currentAbs) {
 		return InventoryGroup{}, ErrNotDirectory
 	}
 	return s.scanGroup(ctx, currentAbs, normalizedGroupPath, path.Base(normalizedGroupPath))

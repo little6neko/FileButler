@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -20,6 +21,9 @@ func (e Executor) Execute(ctx context.Context, item PlanItem) error {
 	}
 	switch item.Operation {
 	case OpMove:
+		if filepath.Clean(item.SourcePath) == "." || item.SourcePath == "" {
+			return fmt.Errorf("不能移动根目录")
+		}
 		src, err := resolveOperationSource(e.Resolver, item.SourceRoot, item.SourcePath)
 		if err != nil {
 			return err
@@ -28,7 +32,7 @@ func (e Executor) Execute(ctx context.Context, item PlanItem) error {
 		if err != nil {
 			return err
 		}
-		return os.Rename(src.Actual.Abs, dest.Actual.Abs)
+		return movePath(ctx, src.Actual.Abs, dest.Actual.Abs, nil)
 	case OpCopy:
 		src, err := resolveOperationSource(e.Resolver, item.SourceRoot, item.SourcePath)
 		if err != nil {
@@ -89,6 +93,9 @@ func copyPath(ctx context.Context, src, dest string) error {
 		}
 		return os.Symlink(target, dest)
 	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("不支持复制特殊文件：%s", src)
+	}
 	return copyFileContext(ctx, src, dest, info.Mode().Perm())
 }
 
@@ -145,6 +152,18 @@ func copyFileContext(ctx context.Context, src, dest string, mode os.FileMode) er
 		}
 		if readErr != nil {
 			return readErr
+		}
+	}
+	current, err := in.Stat()
+	if err != nil {
+		return err
+	}
+	if progress.BytesDone != info.Size() || !sameRevision(info, current) {
+		return fmt.Errorf("复制期间源文件发生变化：%s", src)
+	}
+	if durable, _ := ctx.Value(durableCopyKey{}).(bool); durable {
+		if err := out.Sync(); err != nil {
+			return err
 		}
 	}
 	if err := out.Close(); err != nil {

@@ -39,6 +39,33 @@ func TestRenamePreviewReturnsNaturalSortedPlan(t *testing.T) {
 	}
 }
 
+func TestMetadataOptInAppliesToPreviewAndJobSubmission(t *testing.T) {
+	root := t.TempDir()
+	testutil.WriteFile(t, filepath.Join(root, "photo.jpg"), "test")
+	svc := browser.Service{Resolver: roots.NewResolver([]roots.Root{{ID: "data", Path: root}})}
+	original := powerRenameTemplateContextBuilder
+	reads := 0
+	powerRenameTemplateContextBuilder = func(string, powerRenameTemplateContextMode) PowerRenameTemplateContext {
+		reads++
+		return PowerRenameTemplateContext{Metadata: map[string]string{"CAMERA_MODEL": "camera"}}
+	}
+	t.Cleanup(func() { powerRenameTemplateContextBuilder = original })
+	body := map[string]any{"rootId": "data", "paths": []string{"photo.jpg"}, "options": map[string]any{"search": "^.*", "replace": "${CAMERA_MODEL}", "useRegex": true, "nameOnly": true}}
+	for _, handler := range []http.HandlerFunc{PreviewHandler(svc), CreateJobHandler(svc, jobs.NewStore(), jobs.Runner{})} {
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, renameReq(body))
+		if rec.Code != http.StatusBadRequest || reads != 0 {
+			t.Fatalf("metadata accessed without consent: status=%d reads=%d", rec.Code, reads)
+		}
+	}
+	body["options"].(map[string]any)["readMetadata"] = true
+	rec := httptest.NewRecorder()
+	PreviewHandler(svc).ServeHTTP(rec, renameReq(body))
+	if rec.Code != http.StatusOK || reads != 1 {
+		t.Fatalf("opt-in was not forwarded: status=%d reads=%d body=%s", rec.Code, reads, rec.Body.String())
+	}
+}
+
 func TestRenameCreateJobRejectsConflictingPlan(t *testing.T) {
 	root := t.TempDir()
 	testutil.WriteFile(t, filepath.Join(root, "a.txt"), "x")

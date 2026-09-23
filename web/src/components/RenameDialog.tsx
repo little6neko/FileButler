@@ -44,7 +44,7 @@ export function RenameDialog({
     setSubmitting(true);
     setSubmitError(null);
     try {
-      const job = await api.renameCreateJob({ rootId, paths, options });
+      const job = await api.renameCreateJob({ rootId, paths, options: rootId === "@115" ? { ...options, readMetadata: false } : options });
       onOptionsCommitted?.({ ...options });
       onJobCreated(job.id);
     } catch (err) {
@@ -114,7 +114,7 @@ export function PowerRenameContent({
   useEffect(() => {
     let active = true;
     api
-      .renamePreview({ rootId, paths, options })
+      .renamePreview({ rootId, paths, options: rootId === "@115" ? { ...options, readMetadata: false } : options })
       .then((plan) => {
         if (!active) return;
         setItems(plan.items);
@@ -175,6 +175,7 @@ export function PowerRenameContent({
             <CheckOption id={id("regex")} checked={options.useRegex} label={labels.useRegularExpressions} onCheckedChange={(checked) => update({ useRegex: checked })} />
             <CheckOption id={id("case")} checked={options.caseSensitive} label={labels.caseSensitive} onCheckedChange={(checked) => update({ caseSensitive: checked })} />
             <CheckOption id={id("all")} checked={options.matchAll} label={labels.matchAllOccurrences} onCheckedChange={(checked) => update({ matchAll: checked })} />
+            <CheckOption id={id("metadata")} checked={rootId !== "@115" && options.readMetadata === true} disabled={rootId === "@115"} title={rootId === "@115" ? labels.cloudFilePropertiesUnavailable : labels.readFilePropertiesHint} label={labels.modifyFileProperties} onCheckedChange={(checked) => update({ readMetadata: checked })} />
           </div>
           <fieldset className="grid gap-3 rounded-md border p-3">
             <legend className="px-1 text-xs font-semibold">{labels.target}</legend>
@@ -267,19 +268,24 @@ function CheckOption({
   checked,
   label,
   onCheckedChange,
+  disabled = false,
+  title,
 }: {
   id: string;
   checked: boolean;
   label: string;
   onCheckedChange(checked: boolean): void;
+  disabled?: boolean;
+  title?: string;
 }) {
   return (
-    <div className="flex items-center gap-2">
+    <div className={`flex items-center gap-2 ${disabled ? "text-muted-foreground opacity-50" : ""}`} title={title}>
       <Checkbox
         id={id}
         nativeButton
         render={<button type="button" />}
         checked={checked}
+        disabled={disabled}
         onCheckedChange={(value) => onCheckedChange(value === true)}
       />
       <Label htmlFor={id} className="text-xs font-normal">{label}</Label>

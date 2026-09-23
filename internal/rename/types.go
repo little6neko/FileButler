@@ -9,6 +9,7 @@ const (
 )
 
 type Options struct {
+	ReadMetadata      bool       `json:"readMetadata"`
 	Search            string     `json:"search"`
 	Replace           string     `json:"replace"`
 	UseRegex          bool       `json:"useRegex"`
@@ -34,6 +35,7 @@ type Options struct {
 }
 
 type PowerRenameOptions struct {
+	ReadMetadata      bool   `json:"readMetadata"`
 	Search            string `json:"search"`
 	Replace           string `json:"replace"`
 	UseRegex          bool   `json:"useRegex"`

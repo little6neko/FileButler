@@ -73,6 +73,7 @@ export type LinkPreview = {
 };
 
 export type RenameOptions = {
+  readMetadata: boolean;
   search: string;
   replace: string;
   useRegex: boolean;

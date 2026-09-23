@@ -1,6 +1,7 @@
 import type { RenameOptions } from "../api/types";
 
 export const defaultRenameOptions: RenameOptions = {
+  readMetadata: false,
   search: "",
   replace: "",
   useRegex: false,

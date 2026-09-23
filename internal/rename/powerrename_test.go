@@ -122,6 +122,21 @@ func TestPowerRenamePlanSkipsFileMetadataContextForEnumerationToken(t *testing.T
 	}
 }
 
+func TestPowerRenamePlanRejectsMetadataWithoutOptIn(t *testing.T) {
+	original := powerRenameTemplateContextBuilder
+	powerRenameTemplateContextBuilder = func(string, powerRenameTemplateContextMode) PowerRenameTemplateContext {
+		t.Fatal("metadata read without opt-in")
+		return PowerRenameTemplateContext{}
+	}
+	t.Cleanup(func() { powerRenameTemplateContextBuilder = original })
+	for _, token := range []string{"${CAMERA_MODEL}", "${ModifiedTime:yyyyMMdd}"} {
+		_, err := PowerRenamePlan([]InputItem{{RelativePath: "photo.jpg", AbsPath: "/tmp/photo.jpg"}}, PowerRenameOptions{Search: "^.*", Replace: token, UseRegex: true, NameOnly: true}, nil)
+		if err == nil {
+			t.Fatal("expected an explicit opt-in error")
+		}
+	}
+}
+
 func TestPowerRenamePlanBuildsFileMetadataContextForMetadataToken(t *testing.T) {
 	original := powerRenameTemplateContextBuilder
 	var gotMode powerRenameTemplateContextMode
@@ -133,7 +148,7 @@ func TestPowerRenamePlanBuildsFileMetadataContextForMetadataToken(t *testing.T) 
 
 	plan, err := PowerRenamePlan(
 		[]InputItem{{RelativePath: "photo.jpg", AbsPath: "/tmp/photo.jpg"}},
-		PowerRenameOptions{Search: `^.*`, Replace: `${CAMERA_MODEL}`, UseRegex: true, NameOnly: true},
+		PowerRenameOptions{Search: `^.*`, Replace: `${CAMERA_MODEL}`, UseRegex: true, NameOnly: true, ReadMetadata: true},
 		nil,
 	)
 	if err != nil {

@@ -49,6 +49,27 @@ function PowerRenameHarness({
   );
 }
 
+it("defaults metadata reading off and lets local users opt in", async () => {
+  vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
+  render(<PowerRenameHarness rootId="local" paths={["photo.jpg"]} />);
+  const checkbox = screen.getByRole("checkbox", { name: "Modify file properties" });
+  expect(checkbox).not.toBeChecked();
+  await userEvent.click(checkbox);
+  expect(checkbox).toBeChecked();
+  await waitFor(() => expect(api.renamePreview).toHaveBeenLastCalledWith(expect.objectContaining({ options: expect.objectContaining({ readMetadata: true }) })));
+  await userEvent.click(checkbox);
+  await waitFor(() => expect(api.renamePreview).toHaveBeenLastCalledWith(expect.objectContaining({ options: expect.objectContaining({ readMetadata: false }) })));
+});
+
+it("disables metadata reading for 115 even if inherited options enabled it", async () => {
+  vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
+  render(<PowerRenameContent rootId="@115" paths={["photo.jpg"]} options={{ ...defaultRenameOptions, readMetadata: true }} submitting={false} submitError={null} onOptionsChange={vi.fn()} onSubmit={vi.fn()} onClose={vi.fn()} />);
+  const checkbox = screen.getByRole("checkbox", { name: "Modify file properties" });
+  expect(checkbox).not.toBeChecked();
+  expect(checkbox).toBeDisabled();
+  await waitFor(() => expect(api.renamePreview).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ readMetadata: false }) })));
+});
+
 it("isolates options and control IDs across simultaneous PowerRename bodies", async () => {
   vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
   const { container } = render(

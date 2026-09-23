@@ -1,6 +1,7 @@
 package rename
 
 import (
+	"errors"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -9,6 +10,10 @@ import (
 )
 
 func PowerRenamePlan(items []InputItem, opts PowerRenameOptions, existingTarget func(path string) bool) (PlanResult, error) {
+	templateContextMode := powerRenameTemplateContextModeForReplacement(opts.Replace)
+	if templateContextMode != 0 && !opts.ReadMetadata {
+		return PlanResult{}, errors.New("使用文件属性占位符前，请勾选“修改文件属性”（仅读取属性生成文件名，不修改属性内容）")
+	}
 	filtered := filterPowerRenameItems(items, opts)
 	sort.SliceStable(filtered, func(i, j int) bool {
 		bi := filepath.Base(filtered[i].RelativePath)
@@ -20,7 +25,6 @@ func PowerRenamePlan(items []InputItem, opts PowerRenameOptions, existingTarget 
 	})
 	result := PlanResult{Items: make([]PlanItem, 0, len(filtered))}
 	targetIndexes := map[string][]int{}
-	templateContextMode := powerRenameTemplateContextModeForReplacement(opts.Replace)
 	for i, item := range filtered {
 		oldName := filepath.Base(item.RelativePath)
 		itemOpts := opts

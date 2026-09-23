@@ -117,6 +117,7 @@ func powerRenameOptionsFromLegacy(opts Options) PowerRenameOptions {
 		legacyAppendEnumeration = false
 	}
 	return PowerRenameOptions{
+		ReadMetadata:      opts.ReadMetadata,
 		Search:            opts.Search,
 		Replace:           replace,
 		UseRegex:          opts.UseRegex,

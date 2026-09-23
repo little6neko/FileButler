@@ -47,6 +47,7 @@ export type SuperRenameManagerSnapshot = {
 };
 
 export type SuperRenameClient = {
+  completeGroupOnTerminal?: boolean;
   superRenamePreview(request: SuperRenamePreviewRequest): Promise<SuperRenameInventory>;
   superRenameGroupPreview(request: SuperRenameGroupPreviewRequest): Promise<SuperRenameInventoryGroup>;
   superRenameCreateJob(request: SuperRenameCreateJobRequest): Promise<{ id: string }>;
@@ -348,6 +349,7 @@ export class SuperRenameManager {
       || !node
       || node.loadState !== "loaded"
       || node.ownLayerCompleted
+      || this.snapshot.submittingGroups.has(groupPath)
       || this.snapshot.submitting
       || projectedGroup.hasConflict
       || projectedGroup.selectedCount === 0
@@ -373,7 +375,7 @@ export class SuperRenameManager {
       .then((job) => {
         if (this.destroyed) return null;
         this.submissionByJobID.set(job.id, submission);
-        this.markGroupCompleted(groupPath);
+        if (!this.client.completeGroupOnTerminal) this.markGroupCompleted(groupPath);
         return job.id;
       })
       .catch(async (error: unknown) => {
@@ -401,7 +403,11 @@ export class SuperRenameManager {
       const submission = this.submissionByJobID.get(job.id);
       if (!submission) continue;
       this.submissionByJobID.delete(job.id);
-      if (job.status === "completed") continue;
+      if (job.status === "completed") {
+        if (this.client.completeGroupOnTerminal) this.markGroupCompleted(submission.groupPath);
+        continue;
+      }
+      this.clearGroupSubmitting(submission.groupPath);
       await this.reloadDirectory(submission);
     }
   }

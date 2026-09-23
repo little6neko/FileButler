@@ -10,3 +10,7 @@ export function setCloudClipboard(next: Clipboard) {
 export function useCloudClipboard() {
   return useSyncExternalStore((listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => value, () => value);
 }
+
+export function clearCloudClipboardIfUnchanged(expected: Clipboard) {
+  if (value === expected) setCloudClipboard(null);
+}

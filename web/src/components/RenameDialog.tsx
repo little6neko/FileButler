@@ -84,6 +84,7 @@ export function RenameDialog({
 }
 
 export function PowerRenameContent({
+  preview = api.renamePreview,
   rootId,
   paths,
   options,
@@ -94,6 +95,7 @@ export function PowerRenameContent({
   onClose,
   labels = strings.en,
 }: {
+  preview?: typeof api.renamePreview;
   rootId: string;
   paths: string[];
   options: RenameOptions;
@@ -113,8 +115,7 @@ export function PowerRenameContent({
 
   useEffect(() => {
     let active = true;
-    api
-      .renamePreview({ rootId, paths, options: rootId === "@115" ? { ...options, readMetadata: false } : options })
+    preview({ rootId, paths, options: rootId === "@115" ? { ...options, readMetadata: false } : options })
       .then((plan) => {
         if (!active) return;
         setItems(plan.items);
@@ -131,10 +132,10 @@ export function PowerRenameContent({
     return () => {
       active = false;
     };
-  }, [labels.previewFailed, rootId, paths, options]);
+  }, [labels.previewFailed, rootId, paths, options, preview]);
 
   const changedCount = items.filter((item) => item.changed).length;
-  const canSubmit = previewedOptions === options && !hasConflict && !submitting;
+  const canSubmit = previewedOptions === options && !hasConflict && !submitting && (rootId !== "@115" || changedCount > 0);
 
   return (
     <div

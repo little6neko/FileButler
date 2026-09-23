@@ -4,6 +4,26 @@ import type { SuperRenameInventory, SuperRenameInventoryGroup } from "./api/type
 import { SuperRenameManager, type SuperRenameClient } from "./superRenameManager";
 
 describe("SuperRenameManager", () => {
+  it("waits for cloud completion before removing a group and restores failed groups", async () => {
+    const inventory = makeInventory([group("Album", ["a.jpg"], []), group("Other", ["b.jpg"], [])]);
+    const create = vi.fn().mockResolvedValueOnce({ id: "first" }).mockResolvedValueOnce({ id: "second" });
+    const client: SuperRenameClient = { completeGroupOnTerminal: true, superRenamePreview: vi.fn().mockResolvedValue(inventory), superRenameGroupPreview: vi.fn().mockResolvedValue(inventory.groups[1]), superRenameCreateJob: create };
+    const manager = new SuperRenameManager("@115", ".", client);
+    await manager.load();
+    await manager.submitGroup("Album");
+    expect(manager.getSnapshot().directoryNodes.Album.hidden).toBe(false);
+    expect(manager.getSnapshot().submittingGroups.has("Album")).toBe(true);
+    await manager.submitGroup("Album");
+    expect(create).toHaveBeenCalledTimes(1);
+    await manager.handleTerminalJobs([{ id: "first", status: "completed" }]);
+    expect(manager.getSnapshot().directoryNodes.Album.hidden).toBe(true);
+    await manager.submitGroup("Other");
+    await manager.handleTerminalJobs([{ id: "second", status: "completed_with_errors" }]);
+    expect(manager.getSnapshot().directoryNodes.Other.hidden).toBe(false);
+    expect(manager.getSnapshot().submittingGroups.size).toBe(0);
+    expect(client.superRenameGroupPreview).toHaveBeenCalledOnce();
+  });
+
   it("loads with every matched file selected and only matched groups expanded", async () => {
     const inventory = makeInventory([
       group("albums/A", ["a.jpg"], ["clip.mp4"]),

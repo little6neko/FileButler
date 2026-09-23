@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { CloudDownload, FolderArchive, FolderPlus, LogOut, Pencil, Trash2 } from "lucide-react";
+import { CloudDownload, FolderArchive, FolderPlus, LogOut, Pencil, ScanText, Trash2, WandSparkles } from "lucide-react";
 import { cloudCall, cloudDirectory, isCloudArchive, type CloudEntry, type CloudLocation, type CloudRequest } from "../cloud115";
-import { useCloudClipboard, setCloudClipboard } from "../cloud115Clipboard";
+import { useCloudClipboard, setCloudClipboard, clearCloudClipboardIfUnchanged } from "../cloud115Clipboard";
 import { createFileSelectionStore } from "../fileSelectionStore";
 import { fileSelectionMode } from "../fileSelection";
 import type { Entry } from "../api/types";
@@ -17,9 +17,11 @@ import { createClipboardActions, type FileAction } from "./fileActions";
 type Prompt = { method: "mkdir" | "rename" | "delete" | "extract"; name: string; password: string; ids: string[]; destId: string };
 const rootLocation: CloudLocation = [{ id: "0", name: "115网盘" }];
 
-export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = rootLocation, onOpenNewWindow, labels = strings["zh-CN"] }: {
+export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = rootLocation, onOpenNewWindow, onPowerRename, onSuperRename, labels = strings["zh-CN"] }: {
   windowId: string; layer: number; onJobCreated(id: string): void;
   initialTrail?: CloudLocation; onOpenNewWindow?(trail: CloudLocation): void; labels?: UIStrings;
+  onPowerRename?(parentId: string, ids: string[], sourceTitle: string): void;
+  onSuperRename?(parentId: string, sourceTitle: string): void;
 }) {
   const events = useOptionalJobEventsStore();
   const [loggedIn, setLoggedIn] = useState(false);
@@ -42,6 +44,7 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
   const [contextPath, setContextPath] = useState<string | null>(null);
   const generation = useRef(0);
   const pathGeneration = useRef(0);
+  const profileGeneration = useRef(0);
   const promptId = useId();
   const entries = useMemo<Entry[]>(() => cloudEntries.map((entry) => ({
     name: entry.name, relativePath: entry.id,
@@ -62,21 +65,30 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
     finally { if (requestGeneration === generation.current) setLoading(false); }
   }, [parent.id]);
 
+  const refreshProfile = useCallback(async () => {
+    const current = ++profileGeneration.current;
+    try {
+      const next = await cloudCall<{ accountId: string; name: string }>("profile");
+      if (current === profileGeneration.current) setProfile(next);
+    } catch (error) { if (current === profileGeneration.current) setError(String(error)); }
+  }, []);
+
   useEffect(() => {
     let disposed = false;
+    let checkGeneration = 0;
     async function check() {
+      const current = ++checkGeneration;
       try {
         const status = await cloudCall<{ loggedIn: boolean }>("status");
-        if (disposed) return;
+        if (disposed || current !== checkGeneration) return;
         setLoggedIn(status.loggedIn);
         if (status.loggedIn) {
-          const next = await cloudCall<{ accountId: string; name: string }>("profile");
-          if (!disposed) setProfile(next);
+          await refreshProfile();
         }
-      } catch (error) { if (!disposed) setError(String(error)); }
+      } catch (error) { if (!disposed && current === checkGeneration) setError(String(error)); }
     }
     function accountChanged() {
-      generation.current++; pathGeneration.current++;
+      generation.current++; pathGeneration.current++; profileGeneration.current++;
       selection.clear(); setCloudEntries([]); setProfile({ accountId: "", name: "115网盘" });
       setLoggedIn(false); setPrompt(null); setOfflineTarget(null);
       setHistory({ locations: [rootLocation], index: 0 });
@@ -84,9 +96,9 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
     }
     void check();
     window.addEventListener("cloud115-account-changed", accountChanged);
-    function dispose() { disposed = true; generation.current++; pathGeneration.current++; window.removeEventListener("cloud115-account-changed", accountChanged); }
+    function dispose() { disposed = true; generation.current++; pathGeneration.current++; profileGeneration.current++; window.removeEventListener("cloud115-account-changed", accountChanged); }
     return dispose;
-  }, [selection]);
+  }, [selection, refreshProfile]);
   useEffect(() => {
     // Synchronize the remote directory after login and navigation.
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -132,7 +144,7 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
       const result = await cloudCall<{ id: string }>(method, params);
       onJobCreated(result.id);
       setPrompt(null); selection.clear();
-      if (method === "move" && clipboard === submittedClipboard) setCloudClipboard(null);
+      if (method === "move") clearCloudClipboardIfUnchanged(submittedClipboard);
     } catch (error) { setError(String(error)); }
     finally { setBusy(false); }
   }
@@ -146,6 +158,8 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
     const ids = selection.getOrderedPaths();
     return [
       { kind: "command", id: "rename", label: labels.rename, icon: Pencil, disabled: !ready || ids.length !== 1, run: () => openPrompt("rename") },
+      { kind: "command", id: "powerRename", label: labels.powerRename, icon: ScanText, disabled: !ready || !ids.length || !onPowerRename, run: () => onPowerRename?.(parent.id, ids, profile.name + " / " + currentPath) },
+      { kind: "command", id: "superRename", label: labels.superRename, icon: WandSparkles, disabled: !ready || !onSuperRename, run: () => onSuperRename?.(parent.id, profile.name + " / " + currentPath) },
       { kind: "command", id: "mkdir", label: labels.mkdir, icon: FolderPlus, disabled: !ready, run: () => openPrompt("mkdir") },
       { kind: "command", id: "offline", label: "离线下载", icon: CloudDownload, separatorBefore: true, disabled: !ready, run: () => setOfflineTarget({ id: parent.id, name: profile.name + (currentPath === "." ? "" : " / " + currentPath) }) },
       { kind: "command", id: "extract", label: "在线解压", icon: FolderArchive, disabled: !ready || ids.length !== 1 || !isCloudArchive(cloudEntries.find((entry) => entry.id === ids[0])), run: () => openPrompt("extract") },
@@ -189,7 +203,7 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
         onRootChange={() => {}} onPathChange={(path) => void navigatePath(path)} onOpenDirectory={(entry) => navigate([...trail, { id: entry.relativePath, name: entry.name }])}
         onToggleSelection={selection.toggle} onSelectEntry={(id, modifiers) => selection.select(id, fileSelectionMode(modifiers))}
         onSelectAll={selection.selectAll} onSelectPaths={(paths) => selection.replace(paths)} onVisibleOrderChange={selection.setVisibleOrder}
-        onRefresh={() => { void refresh(); void cloudCall<typeof profile>("profile").then(setProfile).catch((error) => setError(String(error))); }}
+        onRefresh={() => { void refresh(); void refreshProfile(); }}
         onActivate={() => {}} onContextTarget={(path) => { selection.selectContextTarget(path); setContextPath(path); }}
         actionsForSelection={() => menuActions(true)}
         dragData={(entry) => ({ kind: "cloud115-entry", get entries() { const ids = selection.isSelected(entry.relativePath) ? selection.getOrderedPaths() : [entry.relativePath]; return cloudEntries.filter((item) => ids.includes(item.id)); } })}

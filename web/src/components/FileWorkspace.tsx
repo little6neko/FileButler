@@ -23,6 +23,7 @@ import {
 import { Cloud, FileCode2, FileImage, FileVideo, Files, ScanText, WandSparkles } from "lucide-react";
 import { Cloud115Window } from "./Cloud115Window";
 import { cloudCall, type CloudDrag } from "../cloud115";
+import { cloudPowerRenameClient, cloudSuperRenameClient, type PowerRenameClient } from "../cloud115Rename";
 import { toast } from "sonner";
 import { buildClipboardRequest, createAppClipboard, isEditableShortcutTarget, type AppClipboard } from "../appClipboard";
 import { api } from "../api/client";
@@ -193,6 +194,7 @@ type LinkPreviewState = {
 };
 
 type PowerRenameInstance = {
+  client?: PowerRenameClient;
   id: string;
   rootId: string;
   paths: string[];
@@ -894,7 +896,7 @@ export function FileWorkspace({
     };
 
     if (window.kind === "cloud115") {
-      return <WindowFrame key={window.id} {...frameProps} title="115网盘" icon={<Cloud aria-hidden="true" />}><Cloud115Window windowId={window.id} layer={window.zOrder} onJobCreated={handleJobCreated} initialTrail={window.trail} onOpenNewWindow={openCloud115DesktopWindow} labels={labels} /></WindowFrame>;
+      return <WindowFrame key={window.id} {...frameProps} title="115网盘" icon={<Cloud aria-hidden="true" />}><Cloud115Window windowId={window.id} layer={window.zOrder} onJobCreated={handleJobCreated} initialTrail={window.trail} onOpenNewWindow={openCloud115DesktopWindow} onPowerRename={openCloudPowerRename} onSuperRename={openCloudSuperRename} labels={labels} /></WindowFrame>;
     }
 
     if (isFileWindow(window)) {
@@ -993,6 +995,7 @@ export function FileWorkspace({
       >
         <div className="power-rename-window-layout" data-source-title={instance.sourceTitle}>
           <PowerRenameContent
+            preview={instance.client?.renamePreview}
             rootId={instance.rootId}
             paths={instance.paths}
             options={instance.options}
@@ -1907,6 +1910,20 @@ export function FileWorkspace({
     commitWindowState((current) => openCloud115Window(current, id, desktopBoundsRef.current, trail));
   }
 
+  function openCloudPowerRename(parentId: string, paths: string[], sourceTitle: string) {
+    const id = `window-${++windowCounterRef.current}`;
+    const instance: PowerRenameInstance = { id, rootId: "@115", paths, sourceTitle, options: { ...defaultRenameOptions, readMetadata: false }, submitting: false, submitError: null, client: cloudPowerRenameClient(parentId) };
+    commitPowerRenameInstances((current) => ({ ...current, [id]: instance }));
+    commitWindowState((current) => openPowerRenameWindow(current, id, id, desktopBoundsRef.current));
+  }
+
+  function openCloudSuperRename(parentId: string, sourceTitle: string) {
+    const id = `window-${++windowCounterRef.current}`;
+    const instance: SuperRenameInstance = { id, rootId: "@115", directoryPath: ".", sourceTitle, manager: new SuperRenameManager("@115", ".", cloudSuperRenameClient(parentId)) };
+    commitSuperRenameInstances((current) => ({ ...current, [id]: instance }));
+    commitWindowState((current) => openSuperRenameWindow(current, id, id, desktopBoundsRef.current));
+  }
+
   function openPowerRenameForSession(sessionId: string) {
     const session = sessionsRef.current[sessionId];
     if (!session || session.location.kind !== "directory" || !session.location.rootId) return null;
@@ -2113,7 +2130,7 @@ export function FileWorkspace({
     const options = { ...instance.options };
     updatePowerRenameInstance(instanceId, (current) => ({ ...current, submitting: true, submitError: null }));
     try {
-      const job = await api.renameCreateJob({
+      const job = await (instance.client ?? api).renameCreateJob({
         rootId: instance.rootId,
         paths: instance.paths,
         options,

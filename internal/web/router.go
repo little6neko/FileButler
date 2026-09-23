@@ -6,6 +6,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/little6neko/filebutler/internal/auth"
 	"github.com/little6neko/filebutler/internal/browser"
+	"github.com/little6neko/filebutler/internal/cloud115"
 	"github.com/little6neko/filebutler/internal/config"
 	"github.com/little6neko/filebutler/internal/jobs"
 	"github.com/little6neko/filebutler/internal/links"
@@ -17,6 +18,7 @@ import (
 )
 
 type Deps struct {
+	Cloud115          *cloud115.Service
 	Config            config.Config
 	Auth              *auth.Service
 	Roots             roots.Resolver
@@ -56,6 +58,9 @@ func NewRouter(deps Deps) http.Handler {
 
 	router.Group(func(protected chi.Router) {
 		protected.Use(auth.RequireAuth(deps.Auth, cookieName))
+		if deps.Cloud115 != nil {
+			protected.Post("/api/cloud115/{method}", deps.Cloud115.Handler)
+		}
 		protected.Get("/api/roots", rootsHandler(deps.Roots))
 		protected.Get("/api/browse", browseHandler(deps.Browser))
 		protected.Get("/api/media", mediaHandler(deps.Roots))

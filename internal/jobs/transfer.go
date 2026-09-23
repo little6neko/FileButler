@@ -9,13 +9,14 @@ import (
 
 // TransferProgress describes the current phase, not an estimate for later phases.
 type TransferProgress struct {
-	Phase            string  `json:"phase"`
-	File             string  `json:"file"`
-	BytesDone        int64   `json:"bytesDone"`
-	BytesTotal       int64   `json:"bytesTotal"`
-	BytesPerSecond   float64 `json:"bytesPerSecond"`
-	RemainingSeconds *int64  `json:"remainingSeconds,omitempty"`
-	Cancelable       bool    `json:"cancelable"`
+	Percent          *float64 `json:"percent,omitempty"`
+	Phase            string   `json:"phase"`
+	File             string   `json:"file"`
+	BytesDone        int64    `json:"bytesDone"`
+	BytesTotal       int64    `json:"bytesTotal"`
+	BytesPerSecond   float64  `json:"bytesPerSecond"`
+	RemainingSeconds *int64   `json:"remainingSeconds,omitempty"`
+	Cancelable       bool     `json:"cancelable"`
 }
 
 type progressKey struct{}

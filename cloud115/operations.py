@@ -1,0 +1,291 @@
+"""115 operations; no HTTP server, browser state, or local authentication here."""
+import hashlib
+import os
+import stat
+import time
+import uuid
+from contextlib import contextmanager
+from urllib.request import Request, urlopen
+from urllib.parse import urlsplit
+
+from errors import Canceled, ProviderError
+
+
+def safe_name(name):
+    if not isinstance(name, str) or not name or name in (".", "..") or any(c in name for c in "/\\\x00"):
+        raise ProviderError("文件名无效或包含路径分隔符")
+    return name
+
+
+@contextmanager
+def open_directory(path):
+    # Walk from filesystem root using no-follow descriptors: path replacement
+    # cannot redirect a transfer outside the directory validated by Go.
+    if os.name != "posix":
+        raise ProviderError("115本地传输当前需要Linux/macOS或Docker环境")
+    if not os.path.isabs(path):
+        raise ProviderError("本地路径必须为绝对路径")
+    fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        for part in path.split("/"):
+            if not part:
+                continue
+            safe_name(part)
+            next_fd = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = next_fd
+        yield fd
+    finally:
+        os.close(fd)
+
+
+def progress_value(phase, name, done=0, total=0, cancelable=True, percent=None):
+    value = {"phase": phase, "file": name, "bytesDone": done, "bytesTotal": total, "cancelable": cancelable}
+    if percent is not None:
+        value["percent"] = percent
+    return value
+
+
+class CloudOperations:
+    def info(self, file_id):
+        from p115client.tool.attr import get_attr
+        return get_attr(self.load(), int(file_id), timeout=30)
+
+    def browse(self, parent, offset=0):
+        from p115client.tool.attr import normalize_attr_web
+        if str(parent) != "0" and not self.info(parent)["is_dir"]:
+            raise ProviderError("目标不是文件夹")
+        result = self.checked(self.load().fs_files({"cid": parent, "offset": offset, "limit": 200, "show_dir": 1, "cur": 1, "o": "file_name", "asc": 1}, timeout=30))
+        if str(result.get("cid", parent)) != str(parent):
+            raise ProviderError("115目录已不存在，请刷新")
+        entries = []
+        for raw in result["data"]:
+            item = normalize_attr_web(raw)
+            entries.append({"id": str(item["id"]), "parentId": str(item["parent_id"]), "name": item["name"], "isDirectory": item["is_dir"], "size": item["size"]})
+        return {"entries": entries, "total": int(result["count"]), "offset": offset}
+
+    def children(self, parent):
+        offset = 0
+        while True:
+            page = self.browse(parent, offset)
+            yield from page["entries"]
+            offset += len(page["entries"])
+            if offset >= page["total"]:
+                break
+            if not page["entries"]:
+                raise ProviderError("115返回不完整的目录列表")
+
+    def ensure_unused(self, parent, name, except_id=None):
+        safe_name(name)
+        if any(item["name"] == name and item["id"] != str(except_id) for item in self.children(parent)):
+            raise ProviderError(f"目标已存在：{name}（未覆盖）")
+
+    def mkdir(self, parent, name):
+        self.ensure_unused(parent, name)
+        result = self.checked(self.load().fs_mkdir(name, pid=parent, timeout=30))
+        return str(result.get("cid") or result.get("data", {}).get("cid") or self.find_child(parent, name)["id"])
+
+    def find_child(self, parent, name):
+        for item in self.children(parent):
+            if item["name"] == name:
+                return item
+        raise ProviderError("115未确认目标文件，请刷新后核实，不要重复提交")
+
+    def operation(self, method, params, report):
+        client = self.load()
+        parent = params.get("parentId", "0")
+        dest = params.get("destId", "0")
+        if method == "browse":
+            return self.browse(parent, params.get("offset", 0))
+        report(progress_value("scan", params.get("name", "")))
+        if method == "upload":
+            path = params["localPath"]
+            with open_directory(os.path.dirname(path)) as directory:
+                self.upload_entry(directory, os.path.basename(path), dest, report)
+            return {"ok": True}
+        if method == "download":
+            with open_directory(params["localPath"]) as directory:
+                self.download_entry(params["id"], directory, report)
+            return {"ok": True}
+        if method == "mkdir":
+            report(progress_value("waiting", params["name"], cancelable=False))
+            return {"id": self.mkdir(parent, params["name"])}
+        item = self.info(params["id"])
+        name = item["name"]
+        if method == "extract":
+            self.extract(item, dest, params.get("password", ""), report)
+            return {"ok": True}
+        report(progress_value("waiting", name, cancelable=False))
+        if method == "rename":
+            self.ensure_unused(item["parent_id"], params["name"], item["id"])
+            self.checked(client.fs_rename((item["id"], params["name"]), timeout=30))
+            if self.info(item["id"])["name"] != params["name"]:
+                raise ProviderError("115未确认新名称，请刷新后核实")
+        elif method in ("copy", "move"):
+            self.ensure_unused(dest, name)
+            if item["is_dir"]:
+                ancestor = str(dest)
+                seen = set()
+                while ancestor != "0":
+                    if ancestor == str(item["id"]) or ancestor in seen:
+                        raise ProviderError("不能复制或移动文件夹到自身或其子目录")
+                    seen.add(ancestor)
+                    ancestor = str(self.info(ancestor)["parent_id"])
+            if method == "copy" and item["is_dir"]:
+                # Copy directories one leaf at a time so a populated root is not
+                # mistaken for completion of an asynchronous server-side tree copy.
+                self.copy_directory(item, dest, report)
+                return {"ok": True}
+            self.checked(getattr(client, "fs_" + method)(item["id"], pid=dest, timeout=30))
+            self.find_child(dest, name)
+            if method == "move" and str(self.info(item["id"])["parent_id"]) != str(dest):
+                raise ProviderError("115尚未确认移动完成，请刷新后核实")
+        elif method == "delete":
+            self.checked(client.fs_delete(item["id"], timeout=30))
+        else:
+            raise ProviderError("不支持的115操作")
+        return {"ok": True}
+
+    def copy_directory(self, item, dest, report):
+        target = self.mkdir(dest, item["name"])
+        for child in self.children(item["id"]):
+            report(progress_value("scan", child["name"]))
+            self.operation("copy", {"id": child["id"], "destId": target}, report)
+
+    def upload_entry(self, directory, name, parent, report):
+        safe_name(name)
+        report(progress_value("scan", name))
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+        try:
+            info = os.fstat(fd)
+            if stat.S_ISDIR(info.st_mode):
+                dest = self.mkdir(parent, name)
+                for child in os.listdir(fd):
+                    self.upload_entry(fd, child, dest, report)
+            elif stat.S_ISREG(info.st_mode):
+                self.ensure_unused(parent, name)
+                with os.fdopen(os.dup(fd), "rb") as file:
+                    self.upload_file(file, name, parent, report)
+            else:
+                raise ProviderError(f"不支持上传链接或特殊文件：{name}")
+        finally:
+            os.close(fd)
+
+    def upload_file(self, file, name, parent, report):
+        before = os.fstat(file.fileno())
+        total = before.st_size
+        digest = hashlib.sha1()
+        done = 0
+        report(progress_value("hash", name, 0, total))
+        while chunk := file.read(1024*1024):
+            digest.update(chunk)
+            done += len(chunk)
+            report(progress_value("hash", name, done, total))
+        def check_unchanged():
+            now = os.fstat(file.fileno())
+            if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (now.st_size, now.st_mtime_ns, now.st_ctime_ns):
+                raise ProviderError("校验或上传期间文件发生变化，请核实云端结果后重新操作")
+        check_unchanged()
+        file.seek(0)
+        report(progress_value("waiting", name))
+        uploaded = 0
+        cancel_error = None
+
+        def hook(delta):
+            nonlocal uploaded, cancel_error
+            uploaded += delta
+            try:
+                check_unchanged()
+                report(progress_value("upload", name, min(uploaded, total), total))
+            except Exception as error:
+                cancel_error = error
+                raise
+        try:
+            # p115oss performs the server's range challenge and falls back to OSS
+            # upload. Explicit hash avoids its uninstrumented full-file hashing.
+            result = self.load().upload_file(file, pid=parent, filename=name, filesha1=digest.hexdigest().upper(), filesize=total, reporthook=hook, timeout=120)
+        except Exception:
+            if cancel_error is not None:
+                raise cancel_error
+            raise
+        check_unchanged()
+        self.checked(result)
+
+    def download_entry(self, file_id, directory, report):
+        item = self.info(file_id)
+        name = safe_name(item["name"])
+        report(progress_value("scan", name))
+        if item["is_dir"]:
+            # mkdir is exclusive; never merge an unreviewed existing tree.
+            os.mkdir(name, mode=0o755, dir_fd=directory)
+            child_fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
+            try:
+                for child in self.children(file_id):
+                    self.download_entry(child["id"], child_fd, report)
+            finally:
+                os.close(child_fd)
+            return
+        try:
+            os.stat(name, dir_fd=directory, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise ProviderError(f"目标已存在：{name}（未覆盖）")
+        url = self.load().download_url(item["pickcode"], timeout=30)
+        if urlsplit(str(url)).scheme not in ("https", "http"):
+            raise ProviderError("115返回无效下载地址")
+        temp = ".filebutler-download-" + uuid.uuid4().hex
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600, dir_fd=directory)
+        total, done = int(item["size"]), 0
+        try:
+            digest = hashlib.sha1()
+            with os.fdopen(fd, "wb") as file:
+                report(progress_value("download", name, 0, total))
+                with urlopen(Request(str(url), headers=getattr(url, "headers", {})), timeout=60) as response:
+                    while chunk := response.read(1024*1024):
+                        file.write(chunk)
+                        digest.update(chunk)
+                        done += len(chunk)
+                        report(progress_value("download", name, done, total))
+                file.flush()
+                os.fsync(file.fileno())
+            if done != total or (item.get("sha1") and digest.hexdigest().upper() != item["sha1"].upper()):
+                raise ProviderError("下载大小或摘要校验失败")
+            # Hard-link publication is atomic and refuses replacement of a raced-in file.
+            os.link(temp, name, src_dir_fd=directory, dst_dir_fd=directory, follow_symlinks=False)
+        finally:
+            os.unlink(temp, dir_fd=directory)
+
+    def extract(self, item, dest, password, report):
+        if item["is_dir"]:
+            raise ProviderError("请选择压缩文件")
+        client = self.load()
+        pickcode = item["pickcode"]
+        report(progress_value("extract", item["name"], cancelable=False))
+        result = self.checked(client.extract_push({"pick_code": pickcode, "secret": password}, timeout=60))
+        deadline = time.monotonic() + 6*3600
+        while True:
+            status = int(result["data"]["unzip_status"])
+            if status == 4:
+                break
+            if status not in (0, 1):
+                raise ProviderError("115压缩包解析失败，请检查密码、格式、大小及账号权限")
+            if time.monotonic() > deadline:
+                raise ProviderError("云端解压等待超时；远端可能仍在执行，请在115确认状态")
+            time.sleep(2)
+            report(progress_value("extract", item["name"], cancelable=False))
+            result = self.checked(client.extract_push_progress(pickcode, timeout=30))
+        # Isolate extraction from existing names; never silently merge/overwrite.
+        folder = self.mkdir(dest, os.path.splitext(item["name"])[0])
+        result = self.checked(client.extract_file(pickcode, to_pid=folder, timeout=60))
+        task_id = result["data"]["extract_id"]
+        while time.monotonic() < deadline:
+            result = self.checked(client.extract_progress(task_id, timeout=30))
+            percent = float(result["data"]["percent"])
+            report(progress_value("extract", item["name"], cancelable=False, percent=percent))
+            if percent == 100:
+                return
+            if percent < 0 or percent > 100:
+                raise ProviderError("115返回无效解压进度")
+            time.sleep(2)
+        raise ProviderError("云端解压等待超时；远端可能仍在执行，请在115确认状态")

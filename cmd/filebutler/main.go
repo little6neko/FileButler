@@ -7,6 +7,7 @@ import (
 
 	"github.com/little6neko/filebutler/internal/auth"
 	"github.com/little6neko/filebutler/internal/browser"
+	"github.com/little6neko/filebutler/internal/cloud115"
 	"github.com/little6neko/filebutler/internal/config"
 	"github.com/little6neko/filebutler/internal/jobs"
 	"github.com/little6neko/filebutler/internal/links"
@@ -36,12 +37,15 @@ func main() {
 	}
 	resolver := roots.NewResolver(rootItems)
 	jobStore := jobs.NewStore()
+	cloudBridge := cloud115.NewBridge(cfg.Cloud115.Python, cfg.Cloud115.Worker, cfg.Cloud115.Credentials)
+	defer cloudBridge.Close()
 	opsExecutor := ops.Executor{Resolver: resolver}
 	linkStaging := links.NewStagingManager(jobStore.RuntimeID())
 	linkMaintainer := links.StagingMaintainer{Manager: linkStaging, Jobs: jobStore}
 	linkPlanner := links.Planner{Resolver: resolver, Maintainer: linkMaintainer}
 	linkBrowser := browser.Service{Resolver: resolver, Maintainer: linkMaintainer}
 	router := web.NewRouter(web.Deps{
+		Cloud115:     cloud115.NewService(cloudBridge, jobStore, resolver),
 		Config:       cfg,
 		Auth:         authService,
 		Roots:        resolver,

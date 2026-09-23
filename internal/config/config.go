@@ -11,13 +11,20 @@ import (
 )
 
 type Config struct {
-	Listen         string        `yaml:"listen"`
-	AuthFile       string        `yaml:"auth_file"`
-	JobConcurrency int           `yaml:"job_concurrency"`
-	LogLevel       string        `yaml:"log_level"`
-	Session        SessionConfig `yaml:"session"`
-	Roots          []RootConfig  `yaml:"roots"`
-	StaticDir      string        `yaml:"static_dir"`
+	Cloud115       Cloud115Config `yaml:"cloud115"`
+	Listen         string         `yaml:"listen"`
+	AuthFile       string         `yaml:"auth_file"`
+	JobConcurrency int            `yaml:"job_concurrency"`
+	LogLevel       string         `yaml:"log_level"`
+	Session        SessionConfig  `yaml:"session"`
+	Roots          []RootConfig   `yaml:"roots"`
+	StaticDir      string         `yaml:"static_dir"`
+}
+
+type Cloud115Config struct {
+	Python      string `yaml:"python"`
+	Worker      string `yaml:"worker"`
+	Credentials string `yaml:"credentials"`
 }
 
 type SessionConfig struct {
@@ -50,6 +57,17 @@ func Load(path string) (Config, error) {
 		return Config{}, err
 	}
 	cfg.AuthFile = absAuthFile
+	if cfg.Cloud115.Python == "" {
+		cfg.Cloud115.Python = "python3"
+	}
+	if cfg.Cloud115.Worker == "" {
+		cfg.Cloud115.Worker = "cloud115/worker.py"
+	}
+	if cfg.Cloud115.Credentials == "" {
+		cfg.Cloud115.Credentials = filepath.Join(filepath.Dir(cfg.AuthFile), "115-cookies.txt")
+	} else if !filepath.IsAbs(cfg.Cloud115.Credentials) {
+		cfg.Cloud115.Credentials = filepath.Join(baseDir, cfg.Cloud115.Credentials)
+	}
 	if cfg.StaticDir != "" && !filepath.IsAbs(cfg.StaticDir) {
 		cfg.StaticDir = filepath.Join(baseDir, cfg.StaticDir)
 	}

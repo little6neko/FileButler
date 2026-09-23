@@ -72,10 +72,12 @@ export function Cloud115Preview({ instance, labels, onNavigate }: { instance: Cl
   function mediaResult(error = "") { setState((value) => value?.key === key ? { ...value, loading: false, error } : value); }
   if (!supported) return null;
   return <div className="relative flex h-full min-h-0 flex-col" data-no-file-drop data-testid="cloud-preview">
-    <div className="flex shrink-0 items-center justify-end gap-3 border-b p-2 text-sm" role="toolbar" aria-label="直链操作">
-      <Button size="sm" variant="outline" disabled={invalidated} onClick={() => setAttempt((value) => value + 1)}>重新获取直链</Button>
-      <Button size="sm" variant="outline" disabled={!current?.url || invalidated} onClick={() => void copyLink()}>复制直链</Button>
-      {!invalidated && (!current || current.loading) ? <span role="status" className="text-sm text-muted-foreground">正在直接从115加载…</span> : null}
+    <div className="flex shrink-0 items-center gap-3 border-b p-2 text-sm" role="toolbar" aria-label="直链操作">
+      {!invalidated && (!current || current.loading) ? <span role="status" className="min-w-0 truncate text-sm text-muted-foreground">正在直接从115加载…</span> : null}
+      <div className="ml-auto flex shrink-0 items-center gap-3">
+        <Button size="sm" variant="outline" disabled={invalidated} onClick={() => setAttempt((value) => value + 1)}>重新获取直链</Button>
+        <Button size="sm" variant="outline" disabled={!current?.url || invalidated} onClick={() => void copyLink()}>复制直链</Button>
+      </div>
     </div>
     {invalidated ? <p role="alert" className="p-4">115账号已变化，请关闭并重新打开预览</p> : <>
       {copyResult.key === key && copyResult.message ? <p role="status" className="p-2 text-sm">{copyResult.message}</p> : null}

@@ -55,6 +55,33 @@ test("QR login enters the cloud automatically after phone confirmation", async (
   expect(checks[0].params).toEqual({ loginSession: "test-opaque-session-123456" });
 });
 
+test("cloud preview loading text stays left while link buttons stay right before and after load", async ({ page }) => {
+  await installCloud(page);
+  let release!: () => void;
+  const loading = new Promise<void>((resolve) => { release = resolve; });
+  await page.route("https://115-preview.example/photo.jpg", async (route) => { await loading; await route.fallback(); });
+  try {
+    await page.goto("/");
+    await page.getByRole("button", { name: "打开115网盘", exact: true }).click();
+    const cloud = page.locator('.desktop-window[data-window-kind="cloud115"]');
+    await cloud.getByRole("button", { name: /Cloud tester/ }).dblclick();
+    await cloud.getByRole("button", { name: "photo.jpg", exact: true }).dblclick();
+    const toolbar = page.getByRole("toolbar", { name: "直链操作" });
+    const status = toolbar.getByRole("status");
+    await expect(status).toHaveText("正在直接从115加载…");
+    const frame = (await toolbar.boundingBox())!;
+    const message = (await status.boundingBox())!;
+    const copy = toolbar.getByRole("button", { name: "复制直链" });
+    const before = (await copy.boundingBox())!;
+    expect(message.x - frame.x).toBeLessThan(16);
+    expect(message.x + message.width).toBeLessThan(before.x);
+    expect(frame.x + frame.width - before.x - before.width).toBeLessThan(16);
+    release();
+    await expect(status).toHaveCount(0);
+    expect((await copy.boundingBox())!.x).toBe(before.x);
+  } finally { release(); }
+});
+
 test("cloud previews load bytes directly, text is read-only and archive double click prompts extraction", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   const { calls, contentRequests } = await installCloud(page);

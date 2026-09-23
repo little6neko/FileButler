@@ -24,6 +24,20 @@ it("shows only matching refresh and copy buttons, disables copy until a link exi
   expect(buttons).toHaveLength(2);
   expect(buttons[0].className).toBe(buttons[1].className);
   expect(screen.getByRole("toolbar")).toContainElement(screen.getByText("正在直接从115加载…"));
+  expect(screen.getByRole("toolbar").firstElementChild).toBe(screen.getByText("正在直接从115加载…"));
+  expect(buttons[0].parentElement).toHaveClass("ml-auto");
+});
+
+it("removes the left-hand loading message when media loads without moving the button group", async () => {
+  const { container } = preview();
+  await waitFor(() => expect(container.querySelector("video")).not.toBeNull());
+  const toolbar = screen.getByRole("toolbar");
+  const buttons = screen.getByRole("button", { name: "复制直链" }).parentElement;
+  expect(toolbar.firstElementChild).toHaveTextContent("正在直接从115加载…");
+  fireEvent.loadedData(container.querySelector("video")!);
+  expect(screen.queryByText("正在直接从115加载…")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "复制直链" }).parentElement).toBe(buttons);
+  expect(buttons).toHaveClass("ml-auto");
 });
 
 it("shows the exact size error only for text, retaining a copyable link", async () => {

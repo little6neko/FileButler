@@ -18,6 +18,8 @@ import {
 } from "../fileDrag";
 import { FileIcon } from "./FileIcon";
 
+const cloudNameWarning = '文件名包含违规字符：“\\ / : * ? " < > |”';
+
 type Props = {
   accountId?: string;
   ancestorIds?: string[];
@@ -114,6 +116,7 @@ export const FileRow = memo(function FileRow({
     setDropNodeRef(node);
   }, [setDragNodeRef, setDropNodeRef]);
   const feedback = dropFeedback?.target.id === directoryTarget.id ? dropFeedback : null;
+  const hasNameWarning = provider === "cloud115" && /[\\/:*?"<>|]/.test(entry.name);
 
   useLayoutEffect(() => {
     if (isDragging) {
@@ -132,6 +135,8 @@ export const FileRow = memo(function FileRow({
       ref={setNodeRef}
       role="row"
       data-entry-path={entry.relativePath}
+      data-name-warning={hasNameWarning ? "true" : undefined}
+      title={hasNameWarning ? cloudNameWarning : undefined}
       data-density="compact"
       data-file-drag-source="true"
       data-dragging={isDragging ? "true" : "false"}
@@ -172,7 +177,7 @@ export const FileRow = memo(function FileRow({
             }}
           >
             <FileIcon name={entry.name} type={entry.type} />
-            <span className="truncate font-medium text-slate-700">{entry.name}</span>
+            <span className="file-entry-name truncate font-medium text-slate-700">{entry.name}</span>
           </span>
           {entry.isSymlink && entry.symlinkTarget ? (
             <small className="truncate text-slate-400">{" -> "}{entry.symlinkTarget}</small>

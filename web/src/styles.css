@@ -1626,6 +1626,11 @@ body {
   opacity: 0.48;
 }
 
+.file-table tbody tr[data-name-warning="true"] > td,
+.file-table tbody tr[data-name-warning="true"] .file-entry-name {
+  color: #a16207;
+}
+
 @theme inline {
   --font-heading:
     var(--font-sans);

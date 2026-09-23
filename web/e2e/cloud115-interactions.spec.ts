@@ -40,6 +40,39 @@ async function installCloud(page: Page, initiallyLoggedIn = true) {
   return { calls, contentRequests };
 }
 
+test("legacy cloud names warn across the row without changing ID-based navigation", async ({ page }) => {
+  await installCloud(page);
+  const parents: string[] = [];
+  await page.route("**/api/cloud115/browse", async route => {
+    const parent = route.request().postDataJSON().parentId;
+    parents.push(parent);
+    const entries = parent === "0" ? [
+      { id: "1", parentId: "0", name: 'old?.txt', size: 42, isDirectory: false },
+      { id: "2", parentId: "0", name: "A/B", size: 0, isDirectory: true },
+    ] : [{ id: "3", parentId: "2", name: "normal.txt", size: 42, isDirectory: false }];
+    await route.fulfill({ json: { data: { entries, total: entries.length, offset: 0 } } });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "打开115网盘", exact: true }).click();
+  await page.getByRole("button", { name: /Cloud tester/ }).dblclick();
+  const cloud = page.locator('.desktop-window[data-window-kind="cloud115"]');
+  for (const id of ["1", "2"]) {
+    const row = cloud.locator(`[data-entry-path="${id}"]`);
+    await row.hover();
+    await expect(row).toHaveAttribute("title", '文件名包含违规字符：“\\ / : * ? " < > |”');
+    await expect(row.locator(".file-entry-name")).toHaveCSS("color", "rgb(161, 98, 7)");
+    for (const cell of await row.locator("td").all()) await expect(cell).toHaveCSS("color", "rgb(161, 98, 7)");
+  }
+  await cloud.getByRole("button", { name: "A/B", exact: true }).click();
+  await expect(cloud.locator('[data-entry-path="2"] .file-entry-name')).toHaveCSS("color", "rgb(161, 98, 7)");
+  await cloud.getByRole("button", { name: "A/B", exact: true }).dblclick();
+  const normal = cloud.locator('[data-entry-path="3"]');
+  await expect(normal).toBeVisible();
+  await expect(normal).not.toHaveAttribute("title");
+  await expect(normal).not.toHaveAttribute("data-name-warning");
+  expect(parents.at(-1)).toBe("2");
+});
+
 test("QR login enters the cloud automatically after phone confirmation", async ({ page }) => {
   const { calls } = await installCloud(page, false);
   await page.goto("/");

@@ -141,3 +141,19 @@ func TestHashForSymlinkedConfiguredRoot(t *testing.T) {
 		t.Fatalf("%v %v", result, e)
 	}
 }
+
+func TestConfiguredRootDetailsAndStatistics(t *testing.T) {
+	s, dir := fixture(t)
+	write(t, filepath.Join(dir, "a.txt"), "hello")
+	for _, path := range []string{".", "", "./"} {
+		req := Request{RootID: "a", Paths: []string{path}}
+		items, err := s.Basic(context.Background(), req)
+		if err != nil || len(items) != 1 || items[0].Type != "directory" || items[0].Location != dir {
+			t.Fatalf("root %q: %+v %v", path, items, err)
+		}
+		totals, err := s.Stats(context.Background(), req)
+		if err != nil || totals.Files != 1 || totals.Folders != 0 || totals.Size != 5 {
+			t.Fatalf("root stats %q: %+v %v", path, totals, err)
+		}
+	}
+}

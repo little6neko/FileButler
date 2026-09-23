@@ -63,6 +63,11 @@ func (s Service) resolve(req Request) ([]roots.ResolvedPath, error) {
 	out := make([]roots.ResolvedPath, 0, len(req.Paths))
 	for _, p := range req.Paths {
 		r, e := s.Roots.ResolveEntry(req.RootID, p)
+		// A configured root is a valid details target, although it is not a
+		// renameable directory entry. Preserve no-follow semantics elsewhere.
+		if p == "" || filepath.Clean(p) == "." {
+			r, e = s.Roots.ResolveFollow(req.RootID, p)
+		}
 		if e != nil {
 			return nil, e
 		}

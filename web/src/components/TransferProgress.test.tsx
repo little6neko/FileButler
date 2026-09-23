@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { JobEventsStore } from "../jobEvents";
 import type { Job } from "../api/types";
@@ -18,6 +18,22 @@ function setup() {
 }
 
 describe("transfer windows", () => {
+  it("shows independent windows, raises the focused one and closes only that window", () => {
+    const store = setup();
+    act(() => {
+      store.handleChanged({ runtimeId: "r", cursor: 2, job: { ...job, id: "b", eventVersion: 2 } });
+      store.registerCreatedJob("b");
+    });
+    const dialogs = screen.getAllByRole("dialog");
+    expect(dialogs).toHaveLength(2);
+    const remainingId = dialogs[1].getAttribute("data-progress-job");
+    expect(dialogs[0].style.left).not.toBe(dialogs[1].style.left);
+    fireEvent.pointerDown(dialogs[0]);
+    expect(Number(dialogs[0].style.zIndex)).toBeGreaterThan(Number(dialogs[1].style.zIndex));
+    fireEvent.click(within(dialogs[0]).getByRole("button", { name: "后台运行" }));
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByRole("dialog")).toHaveAttribute("data-progress-job", remainingId);
+  });
   it("hides without canceling, can reopen, then auto closes on success", () => {
     const store = setup();
     expect(screen.getByRole("dialog")).toHaveAttribute("aria-modal", "false");

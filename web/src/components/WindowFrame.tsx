@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { Files, Maximize2, Minus, Shrink, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { bindPointerGesture } from "../pointerGesture";
 import type { UIStrings } from "../i18n";
 import {
   renderedWindowRect,
@@ -128,42 +129,4 @@ export function WindowFrame({
       )) : null}
     </section>
   );
-}
-
-function bindPointerGesture(
-  event: ReactPointerEvent<HTMLElement>,
-  onMove: (deltaX: number, deltaY: number) => void,
-): () => void {
-  const element = event.currentTarget;
-  const pointerID = event.pointerId;
-  const startX = event.clientX;
-  const startY = event.clientY;
-  element.setPointerCapture?.(pointerID);
-
-  function handleMove(moveEvent: PointerEvent) {
-    if (moveEvent.pointerId !== pointerID) return;
-    onMove(moveEvent.clientX - startX, moveEvent.clientY - startY);
-  }
-
-  let active = true;
-
-  function finish(endEvent?: PointerEvent) {
-    if (!active || (endEvent && endEvent.pointerId !== pointerID)) return;
-    active = false;
-    element.removeEventListener("pointermove", handleMove);
-    element.removeEventListener("pointerup", finish);
-    element.removeEventListener("pointercancel", finish);
-    window.removeEventListener("blur", cancel);
-    if (element.hasPointerCapture?.(pointerID)) element.releasePointerCapture(pointerID);
-  }
-
-  function cancel() {
-    finish();
-  }
-
-  element.addEventListener("pointermove", handleMove);
-  element.addEventListener("pointerup", finish);
-  element.addEventListener("pointercancel", finish);
-  window.addEventListener("blur", cancel);
-  return cancel;
 }

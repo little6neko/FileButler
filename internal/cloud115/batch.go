@@ -57,6 +57,7 @@ type batchPreview struct {
 	UsedGroups map[string]bool
 }
 type batchRequest struct {
+	AccountID    string            `json:"accountId"`
 	ParentID     string            `json:"parentId"`
 	IDs          []string          `json:"ids"`
 	Path         string            `json:"path"`
@@ -126,7 +127,7 @@ func (s *Service) batchHandler(w http.ResponseWriter, r *http.Request, method st
 		s.submitBatch(w, r, method, req, user.ID)
 		return
 	}
-	params := map[string]any{"kind": "super", "parentId": req.ParentID}
+	params := map[string]any{"kind": "super", "parentId": req.ParentID, "accountId": req.AccountID}
 	if method == "power.preview" {
 		if len(req.IDs) == 0 {
 			respond(w, 400, nil, "请选择需要重命名的项目")
@@ -150,7 +151,7 @@ func (s *Service) batchHandler(w http.ResponseWriter, r *http.Request, method st
 		return
 	}
 	var scan cloudScan
-	if json.Unmarshal(raw, &scan) != nil || scan.AccountID == "" {
+	if json.Unmarshal(raw, &scan) != nil || scan.AccountID != req.AccountID {
 		respond(w, 502, nil, "invalid cloud snapshot")
 		return
 	}
@@ -390,7 +391,11 @@ func (s *Service) submitBatch(w http.ResponseWriter, r *http.Request, method str
 	// Account check is read-only; do not fetch optional profile fields here.
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
-	raw, err := s.Provider.Call(ctx, "account", nil, nil)
+	if account != req.AccountID {
+		respond(w, 409, nil, "预览账号不匹配")
+		return
+	}
+	raw, err := s.Provider.Call(ctx, "account", map[string]any{"accountId": account}, nil)
 	var identity struct {
 		AccountID string `json:"accountId"`
 	}
@@ -403,7 +408,7 @@ func (s *Service) submitBatch(w http.ResponseWriter, r *http.Request, method str
 	if method == "super.submit" {
 		kind = "super_rename"
 	}
-	if err := s.Store.Create(r.Context(), jobs.Job{ID: id, Type: kind, ActorID: actor, SourceRootID: "@115", DestRootID: "@115", ProgressTotal: len(groups)}); err != nil {
+	if err := s.Store.Create(r.Context(), jobs.Job{ID: id, AccountID: account, Type: kind, ActorID: actor, SourceRootID: "@115", DestRootID: "@115", ProgressTotal: len(groups)}); err != nil {
 		respond(w, 500, nil, err.Error())
 		return
 	}

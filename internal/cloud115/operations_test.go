@@ -49,7 +49,7 @@ func TestSharedPreviewTokensBindActorAndRevisionAndCreateDetachedTask(t *testing
 		router.ServeHTTP(out, httptest.NewRequest("POST", "/"+method, strings.NewReader(body)).WithContext(ctx))
 		return out
 	}
-	body := `{"type":"move","sourceRoot":"@115","sources":["1"],"destRoot":"@115","destPath":"9","accountId":"7"}`
+	body := `{"type":"move","sourceRoot":"@115","sources":["1"],"destRoot":"@115","destPath":"9","accountId":"7","sourceAccountId":"7","destAccountId":"7"}`
 	if out := post("ops.preview", body, 0); out.Code != 401 {
 		t.Fatal(out.Code)
 	}
@@ -63,7 +63,7 @@ func TestSharedPreviewTokensBindActorAndRevisionAndCreateDetachedTask(t *testing
 		} `json:"data"`
 	}
 	json.Unmarshal(out.Body.Bytes(), &envelope)
-	confirm := `{"previewToken":"` + envelope.Data.PreviewToken + `"}`
+	confirm := `{"accountId":"7","previewToken":"` + envelope.Data.PreviewToken + `"}`
 	if snapshot, _ := store.Snapshot(context.Background()); len(snapshot.Jobs) != 0 {
 		t.Fatal("preview mutated files")
 	}

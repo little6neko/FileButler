@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { CloudDownload, FolderArchive, FolderPlus, LogOut, Pencil, ScanText, Trash2, WandSparkles, Info } from "lucide-react";
+import { CloudDownload, FolderArchive, FolderPlus, LogOut, Pencil, ScanText, Trash2, WandSparkles, Info, Users } from "lucide-react";
 import type { DetailsTarget } from "../fileDetails";
 import { cloudCall, cloudDirectory, isCloudArchive, type CloudEntry, type CloudLocation, type CloudRequest } from "../cloud115";
-import { createAppClipboard, getAppClipboard, setAppClipboard, useAppClipboard, type ClipboardTarget } from "../appClipboard";
+import { createAppClipboard, setAppClipboard, useAppClipboard, type ClipboardTarget } from "../appClipboard";
 import type { FileDropFeedback } from "../fileDrag";
 import type { OpsRequest } from "../api/types";
 import { toast } from "sonner";
-import { useCloud115Login } from "../useCloud115Login";
+import { Cloud115Accounts } from "./Cloud115Accounts";
 import { createFileSelectionStore } from "../fileSelectionStore";
 import { fileSelectionMode } from "../fileSelection";
 import { fileOpenKind } from "../fileOpenKind";
@@ -24,7 +24,8 @@ type Prompt = { method: "mkdir" | "rename" | "extract"; name: string; password: 
 export type CloudFileController = { copy(operation: "copy" | "move"): boolean; paste(): void; selectAll(): void; back(): void; blocked: boolean };
 const rootLocation: CloudLocation = [{ id: "0", name: "115网盘" }];
 
-export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = rootLocation, onOpenNewWindow, onPowerRename, onSuperRename, onPreview, onOperation, onPaste, onRegister, onDetails, operationOpen = false, dropFeedback = null, labels = strings["zh-CN"] }: {
+type Cloud115WindowProps = {
+  onTitle?(windowId: string, title: string): void;
   onDetails?(target: DetailsTarget): void;
   onOperation?(request: OpsRequest): void;
   onPaste?(target: ClipboardTarget): void;
@@ -32,21 +33,32 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
   operationOpen?: boolean;
   dropFeedback?: FileDropFeedback | null;
   windowId: string; layer: number; onJobCreated(id: string): void;
-  initialTrail?: CloudLocation; onOpenNewWindow?(trail: CloudLocation): void; labels?: UIStrings;
-  onPowerRename?(parentId: string, ids: string[], sourceTitle: string): void;
-  onSuperRename?(parentId: string, sourceTitle: string): void;
+  initialAccountId?: string;
+  initialTrail?: CloudLocation; onOpenNewWindow?(trail: CloudLocation, accountId: string): void; labels?: UIStrings;
+  onPowerRename?(parentId: string, ids: string[], sourceTitle: string, accountId: string): void;
+  onSuperRename?(parentId: string, sourceTitle: string, accountId: string): void;
   onPreview?(entry: CloudEntry, entries: CloudEntry[], accountId: string): void;
-}) {
+};
+
+export function Cloud115Window(props: Cloud115WindowProps) {
+  const [location, setLocation] = useState({ accountId: props.initialAccountId ?? "", trail: props.initialTrail });
+  const accountId = location.accountId;
+  const { onTitle, windowId } = props;
+  useEffect(() => { if (!accountId) onTitle?.(windowId, "115网盘"); }, [accountId, onTitle, windowId]);
+  const open = (next: string) => setLocation({ accountId: next, trail: undefined });
+  useEffect(() => {
+    const changed = (event: Event) => { if ((event as CustomEvent<{ accountId: string }>).detail?.accountId === accountId) setLocation({ accountId: "", trail: undefined }); };
+    window.addEventListener("cloud115-account-changed", changed);
+    return () => window.removeEventListener("cloud115-account-changed", changed);
+  }, [accountId]);
+  return accountId ? <Cloud115Files key={accountId} {...props} initialTrail={location.trail} accountId={accountId} onHome={() => open("")} /> : <Cloud115Accounts onOpen={open} />;
+}
+
+function Cloud115Files({ accountId, onHome, onTitle, windowId, layer, onJobCreated, initialTrail = rootLocation, onOpenNewWindow, onPowerRename, onSuperRename, onPreview, onOperation, onPaste, onRegister, onDetails, operationOpen = false, dropFeedback = null, labels = strings["zh-CN"] }: Cloud115WindowProps & { accountId: string; onHome(): void }) {
   const events = useOptionalJobEventsStore();
   const [loggedIn, setLoggedIn] = useState(false);
-  const [profile, setProfile] = useState({ accountId: "", name: "115网盘" });
-  const [image, setImage] = useState("");
-  const [loginSession, setLoginSession] = useState("");
-  const loginSucceeded = useCallback(() => {
-    setImage(""); setLoginSession("");
-    window.dispatchEvent(new Event("cloud115-account-changed"));
-  }, []);
-  const loginMessage = useCloud115Login(loginSession, loginSucceeded);
+  const [profile, setProfile] = useState({ accountId, name: accountId });
+  useEffect(() => { onTitle?.(windowId, profile.name); }, [onTitle, windowId, profile.name]);
   const [error, setError] = useState("");
   const [listError, setListError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -77,58 +89,41 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
     const requestGeneration = ++generation.current;
     setLoading(true);
     try {
-      const next = await cloudDirectory(parent.id, () => requestGeneration === generation.current);
+      const next = await cloudDirectory(parent.id, accountId, () => requestGeneration === generation.current);
       if (requestGeneration !== generation.current) return;
       setCloudEntries(next);
       setListError("");
     } catch (error) { if (requestGeneration === generation.current) setListError(String(error)); }
     finally { if (requestGeneration === generation.current) setLoading(false); }
-  }, [parent.id]);
+  }, [parent.id, accountId]);
 
   const refreshProfile = useCallback(async () => {
     const current = ++profileGeneration.current;
     try {
-      const next = await cloudCall<{ accountId: string; name: string }>("profile");
+      const next = await cloudCall<{ accountId: string; name: string }>("profile", { accountId });
       if (current === profileGeneration.current) setProfile(next);
     } catch (error) { if (current === profileGeneration.current) setError(String(error)); }
-  }, []);
+  }, [accountId]);
 
   useEffect(() => {
     let disposed = false;
-    let checkGeneration = 0;
-    async function check() {
-      const current = ++checkGeneration;
-      try {
-        const status = await cloudCall<{ loggedIn: boolean }>("status");
-        if (disposed || current !== checkGeneration) return;
-        setLoggedIn(status.loggedIn);
-        if (status.loggedIn) {
-          await refreshProfile();
-        }
-      } catch (error) { if (!disposed && current === checkGeneration) setError(String(error)); }
-    }
-    function accountChanged() {
-      if (getAppClipboard()?.sourceRootId === "@115") setAppClipboard(null);
-      generation.current++; pathGeneration.current++; profileGeneration.current++;
-      selection.clear(); setCloudEntries([]); setProfile({ accountId: "", name: "115网盘" });
-      setLoggedIn(false); setPrompt(null); setOfflineTarget(null);
-      setLoginSession(""); setImage("");
-      setHistory({ locations: [rootLocation], index: 0 });
-      void check();
-    }
-    void check();
-    window.addEventListener("cloud115-account-changed", accountChanged);
-    function dispose() { disposed = true; generation.current++; pathGeneration.current++; profileGeneration.current++; window.removeEventListener("cloud115-account-changed", accountChanged); }
+    void cloudCall<{ loggedIn: boolean }>("status", { accountId }).then((status) => {
+      if (disposed) return;
+      setLoggedIn(status.loggedIn);
+      if (status.loggedIn) void refreshProfile();
+      else setError("登录已失效，请返回账号列表重新登录");
+    }).catch((e) => { if (!disposed) setError(String(e)); });
+    function dispose() { disposed = true; generation.current++; pathGeneration.current++; profileGeneration.current++; }
     return dispose;
-  }, [selection, refreshProfile]);
+  }, [accountId, refreshProfile]);
   useEffect(() => {
     // Synchronize the remote directory after login and navigation.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (loggedIn) void refresh();
   }, [loggedIn, refresh]);
   useEffect(() => events?.subscribeTerminal((jobs) => {
-    if (loggedIn && jobs.some((job) => job.sourceRootId === "@115" || job.destRootId === "@115")) void refresh();
-  }), [events, loggedIn, refresh]);
+    if (loggedIn && jobs.some((job) => job.accountId === accountId)) void refresh();
+  }), [events, loggedIn, refresh, accountId]);
 
   function navigate(next: CloudLocation) {
     generation.current++; pathGeneration.current++;
@@ -138,7 +133,7 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
   async function navigatePath(path: string) {
     const requested = ++pathGeneration.current;
     try {
-      const next = await cloudCall<{ trail: CloudLocation }>("resolve", { path });
+      const next = await cloudCall<{ trail: CloudLocation }>("resolve", { path, accountId });
       if (requested === pathGeneration.current) navigate(next.trail);
     } catch (error) { if (requested === pathGeneration.current) setError(String(error)); }
   }
@@ -146,29 +141,19 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
     generation.current++; pathGeneration.current++; selection.clear(); setCloudEntries([]); setListError("");
     setHistory((h) => ({ ...h, index }));
   }
-  async function login(method: "login.start" | "logout") {
+  async function logout() {
     setBusy(true); setError("");
-    setLoginSession("");
     try {
-      const result = await cloudCall<{ image?: string; loginSession?: string; loggedIn?: boolean }>(method);
-      if (result.image && result.loginSession) { setImage(result.image); setLoginSession(result.loginSession); }
-      if (result.loggedIn || method === "logout") {
-        setImage("");
-        window.dispatchEvent(new Event("cloud115-account-changed"));
-      }
-    } catch (error) {
-      setError(String(error));
-      // A previous check may have finished while a replacement QR was requested.
-      if (method === "login.start") {
-        try { if ((await cloudCall<{ loggedIn: boolean }>("status")).loggedIn) loginSucceeded(); } catch { /* Keep the original error. */ }
-      }
-    }
+      await cloudCall("logout", { accountId });
+      window.dispatchEvent(new CustomEvent("cloud115-account-changed", { detail: { accountId } }));
+      window.dispatchEvent(new Event("cloud115-accounts-updated"));
+    } catch (error) { setError(String(error)); }
     finally { setBusy(false); }
   }
   async function submit(method: string, params: CloudRequest) {
     setBusy(true); setError("");
     try {
-      const result = await cloudCall<{ id: string }>(method, params);
+      const result = await cloudCall<{ id: string }>(method, { ...params, accountId });
       onJobCreated(result.id);
       setPrompt(null); selection.clear();
     } catch (error) { setError(String(error)); }
@@ -197,12 +182,12 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
     const ids = selection.getOrderedPaths();
     return [
       { kind: "command", id: "rename", label: labels.rename, icon: Pencil, disabled: !ready || ids.length !== 1, run: () => openPrompt("rename") },
-      { kind: "command", id: "powerRename", label: labels.powerRename, icon: ScanText, disabled: !ready || !ids.length || !onPowerRename, run: () => onPowerRename?.(parent.id, ids, profile.name + " / " + currentPath) },
-      { kind: "command", id: "superRename", label: labels.superRename, icon: WandSparkles, disabled: !ready || !onSuperRename, run: () => onSuperRename?.(parent.id, profile.name + " / " + currentPath) },
+      { kind: "command", id: "powerRename", label: labels.powerRename, icon: ScanText, disabled: !ready || !ids.length || !onPowerRename, run: () => onPowerRename?.(parent.id, ids, profile.name + " / " + currentPath, accountId) },
+      { kind: "command", id: "superRename", label: labels.superRename, icon: WandSparkles, disabled: !ready || !onSuperRename, run: () => onSuperRename?.(parent.id, profile.name + " / " + currentPath, accountId) },
       { kind: "command", id: "mkdir", label: labels.mkdir, icon: FolderPlus, disabled: !ready, run: () => openPrompt("mkdir") },
       { kind: "command", id: "offline", label: "离线下载", icon: CloudDownload, separatorBefore: true, disabled: !ready, run: () => setOfflineTarget({ id: parent.id, name: profile.name + (currentPath === "." ? "" : " / " + currentPath) }) },
       { kind: "command", id: "extract", label: "在线解压", icon: FolderArchive, disabled: !ready || ids.length !== 1 || !isCloudArchive(cloudEntries.find((entry) => entry.id === ids[0])), run: () => openPrompt("extract") },
-      { kind: "command", id: "delete", label: labels.delete, icon: Trash2, separatorBefore: true, destructive: true, disabled: !ready || !ids.length, run: () => onOperation?.({ type: "delete", sourceRoot: "@115", sources: ids, accountId: profile.accountId }) },
+      { kind: "command", id: "delete", label: labels.delete, icon: Trash2, separatorBefore: true, destructive: true, disabled: !ready || !ids.length, run: () => onOperation?.({ type: "delete", sourceRoot: "@115", sources: ids, accountId, sourceAccountId: accountId }) },
     ];
   }
   function menuActions(context = false): FileAction[] {
@@ -216,7 +201,7 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
         onCopy: () => { copySelection("copy"); },
         onCut: () => { copySelection("move"); },
         onPaste: () => onPaste?.({ rootId: "@115", path: dest.id, accountId: profile.accountId }),
-        onOpenInNewWindow: () => { if (entry?.isDirectory) onOpenNewWindow?.([...trail, { id: entry.id, name: entry.name }]); },
+        onOpenInNewWindow: () => { if (entry?.isDirectory) onOpenNewWindow?.([...trail, { id: entry.id, name: entry.name }], accountId); },
       },
     });
     const ordinary = baseActions().map((action, index) => ({
@@ -229,17 +214,10 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
       onDetails?.({ rootId: "@115", accountId: profile.accountId, paths, names });
     } }];
   }
-  if (!loggedIn) return <div className="grid h-full content-start justify-items-center gap-4 overflow-auto p-6">
-    <h2 className="font-semibold">登录115网盘</h2><p className="text-sm">使用115客户端扫描二维码。凭证仅保存在服务端。</p>
-    {image ? <img src={image} width={220} height={220} alt="115登录二维码" /> : null}
-    <div className="flex gap-2"><Button disabled={busy} onClick={() => void login("login.start")}>{image ? "重新获取二维码" : "获取二维码"}</Button></div>
-    {loginMessage ? <p role="status" className="text-sm">{loginMessage}</p> : null}
-    {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-    <Button variant="ghost" disabled={busy} onClick={() => void login("logout")}>清除失效登录</Button>
-  </div>;
+  if (!loggedIn) return <div className="grid gap-3 p-4"><Button variant="outline" onClick={onHome}>返回账号列表</Button><p role={error ? "alert" : "status"}>{error || "正在连接115账号…"}</p></div>;
 
   return <div className="file-window-layout relative" data-no-file-drop={prompt || offlineTarget || operationOpen ? "" : undefined}>
-    <ActionToolbar actions={[...baseActions(), { kind: "command", id: "logout", label: "退出登录", icon: LogOut, separatorBefore: true, disabled: busy, run: () => void login("logout") }]} moreActions={menuActions()} selectedCount={summary.selectedCount} labels={labels} />
+    <ActionToolbar actions={[{ kind: "command", id: "accounts", label: "账号列表", icon: Users, disabled: false, run: onHome }, ...baseActions(), { kind: "command", id: "logout", label: "退出登录", icon: LogOut, separatorBefore: true, disabled: busy, run: () => void logout() }]} moreActions={menuActions()} selectedCount={summary.selectedCount} labels={labels} />
     <div className="relative min-h-0 [&>.file-pane]:h-full" aria-label="115文件列表">
       <FilePane paneKey={windowId} provider="cloud115" directoryId={parent.id} title="115网盘" roots={[]} selectedRootId="@115" currentPath={currentPath}
         accountId={profile.accountId} ancestorIds={trail.map((part) => part.id)} dropFeedback={dropFeedback}
@@ -281,6 +259,6 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
         <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={busy} onClick={() => setPrompt(null)}>{labels.cancel}</Button><Button type="submit" disabled={busy}>确认</Button></div>
       </form>
     </WindowDialogLayer> : null}
-    {offlineTarget ? <Cloud115OfflineDialog target={offlineTarget} onClose={() => setOfflineTarget(null)} /> : null}
+    {offlineTarget ? <Cloud115OfflineDialog target={{ ...offlineTarget, accountId }} onClose={() => setOfflineTarget(null)} /> : null}
   </div>;
 }

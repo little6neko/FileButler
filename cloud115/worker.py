@@ -4,14 +4,11 @@ import contextlib
 import io
 import json
 import os
-from pathlib import Path
 import queue
 import sys
 import threading
 import time
-import secrets
 from errors import Canceled, ProviderError
-from operations import CloudOperations
 from private_storage import PrivateStorage
 
 PROTOCOL_OUTPUT = sys.stdout
@@ -24,87 +21,7 @@ def emit(message):
         PROTOCOL_OUTPUT.flush()
 
 
-class Adapter(CloudOperations):
-    def __init__(self, storage, data_dir):
-        self.storage = storage
-        self.data_dir = Path(data_dir)
-        self.client = None
-        self.qr = None
-        self.qr_session = ""
-        self.qr_deadline = 0
-        self.lock = threading.RLock()
-
-    def load(self):
-        with self.lock:
-            return self.load_locked()
-
-    def load_locked(self):
-        from p115client import P115Client
-        if self.client is None:
-            cookies = self.storage.call("credential.get")
-            if not cookies:
-                raise ProviderError("请先登录115网盘")
-            if not cookies or "UID=" not in cookies:
-                raise ProviderError("115登录凭证无效，请清除后重新扫码")
-            self.client = P115Client(cookies, console_qrcode=False)
-        return self.client
-
-    @staticmethod
-    def checked(result):
-        if not isinstance(result, dict) or result.get("state") is False:
-            # Never expose arbitrary upstream response bodies (may contain credentials).
-            code = result.get("errno", result.get("errNo", "unknown")) if isinstance(result, dict) else "invalid"
-            raise ProviderError(f"115接口失败（代码 {code}），请检查登录状态、权限或操作限制")
-        return result
-
-    def call(self, method, params, progress):
-        from p115client import P115Client
-        with self.lock:
-            if method == "status":
-                if not self.storage.call("credential.get"):
-                    return {"loggedIn": False}
-                client = self.load()
-                return {"loggedIn": bool(client.login_status(timeout=30))}
-            if method == "login.start":
-                if self.storage.call("credential.get"):
-                    raise ProviderError("请先退出当前115账号")
-                self.qr = self.checked(P115Client.login_qrcode_token(app="alipaymini", timeout=30))["data"]
-                self.qr_session = secrets.token_urlsafe(24)
-                self.qr_deadline = time.monotonic() + 300
-                import qrcode
-                from qrcode.image.svg import SvgPathImage
-                image = qrcode.make(self.qr["qrcode"], image_factory=SvgPathImage)
-                data = io.BytesIO()
-                image.save(data)
-                import base64
-                return {"image": "data:image/svg+xml;base64," + base64.b64encode(data.getvalue()).decode(), "loginSession": self.qr_session}
-            if method == "login.check":
-                if not self.qr or not params.get("loginSession") or params["loginSession"] != self.qr_session:
-                    return {"status": -3, "loggedIn": False}
-                if time.monotonic() >= self.qr_deadline:
-                    self.qr = None
-                    self.qr_session = ""
-                    return {"status": -1, "loggedIn": False}
-                result = self.checked(P115Client.login_qrcode_scan_status({key: self.qr[key] for key in ("uid", "time", "sign")}, timeout=30))
-                status = int(result["data"]["status"])
-                if status == 2:
-                    result = self.checked(P115Client.login_qrcode_scan_result(self.qr["uid"], app="alipaymini", timeout=30))
-                    cookies = result["data"]["cookie"]
-                    self.storage.call("credential.set", {"cookie": "; ".join(f"{key}={value}" for key, value in cookies.items())})
-                    self.client = None
-                    self.qr = None
-                    self.qr_session = ""
-                elif status in (-1, -2):
-                    self.qr = None
-                    self.qr_session = ""
-                return {"status": status, "loggedIn": status == 2}
-            if method == "logout":
-                self.storage.call("credential.delete")
-                self.client = None
-                self.qr = None
-                self.qr_session = ""
-                return {"loggedIn": False}
-        return self.operation(method, params, progress)
+from accounts import Adapter
 
 def main():
     parser = argparse.ArgumentParser()

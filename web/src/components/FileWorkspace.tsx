@@ -25,7 +25,7 @@ import { Cloud115Window, type CloudFileController } from "./Cloud115Window";
 import { Cloud115Preview, type CloudPreviewInstance } from "./Cloud115Preview";
 import { mediaKindForPath } from "../media";
 import type { CloudEntry } from "../cloud115";
-import { operationClient, isCloudOperation } from "../operationClient";
+import { operationClient } from "../operationClient";
 import { cloudPowerRenameClient, cloudSuperRenameClient, type PowerRenameClient } from "../cloud115Rename";
 import { toast } from "sonner";
 import { buildClipboardRequest, createAppClipboard, isEditableShortcutTarget, useAppClipboard, setAppClipboard, clearAppClipboard, getAppClipboard, type ClipboardTarget, type AppClipboard } from "../appClipboard";
@@ -340,6 +340,8 @@ export function FileWorkspace({
   const [dropFeedback, setDropFeedback] = useState<FileDropFeedback | null>(null);
   const dragSourceRef = useRef<FileDragSource | null>(null);
   const cloudControllers = useRef(new Map<string, CloudFileController>());
+  const [cloudTitles, setCloudTitles] = useState<Record<string, string>>({});
+  const updateCloudTitle = useCallback((id: string, title: string) => setCloudTitles((current) => current[id] === title ? current : { ...current, [id]: title }), []);
   const registerCloudController = useCallback((id: string, controller: CloudFileController | null) => {
     if (controller) cloudControllers.current.set(id, controller);
     else cloudControllers.current.delete(id);
@@ -606,11 +608,13 @@ export function FileWorkspace({
     return buildFileDragSource(data, session.selectionStore.getSelected(), visibleEntries);
   }, []);
   useEffect(() => {
-    function accountChanged() {
-      if (getAppClipboard()?.sourceRootId === "@115") setAppClipboard(null);
-      commitWindowDialogs((current) => Object.fromEntries(Object.entries(current).filter(([, dialog]) => dialog?.kind !== "operation" || !isCloudOperation(dialog.request))));
-      setPreviewState((current) => current && isCloudOperation(current.request) ? null : current);
-      dragSourceRef.current = null; setDragSource(null); setDropFeedback(null);
+    function accountChanged(event: Event) {
+      const accountId = (event as CustomEvent<{ accountId: string }>).detail?.accountId;
+      if (!accountId) return;
+      if (getAppClipboard()?.accountId === accountId) setAppClipboard(null);
+      commitWindowDialogs((current) => Object.fromEntries(Object.entries(current).filter(([, dialog]) => dialog?.kind !== "operation" || dialog.request.accountId !== accountId)));
+      setPreviewState((current) => current?.request.accountId === accountId ? null : current);
+      if (dragSourceRef.current?.accountId === accountId) { dragSourceRef.current = null; setDragSource(null); setDropFeedback(null); }
     }
     window.addEventListener("cloud115-account-changed", accountChanged);
     return () => window.removeEventListener("cloud115-account-changed", accountChanged);
@@ -698,7 +702,7 @@ export function FileWorkspace({
       return items;
     }
     if (window.kind === "cloud115") {
-      items.push({ id: window.id, kind: window.kind, title: "115网盘", status: window.status });
+      items.push({ id: window.id, kind: window.kind, title: cloudTitles[window.id] ?? "115网盘", status: window.status });
       return items;
     }
     if (isFileWindow(window)) {
@@ -958,7 +962,7 @@ export function FileWorkspace({
     }
 
     if (window.kind === "cloud115") {
-      return <WindowFrame key={window.id} {...frameProps} title="115网盘" icon={<Cloud aria-hidden="true" />} childDialog={renderWindowDialog(window)}><Cloud115Window windowId={window.id} layer={window.zOrder} onJobCreated={(id) => handleJobCreated(id, window.id)} initialTrail={window.trail} onOpenNewWindow={openCloud115DesktopWindow} onPowerRename={openCloudPowerRename} onSuperRename={openCloudSuperRename} onPreview={openCloudPreview} labels={labels}
+      return <WindowFrame key={window.id} {...frameProps} title={cloudTitles[window.id] ?? "115网盘"} icon={<Cloud aria-hidden="true" />} childDialog={renderWindowDialog(window)}><Cloud115Window onTitle={updateCloudTitle} windowId={window.id} layer={window.zOrder} onJobCreated={(id) => handleJobCreated(id, window.id)} initialAccountId={window.accountId} initialTrail={window.trail} onOpenNewWindow={openCloud115DesktopWindow} onPowerRename={openCloudPowerRename} onSuperRename={openCloudSuperRename} onPreview={openCloudPreview} labels={labels}
         onDetails={openFileDetails} onRegister={registerCloudController} dropFeedback={dropFeedback} operationOpen={Boolean(windowDialogs[window.id])}
         onPaste={(target) => pasteClipboard(target, window.id)}
         onOperation={(request) => openDialogForWindow({ dialogId: nextDialogId(), windowId: window.id, kind: "operation", request })} /></WindowFrame>;
@@ -1982,9 +1986,9 @@ export function FileWorkspace({
     return id;
   }
 
-  function openCloud115DesktopWindow(trail?: { id: string; name: string }[]) {
+  function openCloud115DesktopWindow(trail?: { id: string; name: string }[], accountId?: string) {
     const id = `window-${++windowCounterRef.current}`;
-    commitWindowState((current) => openCloud115Window(current, id, desktopBoundsRef.current, trail));
+    commitWindowState((current) => openCloud115Window(current, id, desktopBoundsRef.current, trail, accountId));
   }
 
   function openCloudPreview(entry: CloudEntry, entries: CloudEntry[], accountId: string) {
@@ -1993,16 +1997,16 @@ export function FileWorkspace({
     commitWindowState((current) => openCloudPreviewWindow(current, id, desktopBoundsRef.current));
   }
 
-  function openCloudPowerRename(parentId: string, paths: string[], sourceTitle: string) {
+  function openCloudPowerRename(parentId: string, paths: string[], sourceTitle: string, accountId: string) {
     const id = `window-${++windowCounterRef.current}`;
-    const instance: PowerRenameInstance = { id, rootId: "@115", paths, sourceTitle, options: { ...defaultRenameOptions, readMetadata: false }, submitting: false, submitError: null, client: cloudPowerRenameClient(parentId) };
+    const instance: PowerRenameInstance = { id, rootId: "@115", paths, sourceTitle, options: { ...defaultRenameOptions, readMetadata: false }, submitting: false, submitError: null, client: cloudPowerRenameClient(parentId, accountId) };
     commitPowerRenameInstances((current) => ({ ...current, [id]: instance }));
     commitWindowState((current) => openPowerRenameWindow(current, id, id, desktopBoundsRef.current));
   }
 
-  function openCloudSuperRename(parentId: string, sourceTitle: string) {
+  function openCloudSuperRename(parentId: string, sourceTitle: string, accountId: string) {
     const id = `window-${++windowCounterRef.current}`;
-    const instance: SuperRenameInstance = { id, rootId: "@115", directoryPath: ".", sourceTitle, manager: new SuperRenameManager("@115", ".", cloudSuperRenameClient(parentId)) };
+    const instance: SuperRenameInstance = { id, rootId: "@115", directoryPath: ".", sourceTitle, manager: new SuperRenameManager("@115", ".", cloudSuperRenameClient(parentId, accountId)) };
     commitSuperRenameInstances((current) => ({ ...current, [id]: instance }));
     commitWindowState((current) => openSuperRenameWindow(current, id, id, desktopBoundsRef.current));
   }
@@ -2154,6 +2158,7 @@ export function FileWorkspace({
     }
     if (target.kind === "cloud115") {
       commitWindowState((current) => closeWindow(current, id));
+      setCloudTitles((current) => withoutKey(current, id));
       return;
     }
     if (!isFileWindow(target)) {

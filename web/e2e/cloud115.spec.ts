@@ -18,7 +18,8 @@ test("shared cloud menus open PowerRename and SuperRename with cloud-only APIs",
     else if (path === "/api/auth/me") data = { id: 1, username: "admin" };
     else if (path === "/api/roots") data = [];
     else if (path === "/api/cloud115/status") data = { loggedIn: true };
-    else if (path === "/api/cloud115/profile") data = { accountId: "7", name: "Cloud tester" };
+    else if (path === "/api/cloud115/accounts") data = [{ accountId: "7", name: "Cloud tester", avatar: "", usedBytes: 1, totalBytes: 2 }];
+    else if (path === "/api/cloud115/profile") data = { accountId: "7", name: "Cloud tester", avatar: "", usedBytes: 1, totalBytes: 2 };
     else if (path === "/api/cloud115/browse") data = { entries: [{ id: "1", parentId: "0", name: "old.jpg", isDirectory: false, size: 42 }], offset: 0, total: 1 };
     else if (path === "/api/cloud115/power.preview") data = { previewToken: "fixed", hasConflict: false, items: [{ sourcePath: "0/old.jpg", targetPath: "0/new.jpg", oldName: "old.jpg", newName: "new.jpg", changed: true, conflict: false }] };
     else if (path === "/api/cloud115/super.preview") data = { rootId: "@115", directoryPath: ".", generatedAtUnix: 1, revision: "groups", groups: [group] };
@@ -33,6 +34,7 @@ test("shared cloud menus open PowerRename and SuperRename with cloud-only APIs",
   await page.goto("/");
   await page.getByRole("button", { name: "打开115网盘", exact: true }).click();
   const cloud = page.locator('.desktop-window[data-window-kind="cloud115"]');
+  await cloud.getByRole("button", { name: /Cloud tester/ }).click();
   await cloud.getByRole("button", { name: "old.jpg", exact: true }).click();
   await cloud.getByRole("button", { name: "More", exact: true }).click();
   await expect(page.getByRole("menuitem", { name: /^Copy$/ })).toBeVisible();
@@ -53,13 +55,13 @@ test("shared cloud menus open PowerRename and SuperRename with cloud-only APIs",
   await expect(power.getByText("new.jpg", { exact: true })).toBeVisible();
   await power.getByRole("button", { name: /Rename 1/ }).click();
   await expect(power).toHaveCount(0);
-  expect(submissions[0]).toEqual({ method: "power.submit", params: { parentId: "0", previewToken: "fixed" } });
+  expect(submissions[0]).toEqual({ method: "power.submit", params: { accountId: "7", parentId: "0", previewToken: "fixed" } });
   await cloud.getByRole("button", { name: "SuperRename", exact: true }).click();
   const tree = page.getByTestId("super-rename-content");
   await expect(tree.getByTestId("super-rename-item-Album/old.jpg")).toContainText("01.jpg");
   await tree.getByTestId("super-rename-group-Album").getByRole("button", { name: /Rename/ }).click();
   await expect.poll(() => submissions.length).toBe(2);
-  expect(submissions[1]).toEqual({ method: "super.submit", params: { parentId: "0", paths: ["Album/old.jpg"], revisions: { Album: "groups" } } });
+  expect(submissions[1]).toEqual({ method: "super.submit", params: { accountId: "7", parentId: "0", paths: ["Album/old.jpg"], revisions: { Album: "groups" } } });
   // Submission alone must not remove the group before the terminal SSE event.
   await expect(tree.getByTestId("super-rename-group-Album")).toBeVisible();
   expect(errors).toEqual([]);
@@ -84,11 +86,11 @@ test("opens distinct 115 windows without secure-context crypto APIs", async ({ p
   await page.goto("/");
   const icon = page.getByRole("button", { name: "打开115网盘", exact: true });
   await icon.click();
-  await expect(page.getByText("登录115网盘", { exact: true })).toBeVisible();
+  await expect(page.getByText("添加新账号", { exact: true })).toBeVisible();
   await icon.click();
   const windows = page.locator('.desktop-window[data-window-kind="cloud115"]');
   await expect(windows).toHaveCount(2);
-  await expect(page.getByText("登录115网盘", { exact: true })).toHaveCount(2);
+  await expect(page.getByText("添加新账号", { exact: true })).toHaveCount(2);
   expect(errors).toEqual([]);
 });
 
@@ -105,7 +107,8 @@ test("desktop icons are vertical and local/cloud drag creates background transfe
     else if (path === "/api/roots") data = [{ id: "test", name: "Data" }];
     else if (path === "/api/browse") data = [{ name: "local.txt", relativePath: "local.txt", type: "file", size: 4, mode: "0644", modifiedUnix: 0, isSymlink: false }];
     else if (path === "/api/cloud115/status") data = { loggedIn: true };
-    else if (path === "/api/cloud115/profile") data = { accountId: "1", name: "Cloud user" };
+    else if (path === "/api/cloud115/accounts") data = [{ accountId: "1", name: "Cloud user", avatar: "", usedBytes: 1, totalBytes: 2 }];
+    else if (path === "/api/cloud115/profile") data = { accountId: "1", name: "Cloud user", avatar: "", usedBytes: 1, totalBytes: 2 };
     else if (path === "/api/cloud115/browse") data = { entries: [{ id: "123", parentId: "0", name: "cloud.txt", isDirectory: false, size: 4 }], total: 1, offset: 0 };
     else if (path === "/api/cloud115/ops.preview") {
       const params = route.request().postDataJSON(); previews.push(params);
@@ -133,6 +136,7 @@ test("desktop icons are vertical and local/cloud drag creates background transfe
   await expect(local.locator('[data-entry-path="local.txt"]')).toBeVisible();
   await cloudIcon.click();
   const cloud = page.locator('[data-window-kind="cloud115"].desktop-window');
+  await cloud.getByRole("button", { name: /Cloud user/ }).click();
   await expect(cloud.getByText("cloud.txt", { exact: true })).toBeVisible();
   const title = (await cloud.locator(".desktop-window-titlebar").boundingBox())!;
   await page.mouse.move(title.x + 200, title.y + 15);
@@ -155,7 +159,7 @@ test("desktop icons are vertical and local/cloud drag creates background transfe
   await expect(cloud.getByText("上传成功后将删除本地源文件。")).toBeVisible();
   await cloud.getByRole("button", { name: "Start move", exact: true }).click();
   await expect.poll(() => transfers.length).toBe(1);
-  expect(transfers[0]).toEqual({ method: "ops.create", params: { previewToken: "plan-2" } });
+  expect(transfers[0]).toEqual({ method: "ops.create", params: { previewToken: "plan-2", accountId: "1" } });
   // Focus uncovered content, not the title bar's maximize/minimize controls.
   await page.mouse.click(targetX, 430);
   const cloudRow = (await cloud.getByText("cloud.txt", { exact: true }).boundingBox())!;
@@ -172,5 +176,5 @@ test("desktop icons are vertical and local/cloud drag creates background transfe
   await expect(local.getByText("下载成功后将删除115上的源文件。")).toBeVisible();
   await local.getByRole("button", { name: "Start move", exact: true }).click();
   await expect.poll(() => transfers.length).toBe(2);
-  expect(transfers[1]).toEqual({ method: "ops.create", params: { previewToken: "plan-4" } });
+  expect(transfers[1]).toEqual({ method: "ops.create", params: { previewToken: "plan-4", accountId: "1" } });
 });

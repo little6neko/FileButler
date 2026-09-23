@@ -7,5 +7,5 @@ from private_storage import PrivateStorage
 storage = PrivateStorage(emit)
 class Adapter:
     def call(self, method, params, report):
-        return {"ok": storage.call("credential.get") == "UID=7; CID=test"}
+        return {"ok": storage.call("credential.get", {"accountId": "7"}) == "UID=7; CID=test"}
 serve(Adapter(), sys.stdin.buffer, storage)

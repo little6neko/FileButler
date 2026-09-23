@@ -14,13 +14,15 @@ import (
 )
 
 type operationRequest struct {
-	Type         string   `json:"type"`
-	SourceRoot   string   `json:"sourceRoot"`
-	Sources      []string `json:"sources"`
-	DestRoot     string   `json:"destRoot"`
-	DestPath     string   `json:"destPath"`
-	AccountID    string   `json:"accountId"`
-	PreviewToken string   `json:"previewToken"`
+	Type            string   `json:"type"`
+	SourceRoot      string   `json:"sourceRoot"`
+	Sources         []string `json:"sources"`
+	DestRoot        string   `json:"destRoot"`
+	DestPath        string   `json:"destPath"`
+	AccountID       string   `json:"accountId"`
+	SourceAccountID string   `json:"sourceAccountId"`
+	DestAccountID   string   `json:"destAccountId"`
+	PreviewToken    string   `json:"previewToken"`
 }
 type operationPlan struct {
 	Items       []json.RawMessage `json:"items"`
@@ -41,6 +43,9 @@ func (s *Service) operationParams(req operationRequest) (map[string]any, error) 
 		return nil, fmt.Errorf("无效操作或账号")
 	}
 	sourceCloud, targetCloud := req.SourceRoot == "@115", req.DestRoot == "@115"
+	if sourceCloud && req.SourceAccountID != req.AccountID || targetCloud && req.Type != "delete" && req.DestAccountID != req.AccountID {
+		return nil, fmt.Errorf("暂不支持跨115账号操作或账号参数缺失")
+	}
 	if !sourceCloud && !targetCloud {
 		return nil, fmt.Errorf("请选择115相关操作")
 	}
@@ -111,7 +116,7 @@ func (s *Service) operationHandler(w http.ResponseWriter, r *http.Request, metho
 	defer cancel()
 	if method == "ops.create" {
 		preview, ok := s.operationPreviews[req.PreviewToken]
-		if !ok || preview.Actor != user.ID || time.Now().After(preview.Expires) || preview.Plan.HasConflict {
+		if !ok || preview.Actor != user.ID || req.AccountID != preview.Request.AccountID || time.Now().After(preview.Expires) || preview.Plan.HasConflict {
 			respond(w, 409, nil, "预览已失效，请重新预览")
 			return
 		}
@@ -129,7 +134,7 @@ func (s *Service) operationHandler(w http.ResponseWriter, r *http.Request, metho
 			return
 		}
 		id := jobs.NewID()
-		if err := s.Store.Create(r.Context(), jobs.Job{ID: id, Type: preview.Request.Type, ActorID: user.ID, SourceRootID: preview.Request.SourceRoot, DestRootID: preview.Request.DestRoot, ProgressTotal: len(fresh.Entries)}); err != nil {
+		if err := s.Store.Create(r.Context(), jobs.Job{ID: id, AccountID: preview.Request.AccountID, Type: preview.Request.Type, ActorID: user.ID, SourceRootID: preview.Request.SourceRoot, DestRootID: preview.Request.DestRoot, ProgressTotal: len(fresh.Entries)}); err != nil {
 			respond(w, 500, nil, err.Error())
 			return
 		}

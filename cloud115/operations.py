@@ -141,16 +141,6 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
                 raise ProviderError("该直链要求额外请求头，浏览器无法直接预览")
             # Never serialize SDK headers or account credentials.
             return {"url": str(url), "name": item["name"], "size": int(item.get("size") or 0), "accountId": str(client.user_id)}
-        if method == "profile":
-            name = "115网盘"
-            try:
-                data = self.checked(client.user_info2(timeout=15)).get("data", {})
-                value = data.get("user_name") or data.get("user_nick_name") or data.get("nick_name")
-                if isinstance(value, str) and value.strip():
-                    name = value[:200]
-            except Exception:
-                pass  # Profile display is optional, never block file access.
-            return {"accountId": str(client.user_id), "name": name}
         if method == "resolve":
             trail = [{"id": "0", "name": "115网盘"}]
             for part in params.get("path", "").replace("\\", "/").split("/"):

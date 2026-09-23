@@ -8,7 +8,7 @@ from unittest.mock import patch, Mock
 
 from errors import Canceled, ProviderError
 from operations import CloudOperations, open_directory, safe_name
-from worker import Adapter
+from accounts import AccountContext
 
 
 class FakeClient:
@@ -38,7 +38,7 @@ class FakeClient:
 
 
 class FakeOperations(CloudOperations):
-    checked = staticmethod(Adapter.checked)
+    checked = staticmethod(AccountContext.checked)
 
     def __init__(self, client=None):
         self.client = client or FakeClient()
@@ -96,11 +96,6 @@ class OperationsTests(unittest.TestCase):
         self.assertEqual(result["trail"][-1]["id"], "12")
         with patch.object(operations, "children", return_value=iter([{"id": "12", "name": "same", "isDirectory": True}, {"id": "13", "name": "same", "isDirectory": True}])), self.assertRaises(ProviderError):
             operations.operation("resolve", {"path": "same"}, None)
-
-    def test_profile_exposes_only_account_identity_and_display_name(self):
-        client = Mock(user_id=123)
-        client.user_info2.return_value = {"state": True, "data": {"user_name": "测试用户", "cookie": "do not expose"}}
-        self.assertEqual(FakeOperations(client).operation("profile", {}, None), {"accountId": "123", "name": "测试用户"})
 
     def test_offline_submission_uses_selected_directory(self):
         client = Mock()
@@ -201,7 +196,7 @@ class OperationsTests(unittest.TestCase):
 
     def test_error_does_not_expose_upstream_credentials(self):
         with self.assertRaises(ProviderError) as error:
-            Adapter.checked({"state": False, "errno": 911, "cookie": "secret", "message": "secret"})
+            AccountContext.checked({"state": False, "errno": 911, "cookie": "secret", "message": "secret"})
         self.assertNotIn("secret", str(error.exception))
 
 

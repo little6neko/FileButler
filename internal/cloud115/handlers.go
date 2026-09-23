@@ -1,9 +1,11 @@
 package cloud115
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -20,6 +22,7 @@ import (
 )
 
 type Service struct {
+	accounts          sync.Map
 	accountMu         sync.Mutex
 	Provider          Provider
 	Store             jobs.Store
@@ -33,6 +36,7 @@ func NewService(provider Provider, store jobs.Store, resolver roots.Resolver) *S
 }
 
 type Request struct {
+	AccountID    string   `json:"accountId"`
 	ID           string   `json:"id"`
 	IDs          []string `json:"ids"`
 	ParentID     string   `json:"parentId"`
@@ -48,17 +52,46 @@ type Request struct {
 }
 
 var numericID = regexp.MustCompile(`^(0|[1-9][0-9]{0,19})$`)
-var queries = map[string]bool{"status": true, "login.start": true, "login.check": true, "logout": true, "browse": true, "profile": true, "resolve": true, "offline.add": true, "preview.url": true}
+var queries = map[string]bool{"accounts": true, "status": true, "login.start": true, "login.check": true, "login.cancel": true, "logout": true, "browse": true, "profile": true, "resolve": true, "offline.add": true, "preview.url": true}
 var mutations = map[string]bool{"mkdir": true, "rename": true, "copy": true, "move": true, "delete": true, "upload": true, "download": true, "extract": true}
 
 func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
+	// One lifecycle/preview lock per account; another account's network requests
+	// never wait behind this account. Details reads own their cancellation scope.
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 8<<20))
+	var identity struct {
+		AccountID    string `json:"accountId"`
+		LoginSession string `json:"loginSession"`
+	}
+	if err != nil || json.Unmarshal(body, &identity) != nil {
+		respond(w, 400, nil, "invalid request")
+		return
+	}
+	method := chi.URLParam(r, "method")
+	management := method == "accounts" || strings.HasPrefix(method, "login.")
+	if !management && (!numericID.MatchString(identity.AccountID) || identity.AccountID == "0") {
+		respond(w, 400, nil, "请选择115账号")
+		return
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	if management {
+		s.handle(w, r)
+		return
+	}
+	value, _ := s.accounts.LoadOrStore(identity.AccountID, NewService(s.Provider, s.Store, s.Roots))
+	value.(*Service).handle(w, r)
+}
+
+func (s *Service) handle(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(chi.URLParam(r, "method"), "details.") {
 		s.detailsHandler(w, r)
 		return
 	}
-	s.accountMu.Lock()
-	defer s.accountMu.Unlock()
 	method := chi.URLParam(r, "method")
+	if method != "accounts" && !strings.HasPrefix(method, "login.") {
+		s.accountMu.Lock()
+		defer s.accountMu.Unlock()
+	}
 	if method == "ops.preview" || method == "ops.create" {
 		s.operationHandler(w, r, method)
 		return
@@ -94,8 +127,8 @@ func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	params := map[string]any{"id": req.ID, "parentId": req.ParentID, "destId": req.DestID, "name": req.Name, "password": req.Password, "offset": req.Offset, "path": req.Path}
-	if method == "login.check" {
+	params := map[string]any{"accountId": req.AccountID, "id": req.ID, "parentId": req.ParentID, "destId": req.DestID, "name": req.Name, "password": req.Password, "offset": req.Offset, "path": req.Path}
+	if method == "login.check" || method == "login.cancel" {
 		if len(req.LoginSession) < 16 || len(req.LoginSession) > 128 {
 			respond(w, 400, nil, "二维码会话无效，请重新获取")
 			return
@@ -140,12 +173,16 @@ func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
 		params["url"] = link
 	}
 	if queries[method] {
-		// Never change accounts while queued/running cloud tasks can still reference them.
-		if method == "logout" || method == "login.start" || method == "login.check" {
-			snapshot, _ := s.Store.Snapshot(r.Context())
+		// Logout and task creation share this account's lifecycle lock.
+		if method == "logout" {
+			snapshot, err := s.Store.Snapshot(r.Context())
+			if err != nil {
+				respond(w, 500, nil, "无法确认任务状态")
+				return
+			}
 			for _, job := range snapshot.Jobs {
-				if job.SourceRootID == "@115" || job.DestRootID == "@115" {
-					respond(w, 409, nil, "115任务运行中，暂不能切换账号")
+				if job.AccountID == req.AccountID && !job.Status.IsTerminal() {
+					respond(w, 409, nil, "该115账号有任务运行中，暂不能退出登录")
 					return
 				}
 			}
@@ -156,6 +193,10 @@ func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			respond(w, 502, nil, err.Error())
 			return
+		}
+		if method == "logout" {
+			clear(s.previews)
+			clear(s.operationPreviews)
 		}
 		respond(w, 200, data, "")
 		return
@@ -212,7 +253,11 @@ func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := jobs.NewID()
-	err := s.Store.Create(r.Context(), jobs.Job{ID: id, Type: method, ActorID: user.ID, SourceRootID: sourceRoot, DestRootID: destRoot, ProgressTotal: len(items)})
+	if _, err := s.Provider.Call(r.Context(), "account", map[string]any{"accountId": req.AccountID}, nil); err != nil {
+		respond(w, 409, nil, err.Error())
+		return
+	}
+	err := s.Store.Create(r.Context(), jobs.Job{ID: id, AccountID: req.AccountID, Type: method, ActorID: user.ID, SourceRootID: sourceRoot, DestRootID: destRoot, ProgressTotal: len(items)})
 	if err != nil {
 		respond(w, 500, nil, err.Error())
 		return

@@ -35,7 +35,7 @@ export function Cloud115Preview({ instance, labels, onNavigate }: { instance: Cl
     let url = "";
     async function load() {
       try {
-        const link = await cloudCall<CloudPreviewLink>("preview.url", { id: entry.id }, controller.signal);
+        const link = await cloudCall<CloudPreviewLink>("preview.url", { id: entry.id, accountId: instance.accountId }, controller.signal);
         if (controller.signal.aborted) return;
         if (link.accountId !== instance.accountId) throw new Error("115账号已变化，请重新打开预览");
         const parsed = new URL(link.url);
@@ -53,7 +53,7 @@ export function Cloud115Preview({ instance, labels, onNavigate }: { instance: Cl
         if (!controller.signal.aborted) setState({ key, url, loading: false, error: error instanceof Error ? error.message : "直链预览失败" });
       }
     }
-    function accountChanged() { controller.abort(); session?.dispose(); setState(null); setInvalidated(true); }
+    function accountChanged(event: Event) { if ((event as CustomEvent<{ accountId: string }>).detail?.accountId !== instance.accountId) return; controller.abort(); session?.dispose(); setState(null); setInvalidated(true); }
     window.addEventListener("cloud115-account-changed", accountChanged);
     void load();
     return () => { controller.abort(); session?.dispose(); window.removeEventListener("cloud115-account-changed", accountChanged); };

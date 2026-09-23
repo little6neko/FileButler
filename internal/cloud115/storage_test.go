@@ -98,10 +98,10 @@ func TestInstalledProviderCredentialRoundtrip(t *testing.T) {
 	if err := db.SetCookie(ctx, "UID=7; CID=test"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := b.Call(ctx, "logout", nil, nil); err != nil {
+	if _, err := b.Call(ctx, "logout", map[string]string{"accountId": "7"}, nil); err != nil {
 		t.Fatal(err)
 	}
-	if cookie, err := db.Cookie(ctx); err != nil || cookie != "" {
+	if cookie, err := db.Cookie(ctx, "7"); err != nil || cookie != "" {
 		t.Fatal("worker logout did not clear database")
 	}
 }

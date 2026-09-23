@@ -34,7 +34,7 @@ export function FileDetails({ target, labels }: { target: DetailsTarget; labels:
         void readDetails<DetailMedia>(target, "media", request.signal).then((result) => { if (!request.signal.aborted) setMedia(result); }).catch(failed);
       }
     }).catch(failed);
-    const changed = () => { if (target.rootId === "@115") { request.abort(); setAccountChanged(true); setItems([]); setTotals(null); setHash(""); setMedia(null); setStatsPending(false); setHashPending(false); } };
+    const changed = (event: Event) => { if (target.rootId === "@115" && (event as CustomEvent<{ accountId: string }>).detail?.accountId === target.accountId) { request.abort(); setAccountChanged(true); setItems([]); setTotals(null); setHash(""); setMedia(null); setStatsPending(false); setHashPending(false); } };
     window.addEventListener("cloud115-account-changed", changed);
     return () => { request.abort(); window.removeEventListener("cloud115-account-changed", changed); };
   }, [target]);

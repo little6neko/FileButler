@@ -19,11 +19,11 @@ beforeEach(() => {
   });
 });
 
-function setup(onPreview = vi.fn()) {
+function setup(onPreview = vi.fn(), initialAccountId: string | undefined = "1") {
   const store = new JobEventsStore();
   store.handleSnapshot({ runtimeId: "r", cursor: 0, reset: false, jobs: [] });
   const created = vi.fn();
-  render(<JobEventsContext.Provider value={store}><DndContext><Cloud115Window windowId="cloud" layer={1} onJobCreated={created} onPreview={onPreview} /></DndContext></JobEventsContext.Provider>);
+  render(<JobEventsContext.Provider value={store}><DndContext><Cloud115Window windowId="cloud" initialAccountId={initialAccountId} layer={1} onJobCreated={created} onPreview={onPreview} /></DndContext></JobEventsContext.Provider>);
   return { store, created };
 }
 
@@ -36,7 +36,7 @@ it("loads directory and creates a rename task without refreshing early", async (
   fireEvent.click(screen.getByRole("button", { name: "确认" }));
   await waitFor(() => expect(created).toHaveBeenCalledWith("job"));
   expect(vi.mocked(cloudCall).mock.calls.filter(([method]) => method === "browse")).toHaveLength(1);
-  const job: Job = { id: "job", type: "rename", sourceRootId: "@115", destRootId: "@115", status: "completed", actorId: 1, progressTotal: 1, progressDone: 1, failedCount: 0, cancelRequested: false, errorMessage: "", createdAtUnix: 1, updatedAtUnix: 2, eventVersion: 1 };
+  const job: Job = { accountId: "1", id: "job", type: "rename", sourceRootId: "@115", destRootId: "@115", status: "completed", actorId: 1, progressTotal: 1, progressDone: 1, failedCount: 0, cancelRequested: false, errorMessage: "", createdAtUnix: 1, updatedAtUnix: 2, eventVersion: 1 };
   act(() => store.handleChanged({ runtimeId: "r", cursor: 1, job }));
   await waitFor(() => expect(vi.mocked(cloudCall).mock.calls.filter(([method]) => method === "browse")).toHaveLength(2));
 });
@@ -55,18 +55,20 @@ it.each(["movie.avi", "MOVIE.AVI", "program.exe"])("does not open or request a p
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
-it("automatically enters the file list after scan confirmation without a second button", async () => {
+it("automatically adds an account after scan confirmation and stays on the account page", async () => {
   let loggedIn = false;
   vi.mocked(cloudCall).mockImplementation(async (method) => {
+    if (method === "accounts") return loggedIn ? [{ accountId: "1", name: "测试115账号", avatar: "", usedBytes: null, totalBytes: null }] : [];
     if (method === "status") return { loggedIn };
     if (method === "login.start") return { image: "data:image/svg+xml;base64,PHN2Zy8+", loginSession: "login-session-test-1" };
-    if (method === "login.check") { loggedIn = true; return { loggedIn: true, status: 2 }; }
+    if (method === "login.check") { loggedIn = true; return { loggedIn: true, status: 2, accountId: "1" }; }
     if (method === "profile") return { accountId: "1", name: "测试115账号" };
     return { entries: [entry], offset: 0, total: 1 };
   });
-  setup();
-  fireEvent.click(screen.getByRole("button", { name: "获取二维码" }));
-  await screen.findByText("sample.txt");
+  setup(vi.fn(), "");
+  fireEvent.click(await screen.findByRole("button", { name: "添加新账号" }));
+  await screen.findByText("测试115账号");
+  expect(screen.queryByText("sample.txt")).not.toBeInTheDocument();
   expect(screen.queryByRole("button", { name: "我已扫码，检查登录" })).not.toBeInTheDocument();
   expect(cloudCall).toHaveBeenCalledWith("login.check", { loginSession: "login-session-test-1" }, expect.any(AbortSignal));
 });
@@ -78,8 +80,8 @@ it("submits unique links to the current directory without creating a completed d
   fireEvent.change(screen.getByRole("textbox", { name: "下载链接" }), { target: { value: " magnet:?xt=test\nhttps://example.com/file\nmagnet:?xt=test " } });
   fireEvent.click(screen.getByRole("button", { name: /^提交$/ }));
   await waitFor(() => expect(screen.getAllByText("已提交到115")).toHaveLength(2));
-  expect(cloudCall).toHaveBeenCalledWith("offline.add", { url: "magnet:?xt=test", destId: "0" });
-  expect(cloudCall).toHaveBeenCalledWith("offline.add", { url: "https://example.com/file", destId: "0" });
+  expect(cloudCall).toHaveBeenCalledWith("offline.add", { url: "magnet:?xt=test", destId: "0", accountId: "1" });
+  expect(cloudCall).toHaveBeenCalledWith("offline.add", { url: "https://example.com/file", destId: "0", accountId: "1" });
   expect(created).not.toHaveBeenCalled();
   expect(screen.getByRole("textbox", { name: "下载链接" })).toHaveValue("");
 });
@@ -98,7 +100,7 @@ it.each(["folder", "file", "blank"])("targets the correct directory from the %s 
   fireEvent.change(screen.getByRole("textbox", { name: "下载链接" }), { target: { value: "ed2k://|file|test|1|hash|/" } });
   fireEvent.click(screen.getByRole("button", { name: /^提交$/ }));
   await screen.findByText("已提交到115");
-  expect(cloudCall).toHaveBeenCalledWith("offline.add", { url: "ed2k://|file|test|1|hash|/", destId: kind === "folder" ? "123" : "0" });
+  expect(cloudCall).toHaveBeenCalledWith("offline.add", { url: "ed2k://|file|test|1|hash|/", destId: kind === "folder" ? "123" : "0", accountId: "1" });
 });
 
 it("keeps only failed links for explicit retry", async () => {

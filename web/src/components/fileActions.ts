@@ -20,6 +20,7 @@ import type { LinkType, OpsRequest } from "../api/types";
 import type { UIStrings } from "../i18n";
 
 export type FileActionId =
+  | "accounts"
   | "details"
   | "offline"
   | "extract"

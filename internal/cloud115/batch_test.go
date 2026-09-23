@@ -95,7 +95,7 @@ func TestCloudBatchPreviewOwnershipExpiryAndSingleUse(t *testing.T) {
 	router.Post("/{method}", s.Handler)
 	request := func(method, body string, actor int64) *httptest.ResponseRecorder {
 		response := httptest.NewRecorder()
-		router.ServeHTTP(response, httptest.NewRequest("POST", "/"+method, strings.NewReader(body)).WithContext(auth.ContextWithUser(context.Background(), auth.User{ID: actor})))
+		router.ServeHTTP(response, httptest.NewRequest("POST", "/"+method, strings.NewReader(`{"accountId":"7",`+strings.TrimPrefix(body, "{"))).WithContext(auth.ContextWithUser(context.Background(), auth.User{ID: actor})))
 		return response
 	}
 	denied := request("power.preview", `{"ids":["1"],"options":{"readMetadata":true}}`, 1)
@@ -145,7 +145,7 @@ func TestCloudSuperPreviewsAreConsumedPerGroup(t *testing.T) {
 	s := NewService(provider, jobs.NewStore(), roots.NewResolver(nil))
 	scan := sampleScan()
 	token := s.remember(batchPreview{ActorID: 1, Scope: "0", Kind: "super", Scan: scan})
-	req := batchRequest{ParentID: "0", Paths: []string{"Album/V.mp4"}, Revisions: map[string]string{"Album": token}}
+	req := batchRequest{AccountID: "7", ParentID: "0", Paths: []string{"Album/V.mp4"}, Revisions: map[string]string{"Album": token}}
 	response := httptest.NewRecorder()
 	s.submitBatch(response, httptest.NewRequest("POST", "/", nil), "super.submit", req, 1)
 	if response.Code != 201 {

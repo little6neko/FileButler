@@ -29,11 +29,11 @@ func TestInstalledProviderWithoutCredentials(t *testing.T) {
 	defer b.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	data, err := b.Call(ctx, "status", nil, nil)
+	data, err := b.Call(ctx, "accounts", nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(data) != `{"loggedIn": false}` {
+	if string(data) != `[]` {
 		t.Fatalf("unexpected status: %s", data)
 	}
 }
@@ -61,7 +61,7 @@ func TestBridgeProgressCancellationAndRestart(t *testing.T) {
 	if _, err := b.Call(ctx, "crash", nil, nil); err == nil {
 		t.Fatal("crash did not fail request")
 	}
-	if _, err := b.Call(ctx, "status", nil, nil); err != nil {
+	if _, err := b.Call(ctx, "accounts", nil, nil); err != nil {
 		t.Fatalf("could not restart: %v", err)
 	}
 }

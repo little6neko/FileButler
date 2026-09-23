@@ -13,7 +13,7 @@ export const operationClient = {
   create(request: OpsRequest, previewToken?: string): Promise<{ id: string }> {
     if (!isCloudOperation(request)) return api.opsCreateJob(request);
     if (!previewToken) return Promise.reject(new Error("请先完成操作预览"));
-    return cloudCall("ops.create", { previewToken });
+    return cloudCall("ops.create", { previewToken, accountId: request.accountId });
   },
 };
 

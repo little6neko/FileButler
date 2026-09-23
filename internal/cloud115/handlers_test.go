@@ -44,6 +44,9 @@ func TestCloudJobsStartConcurrently(t *testing.T) {
 }
 
 func (p *blockingProvider) Call(ctx context.Context, method string, args any, report jobs.Reporter) (json.RawMessage, error) {
+	if method == "account" {
+		return json.RawMessage(`{"accountId":"7"}`), nil
+	}
 	p.started <- ctx
 	<-p.release
 	if err := ctx.Err(); err != nil {
@@ -61,7 +64,7 @@ func TestCloudTaskSurvivesRequestCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(auth.ContextWithUser(context.Background(), auth.User{ID: 1}))
 	defer cancel()
 	response := httptest.NewRecorder()
-	router.ServeHTTP(response, httptest.NewRequest("POST", "/mkdir", strings.NewReader(`{"name":"test"}`)).WithContext(ctx))
+	router.ServeHTTP(response, httptest.NewRequest("POST", "/mkdir", strings.NewReader(`{"accountId":"7","name":"test"}`)).WithContext(ctx))
 	if response.Code != 201 {
 		t.Fatalf("%d %s", response.Code, response.Body.String())
 	}
@@ -145,7 +148,7 @@ func TestRejectUnmappedUploadAndUnknownProviderMethods(t *testing.T) {
 	}{
 		{"upload", `{"rootId":"unknown","paths":["../../etc/passwd"]}`, 400},
 		{"download", `{"ids":["1"],"rootId":"unknown","path":"/etc"}`, 400},
-		{"request", `{}`, 404},
+		{"request", `{"name":""}`, 404},
 		{"browse", `{"parentId":"../1"}`, 400},
 		{"browse", `{"localPath":"/etc"}`, 400},
 		{"offline.add", `{"url":"file:///etc/passwd"}`, 400},
@@ -155,7 +158,7 @@ func TestRejectUnmappedUploadAndUnknownProviderMethods(t *testing.T) {
 		{"offline.add", `{"url":"magnet:?xt=urn:btih:test","destId":"../1"}`, 400},
 	} {
 		response := httptest.NewRecorder()
-		router.ServeHTTP(response, httptest.NewRequest("POST", "/"+tc.method, strings.NewReader(tc.body)))
+		router.ServeHTTP(response, httptest.NewRequest("POST", "/"+tc.method, strings.NewReader(`{"accountId":"7",`+strings.TrimPrefix(tc.body, "{"))))
 		if response.Code != tc.status {
 			t.Errorf("%s: %d", tc.method, response.Code)
 		}
@@ -171,7 +174,7 @@ func TestOfflineSubmission(t *testing.T) {
 		service := NewService(provider, jobs.NewStore(), roots.NewResolver(nil))
 		router := chi.NewRouter()
 		router.Post("/{method}", service.Handler)
-		body, _ := json.Marshal(map[string]string{"url": link, "destId": "123"})
+		body, _ := json.Marshal(map[string]string{"accountId": "7", "url": link, "destId": "123"})
 		response := httptest.NewRecorder()
 		router.ServeHTTP(response, httptest.NewRequest("POST", "/offline.add", strings.NewReader(string(body))))
 		if response.Code != 200 || provider.calls != 1 {

@@ -13,6 +13,7 @@ const (
 )
 
 type Job struct {
+	AccountID       string            `json:"accountId,omitempty"`
 	Transfer        *TransferProgress `json:"transfer,omitempty"`
 	ID              string            `json:"id"`
 	Type            string            `json:"type"`

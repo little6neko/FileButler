@@ -14,7 +14,8 @@ async function setup(page: Page, progress = false) {
     else if (path === "/api/roots") data = [{ id: "local", name: "Data" }];
     else if (path === "/api/browse") data = [{ name: "local.txt", relativePath: "local.txt", type: "file", size: 4, mode: "0644", modifiedUnix: 1, isSymlink: false }];
     else if (path === "/api/cloud115/status") data = { loggedIn: true };
-    else if (path === "/api/cloud115/profile") data = { accountId: "7", name: "Cloud user" };
+    else if (path === "/api/cloud115/accounts") data = [{ accountId: "7", name: "Cloud user", avatar: "", usedBytes: 1, totalBytes: 2 }];
+    else if (path === "/api/cloud115/profile") data = { accountId: "7", name: "Cloud user", avatar: "", usedBytes: 1, totalBytes: 2 };
     else if (path === "/api/cloud115/browse") {
       const root = route.request().postDataJSON().parentId === "0";
       const entries = root ? [{ id: "1", parentId: "0", name: "cloud.txt", isDirectory: false, size: 4 }, { id: "9", parentId: "0", name: "Folder", isDirectory: true, size: 0 }] : [];
@@ -37,6 +38,7 @@ async function setup(page: Page, progress = false) {
   await local.getByRole("button", { name: /Data/ }).dblclick();
   await page.getByRole("button", { name: "打开115网盘", exact: true }).click();
   const cloud = page.locator('.desktop-window[data-window-kind="cloud115"]');
+  await cloud.getByRole("button", { name: /Cloud user/ }).click();
   await expect(cloud.getByRole("button", { name: "cloud.txt", exact: true })).toBeVisible();
   const title = (await cloud.locator(".desktop-window-titlebar").boundingBox())!;
   await page.mouse.move(title.x + 200, title.y + 15); await page.mouse.down();
@@ -123,7 +125,7 @@ test("cloud drag uses shared names, current-directory rejection and destination 
   await expect(cloud.getByRole("dialog", { name: "move preview" })).toBeVisible();
   expect(plans.at(-1)).toMatchObject({ type: "move", sourceRoot: "@115", destRoot: "@115", destPath: "9" });
   expect(creates).toHaveLength(0);
-  await page.evaluate(() => window.dispatchEvent(new Event("cloud115-account-changed")));
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("cloud115-account-changed", { detail: { accountId: "7" } })));
   await expect(cloud.getByRole("dialog")).toHaveCount(0);
 });
 

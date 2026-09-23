@@ -4,14 +4,14 @@ import type { RenameOptions } from "./api/types";
 export type CloudEntry = { id: string; parentId: string; name: string; isDirectory: boolean; size: number; modifiedUnix?: number };
 export type CloudLocation = { id: string; name: string }[];
 export type CloudPage = { entries: CloudEntry[]; total: number; offset: number };
-export type CloudRequest = { id?: string; ids?: string[]; parentId?: string; destId?: string; name?: string; password?: string; offset?: number; rootId?: string; path?: string; paths?: string[]; url?: string; options?: RenameOptions; previewToken?: string; revisions?: Record<string, string>; loginSession?: string };
+export type CloudRequest = { accountId?: string; id?: string; ids?: string[]; parentId?: string; destId?: string; name?: string; password?: string; offset?: number; rootId?: string; path?: string; paths?: string[]; url?: string; options?: RenameOptions; previewToken?: string; revisions?: Record<string, string>; loginSession?: string };
 
-export async function cloudDirectory(parentId: string, isCurrent: () => boolean = () => true): Promise<CloudEntry[]> {
+export async function cloudDirectory(parentId: string, accountId: string, isCurrent: () => boolean = () => true): Promise<CloudEntry[]> {
   const entries: CloudEntry[] = [];
   const ids = new Set<string>();
   let total: number | undefined;
   do {
-    const page = await cloudCall<CloudPage>("browse", { parentId, offset: entries.length });
+    const page = await cloudCall<CloudPage>("browse", { parentId, accountId, offset: entries.length });
     if (!isCurrent()) throw new Error("目录加载已取消");
     if (total !== undefined && total !== page.total) throw new Error("目录加载期间发生变化，请刷新");
     total = page.total;

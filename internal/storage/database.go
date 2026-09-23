@@ -22,10 +22,10 @@ type Store struct {
 const schema = `
 CREATE TABLE users (id INTEGER PRIMARY KEY CHECK(id=1), username TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL);
 CREATE TABLE internal_settings (key TEXT PRIMARY KEY, value BLOB NOT NULL);
-CREATE TABLE cloud_credentials (provider TEXT PRIMARY KEY CHECK(provider='115'), cookie TEXT NOT NULL, account_id TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL);
+CREATE TABLE cloud_credentials (provider TEXT NOT NULL CHECK(provider='115'), account_id TEXT NOT NULL, cookie TEXT NOT NULL, name TEXT NOT NULL DEFAULT '', avatar TEXT NOT NULL DEFAULT '', used_bytes INTEGER, total_bytes INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(provider,account_id));
 CREATE TABLE file_hashes (scope TEXT NOT NULL, path TEXT NOT NULL, version TEXT NOT NULL, sha1 TEXT NOT NULL CHECK(length(sha1)=40), origin TEXT NOT NULL, updated_at INTEGER NOT NULL, PRIMARY KEY(scope,path));
 CREATE INDEX file_hashes_sha1 ON file_hashes(sha1);
-PRAGMA user_version=1;`
+PRAGMA user_version=2;`
 
 func Open(path string) (*Store, error) {
 	if strings.TrimSpace(path) == "" {
@@ -81,7 +81,7 @@ func Open(path string) (*Store, error) {
 		if e = tx.Commit(); e != nil {
 			return fail(e)
 		}
-	} else if version != 1 {
+	} else if version != 2 {
 		return fail(fmt.Errorf("unsupported database version %d", version))
 	}
 	var check string
@@ -89,7 +89,7 @@ func Open(path string) (*Store, error) {
 		return fail(errors.New("database integrity check failed"))
 	}
 	// Validate required columns even for a database with a forged version number.
-	for _, query := range []string{"SELECT id,username,password_hash FROM users LIMIT 0", "SELECT key,value FROM internal_settings LIMIT 0", "SELECT provider,cookie,account_id,updated_at FROM cloud_credentials LIMIT 0", "SELECT scope,path,version,sha1,origin,updated_at FROM file_hashes LIMIT 0"} {
+	for _, query := range []string{"SELECT id,username,password_hash FROM users LIMIT 0", "SELECT key,value FROM internal_settings LIMIT 0", "SELECT provider,cookie,account_id,name,avatar,used_bytes,total_bytes,created_at,updated_at FROM cloud_credentials LIMIT 0", "SELECT scope,path,version,sha1,origin,updated_at FROM file_hashes LIMIT 0"} {
 		rows, e := db.Query(query)
 		if e != nil {
 			return fail(errors.New("invalid database schema"))
@@ -154,9 +154,9 @@ func (s *Store) CreateAdmin(ctx context.Context, a Admin) error {
 	}
 	return tx.Commit()
 }
-func (s *Store) Cookie(ctx context.Context) (string, error) {
+func (s *Store) Cookie(ctx context.Context, account string) (string, error) {
 	var cookie string
-	err := s.DB.QueryRowContext(ctx, "SELECT cookie FROM cloud_credentials WHERE provider='115'").Scan(&cookie)
+	err := s.DB.QueryRowContext(ctx, "SELECT cookie FROM cloud_credentials WHERE provider='115' AND account_id=?", account).Scan(&cookie)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
@@ -173,10 +173,44 @@ func (s *Store) SetCookie(ctx context.Context, cookie string) error {
 			break
 		}
 	}
-	_, err := s.DB.ExecContext(ctx, "INSERT INTO cloud_credentials(provider,cookie,account_id,updated_at) VALUES('115',?,?,unixepoch()) ON CONFLICT(provider) DO UPDATE SET cookie=excluded.cookie, account_id=excluded.account_id,updated_at=excluded.updated_at", cookie, account)
+	if account == "" || strings.Trim(account, "0123456789") != "" || account == "0" {
+		return errors.New("invalid account")
+	}
+	_, err := s.DB.ExecContext(ctx, "INSERT INTO cloud_credentials(provider,cookie,account_id,created_at,updated_at) VALUES('115',?,?,unixepoch(),unixepoch()) ON CONFLICT(provider,account_id) DO UPDATE SET cookie=excluded.cookie,updated_at=excluded.updated_at", cookie, account)
 	return err
 }
-func (s *Store) DeleteCookie(ctx context.Context) error {
-	_, err := s.DB.ExecContext(ctx, "DELETE FROM cloud_credentials WHERE provider='115'")
+func (s *Store) DeleteCookie(ctx context.Context, account string) error {
+	_, err := s.DB.ExecContext(ctx, "DELETE FROM cloud_credentials WHERE provider='115' AND account_id=?", account)
+	return err
+}
+
+type CloudAccount struct {
+	AccountID  string `json:"accountId"`
+	Name       string `json:"name"`
+	Avatar     string `json:"avatar"`
+	UsedBytes  *int64 `json:"usedBytes"`
+	TotalBytes *int64 `json:"totalBytes"`
+}
+
+func (s *Store) Accounts(ctx context.Context) ([]CloudAccount, error) {
+	rows, err := s.DB.QueryContext(ctx, "SELECT account_id,name,avatar,used_bytes,total_bytes FROM cloud_credentials WHERE provider='115' ORDER BY created_at, rowid")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	accounts := []CloudAccount{}
+	for rows.Next() {
+		var a CloudAccount
+		if err := rows.Scan(&a.AccountID, &a.Name, &a.Avatar, &a.UsedBytes, &a.TotalBytes); err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, a)
+	}
+	return accounts, rows.Err()
+}
+
+// Compare credentials so a delayed profile result cannot overwrite a re-login.
+func (s *Store) UpdateAccount(ctx context.Context, a CloudAccount, cookie string) error {
+	_, err := s.DB.ExecContext(ctx, "UPDATE cloud_credentials SET name=?,avatar=?,used_bytes=?,total_bytes=? WHERE provider='115' AND account_id=? AND cookie=?", a.Name, a.Avatar, a.UsedBytes, a.TotalBytes, a.AccountID, cookie)
 	return err
 }

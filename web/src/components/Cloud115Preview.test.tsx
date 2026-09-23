@@ -52,7 +52,7 @@ it("copies the current link, refreshes it, and disables copying on account chang
   await waitFor(() => expect(copy).toBeEnabled());
   fireEvent.click(copy);
   await waitFor(() => expect(writeText).toHaveBeenLastCalledWith(`${url}?renewed`));
-  act(() => window.dispatchEvent(new Event("cloud115-account-changed")));
+  act(() => window.dispatchEvent(new CustomEvent("cloud115-account-changed", { detail: { accountId: "1" } })));
   expect(copy).toBeDisabled();
 });
 

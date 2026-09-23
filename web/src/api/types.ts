@@ -100,6 +100,8 @@ export type RenameOptions = {
 };
 
 export type OpsRequest = {
+  sourceAccountId?: string;
+  destAccountId?: string;
   accountId?: string;
   type: "move" | "copy" | "delete" | "mkdir";
   sourceRoot: string;
@@ -137,6 +139,7 @@ export type PlanItem = {
 };
 
 export type Job = {
+  accountId?: string;
   transfer?: { phase: string; file: string; bytesDone: number; bytesTotal: number; bytesPerSecond: number; remainingSeconds?: number; cancelable: boolean; percent?: number };
   id: string;
   type: string;

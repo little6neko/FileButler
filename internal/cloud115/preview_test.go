@@ -29,13 +29,13 @@ func TestPreviewRequiresAuthAndOnlyReturnsAnUncachedLink(t *testing.T) {
 	s := NewService(p, jobs.NewStore(), roots.NewResolver(nil))
 	router := chi.NewRouter()
 	router.Post("/{method}", s.Handler)
-	req := httptest.NewRequest("POST", "/preview.url", strings.NewReader(`{"id":"1"}`))
+	req := httptest.NewRequest("POST", "/preview.url", strings.NewReader(`{"accountId":"7","id":"1"}`))
 	response := httptest.NewRecorder()
 	router.ServeHTTP(response, req)
 	if response.Code != 401 || p.calls != 0 {
 		t.Fatal("unauthorized preview accessed provider")
 	}
-	req = httptest.NewRequest("POST", "/preview.url", strings.NewReader(`{"id":"1"}`)).WithContext(auth.ContextWithUser(context.Background(), auth.User{ID: 1}))
+	req = httptest.NewRequest("POST", "/preview.url", strings.NewReader(`{"accountId":"7","id":"1"}`)).WithContext(auth.ContextWithUser(context.Background(), auth.User{ID: 1}))
 	req.Header.Set("User-Agent", "Browser-UA")
 	response = httptest.NewRecorder()
 	router.ServeHTTP(response, req)

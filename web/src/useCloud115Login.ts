@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { cloudCall } from "./cloud115";
 
-export function useCloud115Login(session: string, onSuccess: () => void) {
+export function useCloud115Login(session: string, onSuccess: (accountId: string) => void) {
   const [state, setState] = useState({ session: "", message: "" });
   useEffect(() => {
     if (!session) return;
@@ -13,9 +13,9 @@ export function useCloud115Login(session: string, onSuccess: () => void) {
       if (controller.signal.aborted) return;
       if (Date.now() > deadline) { setState({ session, message: "登录等待已结束，请重新获取二维码" }); return; }
       try {
-        const result = await cloudCall<{ status: number; loggedIn: boolean }>("login.check", { loginSession: session }, controller.signal);
+        const result = await cloudCall<{ status: number; loggedIn: boolean; accountId: string }>("login.check", { loginSession: session }, controller.signal);
         if (controller.signal.aborted) return;
-        if (result.loggedIn) { onSuccess(); return; }
+        if (result.loggedIn) { onSuccess(result.accountId); return; }
         if (result.status < 0) {
           setState({ session, message: result.status === -2 ? "登录已取消，请重新获取二维码" : result.status === -3 ? "二维码已被替换或失效，请重新获取" : "二维码已过期，请重新获取" });
           return;

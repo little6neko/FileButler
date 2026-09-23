@@ -17,7 +17,8 @@ async function setup(page: Page, cloud = false, compact = false) {
     else if (path === "/api/roots") data = [{ id: "a", name: "A" }];
     else if (path === "/api/browse") data = ["a.txt", "movie.avi"].map((name) => ({ name, relativePath: name, type: "file", size: 65982, mode: "0644", modifiedUnix: 1, isSymlink: false }));
     else if (path === "/api/cloud115/status") data = { loggedIn: true };
-    else if (path === "/api/cloud115/profile") data = { accountId: "7", name: "Cloud" };
+    else if (path === "/api/cloud115/accounts") data = [{ accountId: "7", name: "Cloud", avatar: "", usedBytes: 1, totalBytes: 2 }];
+    else if (path === "/api/cloud115/profile") data = { accountId: "7", name: "Cloud", avatar: "", usedBytes: 1, totalBytes: 2 };
     else if (path === "/api/cloud115/browse") data = { entries: [{ id: "1", parentId: "0", name: "a.txt", size: 65982, isDirectory: false }, { id: "2", parentId: "0", name: "movie.avi", size: 65982, isDirectory: false }], total: 2, offset: 0 };
     else if (path.includes("details")) {
       const request = route.request().postDataJSON();
@@ -29,7 +30,7 @@ async function setup(page: Page, cloud = false, compact = false) {
     return route.fulfill({ json: { data } });
   });
   await page.goto("/");
-  if (cloud) await page.getByRole("button", { name: "打开115网盘", exact: true }).click();
+  if (cloud) { await page.getByRole("button", { name: "打开115网盘", exact: true }).click(); await page.getByRole("button", { name: /^Cloud/ }).click(); }
   else if (!compact) { await page.getByRole("button", { name: "打开文件管理器", exact: true }).click(); await page.getByRole("button", { name: /^A/ }).dblclick(); }
   return calls;
 }

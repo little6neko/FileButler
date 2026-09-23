@@ -27,9 +27,23 @@ func (b *Bridge) storageReply(p *workerProcess, msg message) {
 	}
 }
 func (b *Bridge) storageCall(ctx context.Context, method string, raw json.RawMessage) (any, error) {
+	var credential struct {
+		storage.CloudAccount
+		Cookie string `json:"cookie"`
+	}
+	if len(raw) != 0 && string(raw) != "null" {
+		if err := json.Unmarshal(raw, &credential); err != nil {
+			return nil, err
+		}
+	}
 	switch method {
+	case "credential.list":
+		return b.database.Accounts(ctx)
 	case "credential.get":
-		return b.database.Cookie(ctx)
+		if !numericID.MatchString(credential.AccountID) || credential.AccountID == "0" {
+			return nil, errors.New("invalid account")
+		}
+		return b.database.Cookie(ctx, credential.AccountID)
 	case "credential.set":
 		var params struct {
 			Cookie string `json:"cookie"`
@@ -39,7 +53,9 @@ func (b *Bridge) storageCall(ctx context.Context, method string, raw json.RawMes
 		}
 		return nil, b.database.SetCookie(ctx, params.Cookie)
 	case "credential.delete":
-		return nil, b.database.DeleteCookie(ctx)
+		return nil, b.database.DeleteCookie(ctx, credential.AccountID)
+	case "credential.profile":
+		return nil, b.database.UpdateAccount(ctx, credential.CloudAccount, credential.Cookie)
 	case "cache.warning":
 		log.Print("115 hash cache unavailable; using uncached transfer")
 		return nil, nil

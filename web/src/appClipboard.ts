@@ -40,7 +40,7 @@ export function createAppClipboard(
 export function buildClipboardRequest(clipboard: AppClipboard, target: ClipboardTarget): OpsRequest {
   return {
     type: clipboard.operation,
-    ...(clipboard.accountId || target.accountId ? { accountId: clipboard.accountId ?? target.accountId } : {}),
+    ...(clipboard.accountId || target.accountId ? { accountId: clipboard.accountId ?? target.accountId, sourceAccountId: clipboard.accountId, destAccountId: target.accountId } : {}),
     sourceRoot: clipboard.sourceRootId,
     sources: clipboard.paths,
     destRoot: target.rootId,

@@ -109,7 +109,7 @@ export function buildFileDropFeedback(source: FileDragSource, target: FileDropDa
 export function buildDragRequest(source: FileDragSource, target: FileDropData): OpsRequest {
   return {
     type: defaultDragOperation(source, target),
-    ...(source.accountId || target.accountId ? { accountId: source.accountId ?? target.accountId } : {}),
+    ...(source.accountId || target.accountId ? { accountId: source.accountId ?? target.accountId, sourceAccountId: source.accountId, destAccountId: target.accountId } : {}),
     sourceRoot: source.rootId,
     sources: source.entries.map((entry) => entry.relativePath),
     destRoot: target.rootId,

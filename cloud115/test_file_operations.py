@@ -8,11 +8,11 @@ from unittest.mock import Mock, patch
 from errors import Canceled, ProviderError
 from operations import CloudOperations
 from file_operations import local_snapshot, remove_local_snapshot
-from worker import Adapter
+from accounts import AccountContext
 
 
 class FakeShared(CloudOperations):
-    checked = staticmethod(Adapter.checked)
+    checked = staticmethod(AccountContext.checked)
 
     def __init__(self):
         self.nodes = {"1": {"id": "1", "name": "a.txt", "parent_id": "0", "size": 4, "mtime": 1, "is_dir": False, "sha1": "abc"}, "9": {"id": "9", "name": "dest", "parent_id": "0", "is_dir": True}}

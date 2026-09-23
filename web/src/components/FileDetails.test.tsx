@@ -46,7 +46,7 @@ it("cancels requests on close and account changes", async () => {
   const view = render(<FileDetails target={target} labels={strings["zh-CN"]} />);
   await screen.findByText("txt"); const signal = vi.mocked(readDetails).mock.calls[0][2]; view.unmount(); expect(signal.aborted).toBe(true);
   render(<FileDetails target={{ ...target, rootId: "@115", accountId: "1" }} labels={strings["zh-CN"]} />);
-  await screen.findByText("txt"); act(() => window.dispatchEvent(new Event("cloud115-account-changed")));
+  await screen.findByText("txt"); act(() => window.dispatchEvent(new CustomEvent("cloud115-account-changed", { detail: { accountId: "1" } })));
   expect(screen.getByRole("alert")).toHaveTextContent("115账号已变化"); expect(screen.getByRole("button", { name: "重新获取" })).toBeDisabled();
 });
 it.each([

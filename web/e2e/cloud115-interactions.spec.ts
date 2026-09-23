@@ -23,10 +23,11 @@ async function installCloud(page: Page, initiallyLoggedIn = true) {
     else if (path.startsWith("/api/cloud115/")) {
       const method = path.split("/").at(-1)!;
       const params = route.request().postDataJSON(); calls.push({ method, params });
-      if (method === "status") data = { loggedIn };
+      if (method === "accounts") data = loggedIn ? [{ accountId: "7", name: "Cloud tester", avatar: "", usedBytes: 1, totalBytes: 2 }] : [];
+      else if (method === "status") data = { loggedIn };
       else if (method === "login.start") data = { image: "data:image/svg+xml;base64,PHN2Zy8+", loginSession: "test-opaque-session-123456" };
-      else if (method === "login.check") { checks++; loggedIn = checks >= 2; data = { status: loggedIn ? 2 : 1, loggedIn }; }
-      else if (method === "profile") data = { accountId: "7", name: "Cloud tester" };
+      else if (method === "login.check") { checks++; loggedIn = checks >= 2; data = { status: loggedIn ? 2 : 1, loggedIn, accountId: "7" }; }
+      else if (method === "profile") data = { accountId: "7", name: "Cloud tester", avatar: "", usedBytes: 1, totalBytes: 2 };
       else if (method === "browse") data = { entries, total: entries.length, offset: 0 };
       else if (method === "preview.url") {
         const entry = entries.find((item) => item.id === params.id)!;
@@ -43,9 +44,11 @@ test("QR login enters the cloud automatically after phone confirmation", async (
   const { calls } = await installCloud(page, false);
   await page.goto("/");
   await page.getByRole("button", { name: "打开115网盘", exact: true }).click();
-  await page.getByRole("button", { name: "获取二维码", exact: true }).click();
+  await page.getByRole("button", { name: "添加新账号", exact: true }).click();
   await expect(page.getByText("已扫码，等待在115客户端确认")).toBeVisible();
   await expect(page.getByRole("button", { name: "我已扫码，检查登录" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "notes.txt", exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: /Cloud tester/ }).click();
   await expect(page.getByRole("button", { name: "notes.txt", exact: true })).toBeVisible();
   const checks = calls.filter((call) => call.method === "login.check");
   expect(checks).toHaveLength(2);
@@ -61,6 +64,7 @@ test("cloud previews load bytes directly, text is read-only and archive double c
   await page.goto("/");
   await page.getByRole("button", { name: "打开115网盘", exact: true }).click();
   const cloud = page.locator('.desktop-window[data-window-kind="cloud115"]');
+  await cloud.getByRole("button", { name: /Cloud tester/ }).click();
   await expect(cloud.getByRole("button", { name: "notes.txt", exact: true })).toBeVisible();
   expect(await cloud.locator(".file-pane").evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none");
   await expect(page.locator('.taskbar-window-button[data-window-kind="cloud115"] .lucide-cloud')).toBeVisible();
@@ -89,12 +93,13 @@ test("cloud previews load bytes directly, text is read-only and archive double c
   await expect(preview.locator(".cm-content")).toContainText("cloud read-only text");
   await expect(preview.locator(".cm-content")).toHaveAttribute("contenteditable", "false");
   await expect(preview.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
-  await page.evaluate(() => window.dispatchEvent(new Event("cloud115-account-changed")));
+  await page.evaluate(() => window.dispatchEvent(new CustomEvent("cloud115-account-changed", { detail: { accountId: "7" } })));
   await expect(preview.getByRole("alert")).toContainText("115账号已变化");
   await expect(preview.locator(".cm-content")).toHaveCount(0);
   await expect(preview.getByRole("button", { name: "复制直链" })).toBeDisabled();
   await preview.getByRole("button", { name: "Close window" }).click();
 
+  await cloud.getByRole("button", { name: /Cloud tester/ }).click();
   await cloud.getByRole("button", { name: "blocked.txt", exact: true }).dblclick();
   preview = page.locator('.desktop-window[data-window-kind="cloudPreview"]');
   await expect(preview.getByRole("alert")).toBeVisible();

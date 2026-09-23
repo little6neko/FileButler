@@ -45,7 +45,7 @@ export type SuperRenameWindowRecord = BaseWindowRecord & {
   instanceId: string;
 };
 
-export type Cloud115WindowRecord = BaseWindowRecord & { kind: "cloud115"; instanceId: string; trail?: { id: string; name: string }[] };
+export type Cloud115WindowRecord = BaseWindowRecord & { kind: "cloud115"; instanceId: string; accountId?: string; trail?: { id: string; name: string }[] };
 export type CloudPreviewWindowRecord = BaseWindowRecord & { kind: "cloudPreview"; instanceId: string };
 export type DetailsWindowRecord = BaseWindowRecord & { kind: "details"; instanceId: string };
 export type DesktopWindowRecord = FileWindowRecord | PowerRenameWindowRecord | MediaPreviewWindowRecord | TextEditorWindowRecord | SuperRenameWindowRecord | Cloud115WindowRecord | CloudPreviewWindowRecord | DetailsWindowRecord;
@@ -71,8 +71,8 @@ export function createWindowManagerState(): WindowManagerState {
   return { windows: [], activeWindowId: null, nextOrder: 1, cascadeIndex: 0 };
 }
 
-export function openCloud115Window(state: WindowManagerState, id: string, bounds: DesktopBounds, trail?: { id: string; name: string }[]): WindowManagerState {
-  return openWindow(state, id, { kind: "cloud115", instanceId: id, trail }, bounds);
+export function openCloud115Window(state: WindowManagerState, id: string, bounds: DesktopBounds, trail?: { id: string; name: string }[], accountId?: string): WindowManagerState {
+  return openWindow(state, id, { kind: "cloud115", instanceId: id, trail, accountId }, bounds);
 }
 
 export function openCloudPreviewWindow(state: WindowManagerState, id: string, bounds: DesktopBounds): WindowManagerState {
@@ -139,7 +139,7 @@ function openWindow(
     | Pick<SuperRenameWindowRecord, "kind" | "instanceId">
     | Pick<CloudPreviewWindowRecord, "kind" | "instanceId">
     | Pick<DetailsWindowRecord, "kind" | "instanceId">
-    | Pick<Cloud115WindowRecord, "kind" | "instanceId" | "trail">,
+    | Pick<Cloud115WindowRecord, "kind" | "instanceId" | "trail" | "accountId">,
   bounds: DesktopBounds,
 ): WindowManagerState {
   const rect = cascadeRect(bounds, state.cascadeIndex, windowMinimum(identity));

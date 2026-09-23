@@ -3,7 +3,7 @@ import { cloudCall } from "../cloud115";
 import { Button } from "./ui/button";
 import { WindowDialogLayer } from "./WindowDialogLayer";
 
-export function Cloud115OfflineDialog({ target, onClose }: { target: { id: string; name: string }; onClose(): void }) {
+export function Cloud115OfflineDialog({ target, onClose }: { target: { id: string; name: string; accountId: string }; onClose(): void }) {
   const titleId = useId();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -16,7 +16,7 @@ export function Cloud115OfflineDialog({ target, onClose }: { target: { id: strin
     const failed: string[] = [];
     for (const url of links) {
       try {
-        await cloudCall("offline.add", { url, destId: target.id });
+        await cloudCall("offline.add", { url, destId: target.id, accountId: target.accountId });
         setResults((current) => [...current, { url }]);
       } catch (error) {
         failed.push(url);

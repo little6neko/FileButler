@@ -20,7 +20,7 @@ it.each([true, false])("shares preview and copy/move choices, warns before delet
   await waitFor(() => expect(screen.getByRole("button", { name: "Start move" })).toBeEnabled());
   expect(screen.getByText(download ? "下载成功后将删除115上的源文件。" : "上传成功后将删除本地源文件。")).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Start move" }));
-  expect(cloudCall).toHaveBeenLastCalledWith("ops.create", { previewToken: "move" });
+  expect(cloudCall).toHaveBeenLastCalledWith("ops.create", { previewToken: "move", accountId: "7" });
   expect(api.opsCreateJob).not.toHaveBeenCalled();
   expect(api.opsDryRun).not.toHaveBeenCalled();
   expect(created).toHaveBeenCalledWith("job", expect.objectContaining({ type: "move" }));

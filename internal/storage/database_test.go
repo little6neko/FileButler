@@ -49,13 +49,13 @@ func TestPersistencePermissionsAndNoLegacyImport(t *testing.T) {
 	if err != nil || a == nil || a.Username != "admin" {
 		t.Fatal("administrator not persisted")
 	}
-	if cookie, err := s.Cookie(ctx); err != nil || cookie != "UID=1; CID=test" {
+	if cookie, err := s.Cookie(ctx, "1"); err != nil || cookie != "UID=1; CID=test" {
 		t.Fatal("cookie not persisted")
 	}
-	if err := s.DeleteCookie(ctx); err != nil {
+	if err := s.DeleteCookie(ctx, "1"); err != nil {
 		t.Fatal(err)
 	}
-	if cookie, err := s.Cookie(ctx); err != nil || cookie != "" {
+	if cookie, err := s.Cookie(ctx, "1"); err != nil || cookie != "" {
 		t.Fatal("logout did not delete cookie")
 	}
 	dir := t.TempDir()
@@ -69,7 +69,7 @@ func TestPersistencePermissionsAndNoLegacyImport(t *testing.T) {
 	if a, err := fresh.Admin(ctx); err != nil || a != nil {
 		t.Fatal("legacy authentication imported")
 	}
-	if c, err := fresh.Cookie(ctx); err != nil || c != "" {
+	if c, err := fresh.Cookie(ctx, "1"); err != nil || c != "" {
 		t.Fatal("legacy cookie imported")
 	}
 }
@@ -98,6 +98,42 @@ func TestInvalidDatabasesFailClosed(t *testing.T) {
 			s.Close()
 			t.Fatal("unknown schema accepted")
 		}
+	}
+}
+
+func TestMultipleAccountsPersistIndependently(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	for _, cookie := range []string{"UID=1; CID=old", "UID=2; CID=other", "UID=1; CID=new"} {
+		if err := s.SetCookie(ctx, cookie); err != nil {
+			t.Fatal(err)
+		}
+	}
+	used, total := int64(100), int64(200)
+	a := CloudAccount{AccountID: "1", Name: "first", Avatar: "https://example.com/avatar", UsedBytes: &used, TotalBytes: &total}
+	if err := s.UpdateAccount(ctx, a, "UID=1; CID=new"); err != nil {
+		t.Fatal(err)
+	}
+	a.Name = "stale"
+	if err := s.UpdateAccount(ctx, a, "UID=1; CID=old"); err != nil {
+		t.Fatal(err)
+	}
+	accounts, err := s.Accounts(ctx)
+	if err != nil || len(accounts) != 2 || accounts[0].Name != "first" || *accounts[0].UsedBytes != used {
+		t.Fatalf("unexpected accounts: %+v %v", accounts, err)
+	}
+	if cookie, err := s.Cookie(ctx, ""); err != nil || cookie != "" {
+		t.Fatal("missing account selected an implicit default")
+	}
+	if err := s.DeleteCookie(ctx, "1"); err != nil {
+		t.Fatal(err)
+	}
+	if cookie, err := s.Cookie(ctx, "2"); err != nil || cookie != "UID=2; CID=other" {
+		t.Fatal("logout affected another account")
+	}
+	accounts, err = s.Accounts(ctx)
+	if err != nil || len(accounts) != 1 || accounts[0].AccountID != "2" {
+		t.Fatal("wrong remaining account")
 	}
 }
 func TestConcurrentAdminAndCacheWrites(t *testing.T) {

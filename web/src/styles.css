@@ -557,7 +557,7 @@ body {
   min-height: 0;
   display: flex;
   overflow: hidden;
-  padding: 14px;
+  padding: 1rem;
 }
 
 .text-editor-layout {

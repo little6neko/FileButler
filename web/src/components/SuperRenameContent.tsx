@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { CircleAlert, LoaderCircle, RefreshCw, WandSparkles } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { DialogFooter } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { strings, type UIStrings } from "../i18n";
 import { terminalJobStatuses } from "../jobEvents";
@@ -142,7 +143,7 @@ export function SuperRenameContent({
         <div className="min-h-0 flex-1" />
       )}
 
-      <footer className="flex shrink-0 justify-end gap-2 border-t pt-3">
+      <DialogFooter>
         <Button
           type="button"
           variant="outline"
@@ -155,7 +156,7 @@ export function SuperRenameContent({
           {snapshot.submitting ? <LoaderCircle className="animate-spin" /> : <WandSparkles />}
           {labels.superRenameExecute(projection?.summary.selectedCount ?? 0)}
         </Button>
-      </footer>
+      </DialogFooter>
     </div>
   );
 }

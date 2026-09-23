@@ -29,6 +29,7 @@ describe("SuperRenameContent", () => {
     );
 
     expect(screen.getByTestId("super-rename-loading")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" }).closest('[data-slot="dialog-footer"]')).toHaveClass("bg-muted/50", "border-t", "shrink-0");
     await screen.findByText("photo-2.jpg");
     expect(screen.getByText("1 folders · 3 selected · 1 unmatched · 0 conflicts")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("checkbox", { name: "Select photo-1.jpg for SuperRename" }));

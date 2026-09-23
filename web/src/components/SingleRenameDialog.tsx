@@ -1,7 +1,7 @@
 import { useId, useRef, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { api } from "../api/client";
@@ -101,13 +101,13 @@ export function SingleRenameContent({
           disabled={submitting}
         />
       </div>
-      <footer className="-mx-4 -mb-4 flex flex-col-reverse gap-2 rounded-b-xl border-t bg-muted/50 p-4 sm:flex-row sm:justify-end">
+      <DialogFooter>
         <Button variant="outline" onClick={onClose} disabled={submitting}>{labels.cancel}</Button>
         <Button onClick={submit} disabled={!canSubmit}>
           {submitting ? <LoaderCircle className="animate-spin" /> : null}
           {labels.rename}
         </Button>
-      </footer>
+      </DialogFooter>
     </div>
   );
 }

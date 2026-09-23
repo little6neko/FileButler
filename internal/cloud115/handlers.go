@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -40,10 +42,11 @@ type Request struct {
 	RootID   string   `json:"rootId"`
 	Path     string   `json:"path"`
 	Paths    []string `json:"paths"`
+	URL      string   `json:"url"`
 }
 
 var numericID = regexp.MustCompile(`^(0|[1-9][0-9]{0,19})$`)
-var queries = map[string]bool{"status": true, "login.start": true, "login.check": true, "logout": true, "browse": true}
+var queries = map[string]bool{"status": true, "login.start": true, "login.check": true, "logout": true, "browse": true, "offline.add": true}
 var mutations = map[string]bool{"mkdir": true, "rename": true, "copy": true, "move": true, "delete": true, "upload": true, "download": true, "extract": true}
 
 func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
@@ -78,6 +81,31 @@ func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	params := map[string]any{"id": req.ID, "parentId": req.ParentID, "destId": req.DestID, "name": req.Name, "password": req.Password, "offset": req.Offset}
+	if method == "offline.add" {
+		link := strings.TrimSpace(req.URL)
+		parsed, err := url.Parse(link)
+		valid := len(link) <= 16384 && !strings.ContainsAny(link, "\r\n\t\x00 ")
+		if strings.HasPrefix(link, "ed2k://") {
+			// ed2k uses pipe-delimited fields, not a standard URL authority.
+			valid = valid && strings.HasPrefix(link, "ed2k://|file|") && strings.HasSuffix(link, "|/")
+		} else if valid && err == nil {
+			switch parsed.Scheme {
+			case "magnet":
+				valid = parsed.Query().Get("xt") != ""
+			case "http", "https", "ftp":
+				valid = parsed.Hostname() != ""
+			default:
+				valid = false
+			}
+		} else {
+			valid = false
+		}
+		if !valid {
+			respond(w, 400, nil, "请输入有效的磁力、ed2k、HTTP/HTTPS或FTP链接（每行一条）")
+			return
+		}
+		params["url"] = link
+	}
 	if queries[method] {
 		// Never change accounts while queued/running cloud tasks can still reference them.
 		if method == "logout" || method == "login.start" || method == "login.check" {

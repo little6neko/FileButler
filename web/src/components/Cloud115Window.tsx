@@ -4,6 +4,8 @@ import { ArrowLeft, ArrowRight, ArrowUp, File, Folder, RefreshCw } from "lucide-
 import { cloudCall, type CloudEntry, type CloudPage, type CloudRequest } from "../cloud115";
 import { useOptionalJobEventsStore } from "../jobEventsContext";
 import { Button } from "./ui/button";
+import { Cloud115OfflineDialog } from "./Cloud115OfflineDialog";
+import { ContextMenuRoot, ContextMenuTrigger, ContextMenuPortal, ContextMenuPositioner, ContextMenuPopup, ContextMenuItem } from "./ui/context-menu";
 
 type Location = { id: string; name: string }[];
 type Prompt = { method: "mkdir" | "rename" | "delete" | "extract"; name: string; password: string };
@@ -22,6 +24,8 @@ export function Cloud115Window({ windowId, layer, onJobCreated }: { windowId: st
   const parent = trail[trail.length - 1];
   const [clipboard, setClipboard] = useState<{ method: "copy" | "move"; ids: string[] } | null>(null);
   const [prompt, setPrompt] = useState<Prompt | null>(null);
+  const [offlineTarget, setOfflineTarget] = useState<{ id: string; name: string } | null>(null);
+  const [contextTarget, setContextTarget] = useState<{ id: string; name: string } | null>(null);
   const generation = useRef(0);
   const { setNodeRef: setDropNodeRef, isOver } = useDroppable({ id: `cloud115:${windowId}`, data: { kind: "current-directory", provider: "cloud115", pane: windowId, rootId: "@115", path: parent.id, label: parent.name, layer, windowId }, disabled: !loggedIn });
 
@@ -101,6 +105,7 @@ export function Cloud115Window({ windowId, layer, onJobCreated }: { windowId: st
     </div>
     <div className="flex flex-wrap gap-1 border-b p-2">
       <Button size="sm" variant="outline" disabled={busy} onClick={() => setPrompt({ method: "mkdir", name: "", password: "" })}>新建文件夹</Button>
+      <Button size="sm" variant="outline" disabled={busy} onClick={() => setOfflineTarget({ id: parent.id, name: trail.map((part) => part.name).join(" / ") })}>离线下载</Button>
       <Button size="sm" variant="outline" disabled={busy || selection.length !== 1} onClick={() => setPrompt({ method: "rename", name: page.entries.find((entry) => entry.id === selection[0])?.name ?? "", password: "" })}>重命名</Button>
       <Button size="sm" variant="outline" disabled={!selection.length} onClick={() => setClipboard({ method: "copy", ids: [...selection] })}>复制</Button>
       <Button size="sm" variant="outline" disabled={!selection.length} onClick={() => setClipboard({ method: "move", ids: [...selection] })}>剪切</Button>
@@ -114,18 +119,27 @@ export function Cloud115Window({ windowId, layer, onJobCreated }: { windowId: st
       {prompt.method === "delete" ? <p>确认删除选中的 {selection.length} 项？</p> : prompt.method === "extract" ? <><p className="text-sm">解压到当前目录下以压缩包命名的新文件夹；不覆盖已有目录。</p><input className="rounded border bg-background p-2" type="password" autoComplete="off" placeholder="解压密码（可选）" aria-label="解压密码" value={prompt.password} onChange={(event) => setPrompt({ ...prompt, password: event.target.value })} /></> : <input className="rounded border bg-background p-2" autoFocus required aria-label="名称" value={prompt.name} onChange={(event) => setPrompt({ ...prompt, name: event.target.value })} />}
       <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setPrompt(null)}>取消</Button><Button type="submit" disabled={busy}>确认</Button></div>
     </form> : null}
-    <div className="min-h-0 flex-1 overflow-auto" aria-label="115文件列表">
+    {offlineTarget ? <Cloud115OfflineDialog target={offlineTarget} onClose={() => setOfflineTarget(null)} /> : null}
+    <ContextMenuRoot>
+    <ContextMenuTrigger render={<div className="min-h-0 flex-1 overflow-auto" aria-label="115文件列表" />} onContextMenu={(event) => {
+      const row = (event.target as HTMLElement).closest<HTMLElement>("[data-cloud-entry-id]");
+      const entry = page.entries.find((entry) => entry.id === row?.dataset.cloudEntryId);
+      const path = trail.map((part) => part.name).join(" / ");
+      setContextTarget(entry?.isDirectory ? { id: entry.id, name: `${path} / ${entry.name}` } : { id: parent.id, name: path });
+    }}>
       <label className="flex gap-2 border-b p-2 text-sm"><input type="checkbox" checked={page.entries.length > 0 && page.entries.every((entry) => selection.includes(entry.id))} onChange={(event) => setSelection(event.target.checked ? page.entries.map((entry) => entry.id) : [])} />选择已加载项</label>
       {page.entries.map((entry) => <CloudRow key={entry.id} entry={entry} windowId={windowId} entries={page.entries.filter((item) => selection.includes(item.id))} selected={selection.includes(entry.id)} onSelect={(multiple) => setSelection((current) => multiple ? current.includes(entry.id) ? current.filter((id) => id !== entry.id) : [...current, entry.id] : [entry.id])} onOpen={() => entry.isDirectory && navigate([...trail, { id: entry.id, name: entry.name }])} />)}
       {loading ? <p className="p-3 text-sm">加载中…</p> : page.entries.length < page.total ? <Button variant="ghost" onClick={() => void refresh(page.entries.length)}>加载更多（{page.entries.length}/{page.total}）</Button> : !page.entries.length ? <p className="p-3 text-sm">文件夹为空</p> : null}
-    </div>
+    </ContextMenuTrigger>
+    <ContextMenuPortal><ContextMenuPositioner><ContextMenuPopup aria-label="115右键菜单"><ContextMenuItem className="file-action-menu-item" disabled={busy} onClick={() => setOfflineTarget(contextTarget ?? { id: parent.id, name: parent.name })}>离线下载</ContextMenuItem></ContextMenuPopup></ContextMenuPositioner></ContextMenuPortal>
+    </ContextMenuRoot>
     <footer className="border-t p-2 text-xs text-muted-foreground">{page.total} 项 · 已选 {selection.length} 项 · 与本地文件窗口拖放可上传/下载，保留源文件</footer>
   </div>;
 }
 
 function CloudRow({ entry, windowId, entries, selected, onSelect, onOpen }: { entry: CloudEntry; windowId: string; entries: CloudEntry[]; selected: boolean; onSelect(multiple: boolean): void; onOpen(): void }) {
   const { setNodeRef, attributes, listeners } = useDraggable({ id: `cloud115:${windowId}:${entry.id}`, data: { kind: "cloud115-entry", entries: selected ? entries : [entry] } });
-  return <div ref={setNodeRef} {...attributes} {...listeners} className={`flex cursor-default items-center gap-2 border-b px-3 py-2 text-sm ${selected ? "bg-blue-100 text-slate-900" : "hover:bg-muted"}`} onClick={(event) => onSelect(event.ctrlKey || event.metaKey)} onDoubleClick={onOpen}>
+  return <div ref={setNodeRef} {...attributes} {...listeners} data-cloud-entry-id={entry.id} className={`flex cursor-default items-center gap-2 border-b px-3 py-2 text-sm ${selected ? "bg-blue-100 text-slate-900" : "hover:bg-muted"}`} onClick={(event) => onSelect(event.ctrlKey || event.metaKey)} onDoubleClick={onOpen}>
     <input aria-label={`选择 ${entry.name}`} type="checkbox" checked={selected} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()} onChange={() => onSelect(true)} />
     {entry.isDirectory ? <Folder className="size-4 shrink-0" /> : <File className="size-4 shrink-0" />}<span className="min-w-0 flex-1 truncate" title={entry.name}>{entry.name}</span><span className="text-xs">{entry.isDirectory ? "文件夹" : `${entry.size.toLocaleString()} B`}</span>
   </div>;

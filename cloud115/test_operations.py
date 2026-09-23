@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 from errors import Canceled, ProviderError
 from operations import CloudOperations, open_directory, safe_name
@@ -51,6 +51,25 @@ class FakeOperations(CloudOperations):
 
 
 class OperationsTests(unittest.TestCase):
+    def test_offline_submission_uses_selected_directory(self):
+        client = Mock()
+        client.clouddownload_task_add_url.return_value = {"state": True}
+        operations = FakeOperations(client)
+        with patch.object(operations, "info", return_value={"is_dir": True}):
+            result = operations.operation("offline.add", {"url": "magnet:?xt=test", "destId": "123"}, None)
+        self.assertEqual(result, {"submitted": True})
+        client.clouddownload_task_add_url.assert_called_once_with({"url": "magnet:?xt=test", "wp_path_id": "123"}, timeout=30)
+
+    def test_offline_failure_and_invalid_destination(self):
+        client = Mock()
+        operations = FakeOperations(client)
+        with patch.object(operations, "info", return_value={"is_dir": False}), self.assertRaises(ProviderError):
+            operations.operation("offline.add", {"url": "magnet:?xt=test", "destId": "123"}, None)
+        client.clouddownload_task_add_url.assert_not_called()
+        client.clouddownload_task_add_url.return_value = {"state": False, "errno": 10008}
+        with self.assertRaises(ProviderError):
+            operations.operation("offline.add", {"url": "magnet:?xt=test", "destId": "0"}, None)
+
     def test_hash_and_upload_progress_and_instant_upload(self):
         for reuse in (True, False):
             with self.subTest(reuse=reuse), tempfile.TemporaryFile() as file:

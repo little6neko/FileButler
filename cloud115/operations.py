@@ -97,6 +97,11 @@ class CloudOperations:
         dest = params.get("destId", "0")
         if method == "browse":
             return self.browse(parent, params.get("offset", 0))
+        if method == "offline.add":
+            if str(dest) != "0" and not self.info(dest)["is_dir"]:
+                raise ProviderError("目标不是文件夹")
+            self.checked(client.clouddownload_task_add_url({"url": params["url"], "wp_path_id": dest}, timeout=30))
+            return {"submitted": True}
         report(progress_value("scan", params.get("name", "")))
         if method == "upload":
             path = params["localPath"]

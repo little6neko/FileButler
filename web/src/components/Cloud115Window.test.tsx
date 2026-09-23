@@ -53,3 +53,49 @@ it("shows a login QR and checks login explicitly", async () => {
   fireEvent.click(screen.getByRole("button", { name: "我已扫码，检查登录" }));
   await screen.findByText("sample.txt");
 });
+
+it("submits unique links to the current directory without creating a completed download task", async () => {
+  const { created } = setup();
+  await screen.findByText("sample.txt");
+  fireEvent.click(screen.getByRole("button", { name: "离线下载" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "下载链接" }), { target: { value: " magnet:?xt=test\nhttps://example.com/file\nmagnet:?xt=test " } });
+  fireEvent.click(screen.getByRole("button", { name: /^提交$/ }));
+  await waitFor(() => expect(screen.getAllByText("已提交到115")).toHaveLength(2));
+  expect(cloudCall).toHaveBeenCalledWith("offline.add", { url: "magnet:?xt=test", destId: "0" });
+  expect(cloudCall).toHaveBeenCalledWith("offline.add", { url: "https://example.com/file", destId: "0" });
+  expect(created).not.toHaveBeenCalled();
+  expect(screen.getByRole("textbox", { name: "下载链接" })).toHaveValue("");
+});
+
+it.each(["folder", "file", "blank"])("targets the correct directory from the %s context menu", async (kind) => {
+  vi.mocked(cloudCall).mockImplementation(async (method) => {
+    if (method === "status") return { loggedIn: true };
+    if (method === "browse") return { entries: [entry, { ...entry, id: "123", name: "子文件夹", isDirectory: true }], offset: 0, total: 2 };
+    return { submitted: true };
+  });
+  setup();
+  await screen.findByText("子文件夹");
+  fireEvent.contextMenu(kind === "blank" ? screen.getByLabelText("115文件列表") : screen.getByText(kind === "folder" ? "子文件夹" : "sample.txt"));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "离线下载" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "下载链接" }), { target: { value: "ed2k://|file|test|1|hash|/" } });
+  fireEvent.click(screen.getByRole("button", { name: /^提交$/ }));
+  await screen.findByText("已提交到115");
+  expect(cloudCall).toHaveBeenCalledWith("offline.add", { url: "ed2k://|file|test|1|hash|/", destId: kind === "folder" ? "123" : "0" });
+});
+
+it("keeps only failed links for explicit retry", async () => {
+  vi.mocked(cloudCall).mockImplementation(async (method, params) => {
+    if (method === "status") return { loggedIn: true };
+    if (method === "browse") return { entries: [entry], offset: 0, total: 1 };
+    if (params?.url === "bad-link") throw new Error("链接无效");
+    return { submitted: true };
+  });
+  setup();
+  await screen.findByText("sample.txt");
+  fireEvent.click(screen.getByRole("button", { name: "离线下载" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "下载链接" }), { target: { value: "https://example.com/file\nbad-link" } });
+  fireEvent.click(screen.getByRole("button", { name: /^提交$/ }));
+  await screen.findByText(/提交失败：.*链接无效/);
+  expect(screen.getByRole("textbox", { name: "下载链接" })).toHaveValue("bad-link");
+  expect(screen.getByText("已提交到115")).toBeInTheDocument();
+});

@@ -125,6 +125,11 @@ func TestRejectUnmappedUploadAndUnknownProviderMethods(t *testing.T) {
 		{"request", `{}`, 404},
 		{"browse", `{"parentId":"../1"}`, 400},
 		{"browse", `{"localPath":"/etc"}`, 400},
+		{"offline.add", `{"url":"file:///etc/passwd"}`, 400},
+		{"offline.add", `{"url":""}`, 400},
+		{"offline.add", `{"url":"https://"}`, 400},
+		{"offline.add", `{"url":"https://example.com/a\nhttps://example.com/b"}`, 400},
+		{"offline.add", `{"url":"magnet:?xt=urn:btih:test","destId":"../1"}`, 400},
 	} {
 		response := httptest.NewRecorder()
 		router.ServeHTTP(response, httptest.NewRequest("POST", "/"+tc.method, strings.NewReader(tc.body)))
@@ -134,5 +139,20 @@ func TestRejectUnmappedUploadAndUnknownProviderMethods(t *testing.T) {
 	}
 	if provider.calls != 0 {
 		t.Fatal("invalid input reached provider")
+	}
+}
+
+func TestOfflineSubmission(t *testing.T) {
+	for _, link := range []string{"magnet:?xt=urn:btih:test", "ed2k://|file|test|1|hash|/", "https://example.com/file", "ftp://example.com/file"} {
+		provider := &stubProvider{}
+		service := NewService(provider, jobs.NewStore(), roots.NewResolver(nil))
+		router := chi.NewRouter()
+		router.Post("/{method}", service.Handler)
+		body, _ := json.Marshal(map[string]string{"url": link, "destId": "123"})
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest("POST", "/offline.add", strings.NewReader(string(body))))
+		if response.Code != 200 || provider.calls != 1 {
+			t.Fatalf("%s: %d %s", link, response.Code, response.Body.String())
+		}
 	}
 }

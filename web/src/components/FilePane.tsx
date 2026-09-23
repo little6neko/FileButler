@@ -336,6 +336,9 @@ export function FilePane({
       ref={paneRef}
       className="file-pane"
       data-provider={provider}
+      data-pane-key={paneKey}
+      data-root-id={selectedRootId}
+      data-directory-path={directoryId ?? currentPath}
       tabIndex={-1}
       data-drop-window-id={dropWindowId}
       data-drop-disabled={dropDisabled ? "true" : undefined}

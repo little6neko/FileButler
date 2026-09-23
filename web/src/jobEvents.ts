@@ -1,6 +1,7 @@
 import type { Job, JobEvent, JobSnapshot } from "./api/types";
 
 export type JobConnectionState = "connecting" | "connected" | "reconnecting";
+export type ProgressAnchor = { x: number; y: number };
 
 export type JobEventsState = {
   progressJobIDs: string[];
@@ -33,6 +34,7 @@ export const terminalJobStatuses = new Set([
 ]);
 
 export class JobEventsStore {
+  private readonly progressAnchors = new Map<string, ProgressAnchor>();
   private readonly eventSourceFactory: EventSourceFactory;
   private readonly jobsByID = new Map<string, Job>();
   private readonly listeners = new Set<() => void>();
@@ -102,7 +104,8 @@ export class JobEventsStore {
 
   getSnapshot = () => this.state;
 
-  registerCreatedJob(jobID: string) {
+  registerCreatedJob(jobID: string, anchor?: ProgressAnchor) {
+    if (anchor) this.progressAnchors.set(jobID, anchor);
     this.createdJobIDs.add(jobID);
     this.openProgress(jobID);
     const job = this.jobsByID.get(jobID);
@@ -118,6 +121,8 @@ export class JobEventsStore {
     this.state = { ...this.state, progressJobIDs: [...this.state.progressJobIDs, jobID] };
     this.emit();
   }
+
+  getProgressAnchor(jobID: string) { return this.progressAnchors.get(jobID); }
 
   closeProgress(jobID: string) {
     this.state = { ...this.state, progressJobIDs: this.state.progressJobIDs.filter((id) => id !== jobID) };

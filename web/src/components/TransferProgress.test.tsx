@@ -22,7 +22,7 @@ describe("transfer windows", () => {
     const store = setup();
     act(() => {
       store.handleChanged({ runtimeId: "r", cursor: 2, job: { ...job, id: "b", eventVersion: 2 } });
-      store.registerCreatedJob("b");
+      store.registerCreatedJob("b", { x: 250, y: 250 });
     });
     const dialogs = screen.getAllByRole("dialog");
     expect(dialogs).toHaveLength(2);
@@ -50,5 +50,35 @@ describe("transfer windows", () => {
     const store = setup();
     act(() => store.handleChanged({ runtimeId: "r", cursor: 2, job: { ...job, eventVersion: 2, status: "failed", errorMessage: "disk full" } }));
     expect(screen.getByRole("alert")).toHaveTextContent("disk full");
+  });
+
+  it("centers on the recorded destination once, without moving on progress updates", () => {
+    const bounds = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ x: 0, y: 0, width: 400, height: 260, top: 0, left: 0, right: 400, bottom: 260, toJSON() {} });
+    try {
+      const store = new JobEventsStore();
+      store.handleSnapshot({ runtimeId: "r", cursor: 1, reset: false, jobs: [job] });
+      store.registerCreatedJob("a", { x: 600, y: 400 });
+      render(<TransferProgressWindows store={store} labels={strings["zh-CN"]} />);
+      expect(screen.getByRole("dialog")).toHaveStyle({ left: "400px", top: "270px" });
+      act(() => store.handleChanged({ runtimeId: "r", cursor: 2, job: { ...job, eventVersion: 2, progressDone: 1 } }));
+      expect(screen.getByRole("dialog")).toHaveStyle({ left: "400px", top: "270px" });
+    } finally { bounds.mockRestore(); }
+  });
+
+  it("centers every later task at the same destination and raises the newest window", () => {
+    const store = setup();
+    fireEvent.pointerDown(screen.getByRole("dialog"));
+    for (const [index, id] of ["b", "c", "d"].entries()) {
+      act(() => {
+        store.handleChanged({ runtimeId: "r", cursor: index + 2, job: { ...job, id, eventVersion: index + 2 } });
+        store.registerCreatedJob(id, { x: 500, y: 350 });
+      });
+      const newest = document.querySelector<HTMLElement>(`[data-progress-job="${id}"]`)!;
+      expect(newest.style.left).toBe("500px"); // jsdom has zero measured dimensions.
+      expect(newest.style.top).toBe("350px");
+      for (const other of screen.getAllByRole("dialog")) {
+        if (other !== newest) expect(Number(newest.style.zIndex)).toBeGreaterThan(Number(other.style.zIndex));
+      }
+    }
   });
 });

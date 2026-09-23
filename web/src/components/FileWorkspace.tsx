@@ -145,6 +145,7 @@ import { LanguageSelect } from "./LanguageSelect";
 import { LinkPreview, LinkPreviewContent } from "./LinkPreview";
 import { MediaPreview, MediaPreviewContent } from "./MediaPreview";
 import { MkdirContent, MkdirDialog } from "./MkdirDialog";
+import { progressAnchor } from "../progressAnchor";
 import { OperationPreview, OperationPreviewContent } from "./OperationPreview";
 import { defaultRenameOptions } from "./powerRenameOptions";
 import { PowerRenameContent, RenameDialog } from "./RenameDialog";
@@ -186,6 +187,7 @@ type MediaPreviewInstance = MediaGallerySnapshot & {
 };
 
 type PreviewState = {
+  targetPane?: string;
   clipboardSnapshot?: AppClipboard;
   request: OpsRequest;
   operationChoices?: readonly DragOperation[];
@@ -783,7 +785,7 @@ export function FileWorkspace({
             const clearMoveClipboard = previewState.clearMoveClipboard;
             setPreviewState(null);
             if (clearMoveClipboard && request.type === "move") clearAppClipboard(previewState.clipboardSnapshot ?? null);
-            handleJobCreated(id);
+            handleJobCreated(id, undefined, request, previewState.targetPane);
           }}
         />
       ) : null}
@@ -929,7 +931,7 @@ export function FileWorkspace({
     };
 
     if (window.kind === "cloud115") {
-      return <WindowFrame key={window.id} {...frameProps} title="115网盘" icon={<Cloud aria-hidden="true" />} childDialog={renderWindowDialog(window)}><Cloud115Window windowId={window.id} layer={window.zOrder} onJobCreated={handleJobCreated} initialTrail={window.trail} onOpenNewWindow={openCloud115DesktopWindow} onPowerRename={openCloudPowerRename} onSuperRename={openCloudSuperRename} onPreview={openCloudPreview} labels={labels}
+      return <WindowFrame key={window.id} {...frameProps} title="115网盘" icon={<Cloud aria-hidden="true" />} childDialog={renderWindowDialog(window)}><Cloud115Window windowId={window.id} layer={window.zOrder} onJobCreated={(id) => handleJobCreated(id, window.id)} initialTrail={window.trail} onOpenNewWindow={openCloud115DesktopWindow} onPowerRename={openCloudPowerRename} onSuperRename={openCloudSuperRename} onPreview={openCloudPreview} labels={labels}
         onRegister={registerCloudController} dropFeedback={dropFeedback} operationOpen={Boolean(windowDialogs[window.id])}
         onPaste={(target) => pasteClipboard(target, window.id)}
         onOperation={(request) => openDialogForWindow({ dialogId: nextDialogId(), windowId: window.id, kind: "operation", request })} /></WindowFrame>;
@@ -1681,7 +1683,7 @@ export function FileWorkspace({
       if (dialog.kind === "link" && dialog.consumeLinkSource) {
         consumeLinkSource(dialog.sourceCreatedAt);
       }
-      handleJobCreated(job.id);
+      handleJobCreated(job.id, dialog.windowId, dialog.kind === "operation" ? dialog.request : undefined);
     } catch (error) {
       if (windowDialogsRef.current[dialog.windowId]?.dialogId === dialog.dialogId) throw error;
       toast.error(error instanceof Error ? error.message : fallbackMessage);
@@ -1694,6 +1696,7 @@ export function FileWorkspace({
     if (!source || source.location.kind !== "directory") return;
     setActiveCompactPane(which);
     setPreviewState({
+      targetPane: type === "delete" ? source.id : destination?.id,
       request: {
         type,
         sourceRoot: source.location.rootId,
@@ -1847,7 +1850,7 @@ export function FileWorkspace({
       toast.error(labels.invalidDrop(feedback.reason ?? "inside-source"));
       return;
     }
-    const preview = { request: buildDragRequest(source, target), operationChoices: ["move", "copy"] as const };
+    const preview = { request: buildDragRequest(source, target), operationChoices: ["move", "copy"] as const, targetPane: target.pane };
     if (mode === "desktop" && target.windowId) {
       openDialogForWindow({
         dialogId: nextDialogId(),
@@ -2286,10 +2289,10 @@ export function FileWorkspace({
     }
   }
 
-  function handleJobCreated(id: string) {
+  function handleJobCreated(id: string, windowId?: string, request?: OpsRequest, paneKey?: string) {
     for (const session of Object.values(sessionsRef.current)) session.selectionStore.clear();
     toast.success(labels.jobCreated);
-    jobEvents.registerCreatedJob(id);
+    jobEvents.registerCreatedJob(id, progressAnchor(request, windowId, paneKey));
   }
 
   function openMediaPreview(

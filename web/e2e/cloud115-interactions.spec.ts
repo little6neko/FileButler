@@ -145,13 +145,16 @@ test("multiple progress windows can be dragged and closed independently in compa
     await page.getByRole("button", { name: "Jobs", exact: true }).click();
     await page.getByRole("button", { name: "View progress", exact: true }).nth(index).click();
   }
+  // The last opened window is on top; both initially share the viewport center.
   const first = page.locator('[data-progress-job="a"]');
   const second = page.locator('[data-progress-job="b"]');
   await expect(first).toBeVisible(); await expect(second).toBeVisible();
   const before = (await first.boundingBox())!;
   const other = (await second.boundingBox())!;
   const header = (await first.locator(".desktop-window-titlebar").boundingBox())!;
-  // Exposed right edge avoids the other cascaded window.
+  expect(Math.abs(before.x + before.width / 2 - 700)).toBeLessThan(2);
+  expect(Math.abs(before.y + before.height / 2 - 450)).toBeLessThan(2);
+  // Jobs are newest-first (b, a), so a was opened last and is on top.
   await page.mouse.move(header.x + header.width - 55, header.y + header.height / 2);
   await page.mouse.down(); await page.mouse.move(300, 180, { steps: 15 }); await page.mouse.up();
   await expect.poll(async () => (await first.boundingBox())!.x).not.toBe(before.x);

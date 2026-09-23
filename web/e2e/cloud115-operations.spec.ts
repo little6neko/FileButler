@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
-async function setup(page: Page) {
+async function setup(page: Page, progress = false) {
   const plans: Record<string, unknown>[] = [];
   const creates: Record<string, unknown>[] = [];
   const legacy: string[] = [];
@@ -24,7 +24,10 @@ async function setup(page: Page) {
       data = { items: [{ sourcePath: "selected.txt", destPath: "target/selected.txt", conflict: false }], hasConflict: false, previewToken: `plan-${plans.length}` };
     } else if (path === "/api/cloud115/ops.create") {
       creates.push(route.request().postDataJSON()); data = { id: `job-${creates.length}` };
-    } else if (path === "/api/jobs/events") return route.fulfill({ contentType: "text/event-stream", body: 'event: jobs.snapshot\ndata: {"runtimeId":"shared","cursor":0,"reset":false,"jobs":[]}\n\n' });
+    } else if (path === "/api/jobs/events") {
+      const jobs = progress ? [1, 2, 3].map((number) => ({ id: `job-${number}`, type: "copy", status: "running", actorId: 1, sourceRootId: "@115", destRootId: "local", progressDone: 0, progressTotal: 1, failedCount: 0, cancelRequested: false, errorMessage: "", createdAtUnix: 1, updatedAtUnix: 1, eventVersion: 1, transfer: { phase: "download", file: "cloud.txt", bytesDone: 1, bytesTotal: 100, bytesPerSecond: 1, cancelable: true } })) : [];
+      return route.fulfill({ contentType: "text/event-stream", body: `event: jobs.snapshot\ndata: ${JSON.stringify({ runtimeId: "shared", cursor: 0, reset: false, jobs })}\n\n` });
+    }
     else if (/\/api\/cloud115\/(copy|move|delete|upload|download)$/.test(path)) legacy.push(path);
     await route.fulfill({ json: { data } });
   });
@@ -122,4 +125,22 @@ test("cloud drag uses shared names, current-directory rejection and destination 
   expect(creates).toHaveLength(0);
   await page.evaluate(() => window.dispatchEvent(new Event("cloud115-account-changed")));
   await expect(cloud.getByRole("dialog")).toHaveCount(0);
+});
+
+test("every transfer progress window is centered on the destination window", async ({ page }) => {
+  const { cloud, local } = await setup(page, true);
+  await cloud.getByRole("button", { name: "cloud.txt", exact: true }).click();
+  await page.keyboard.press("Control+c");
+  await local.getByRole("button", { name: "local.txt", exact: true }).click();
+  for (const number of [1, 2, 3]) {
+    await page.keyboard.press("Control+v");
+    await local.getByRole("button", { name: "Start copy" }).click();
+    const progress = page.locator(`[data-progress-job="job-${number}"]`);
+    await expect(progress).toBeVisible();
+    const target = (await local.boundingBox())!;
+    const popup = (await progress.boundingBox())!;
+    expect(Math.abs(popup.x + popup.width / 2 - target.x - target.width / 2)).toBeLessThan(2);
+    expect(Math.abs(popup.y + popup.height / 2 - target.y - target.height / 2)).toBeLessThan(2);
+    await progress.getByRole("button", { name: "Run in background" }).click();
+  }
 });

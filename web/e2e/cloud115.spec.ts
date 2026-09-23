@@ -148,6 +148,7 @@ test("desktop icons are vertical and local/cloud drag creates background transfe
   await expect(page.locator(".file-drag-overlay")).toBeVisible();
   await page.mouse.up();
   await expect(cloud.getByRole("dialog", { name: "copy preview" })).toBeVisible();
+  await expect(cloud.getByRole("button", { name: "Start copy", exact: true })).toBeEnabled();
   expect(transfers).toHaveLength(0);
   expect(previews.at(-1)).toMatchObject({ type: "copy", sourceRoot: "test", sources: ["local.txt"], destRoot: "@115", destPath: "0", accountId: "1" });
   await cloud.getByRole("radio", { name: "move", exact: true }).click();
@@ -164,6 +165,7 @@ test("desktop icons are vertical and local/cloud drag creates background transfe
   await expect(page.locator(".file-drag-overlay")).toContainText("Download to");
   await page.mouse.up();
   await expect(local.getByRole("dialog", { name: "copy preview" })).toBeVisible();
+  await expect(local.getByRole("button", { name: "Start copy", exact: true })).toBeEnabled();
   expect(transfers).toHaveLength(1);
   expect(previews.at(-1)).toMatchObject({ type: "copy", sourceRoot: "@115", sources: ["123"], destRoot: "test", destPath: ".", accountId: "1" });
   await local.getByRole("radio", { name: "move", exact: true }).click();

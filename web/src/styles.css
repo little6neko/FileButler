@@ -119,6 +119,10 @@ body {
   box-shadow: 0 1px 8px rgb(15 23 42 / 9%);
 }
 
+.workspace-shell[data-workspace-mode="compact"] > .system-taskbar {
+  box-shadow: none;
+}
+
 .jobs-sheet-content[data-side="right"] {
   z-index: var(--system-panel-layer);
   top: var(--system-taskbar-height);
@@ -1106,7 +1110,7 @@ body {
   overflow: hidden;
 }
 
-.file-pane[data-active="true"] {
+.file-pane[data-active="true"]:not([data-provider="cloud115"]) {
   border-color: var(--primary);
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 16%, transparent);
 }

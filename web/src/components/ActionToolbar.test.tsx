@@ -5,6 +5,18 @@ import { strings } from "../i18n";
 import { ActionToolbar } from "./ActionToolbar";
 import { createFileActions, createClipboardActions, type FileActionCommands } from "./fileActions";
 
+it("preserves menu group boundaries even when the first action of a group is on the toolbar", async () => {
+  const all = actions(1, commandMocks());
+  const copy = all.find((item) => item.id === "copy")!;
+  const rename = all.find((item) => item.id === "rename")!;
+  const remove = all.find((item) => item.id === "delete")!;
+  const more = [copy, { ...rename, separatorBefore: true }, { ...copy, id: "clipboardCopy" as const, label: "Clipboard copy", separatorBefore: false }];
+  render(<ActionToolbar actions={[rename, remove]} moreActions={more} selectedCount={1} labels={strings.en} />);
+  await userEvent.click(screen.getByRole("button", { name: "More" }));
+  const menu = await screen.findByRole("menu");
+  expect(menu.querySelectorAll('[role="separator"]')).toHaveLength(1);
+});
+
 it("places More before Delete and exposes only hidden actions", async () => {
   const onCopy = vi.fn();
   const shown = actions(1, commandMocks());
@@ -42,7 +54,7 @@ it("uses the same neutral variant for the first and other ordinary actions", () 
 
   expect(screen.getByRole("button", { name: "Copy to right pane" })).toHaveAttribute("data-variant", "outline");
   expect(screen.getByRole("button", { name: "Move to right pane" })).toHaveAttribute("data-variant", "outline");
-  expect(screen.getByRole("button", { name: strings.en.delete })).toHaveAttribute("data-variant", "ghost");
+  expect(screen.getByRole("button", { name: strings.en.delete })).toHaveAttribute("data-variant", "outline");
   expect(screen.getByRole("button", { name: strings.en.delete })).toHaveClass("text-destructive");
 });
 

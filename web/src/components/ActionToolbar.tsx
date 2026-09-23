@@ -15,7 +15,14 @@ type Props = {
 };
 
 export function ActionToolbar({ actions, selectedCount, labels, moreActions = [] }: Props) {
-  const hiddenActions = moreActions.filter((action) => !actions.some((shown) => shown.id === action.id));
+  const hiddenActions: FileContextAction[] = [];
+  let boundary = false;
+  for (const action of moreActions) {
+    boundary ||= Boolean(action.separatorBefore);
+    if (actions.some((shown) => shown.id === action.id)) continue;
+    hiddenActions.push({ ...action, separatorBefore: hiddenActions.length > 0 && boundary });
+    boundary = false;
+  }
   return (
     <nav aria-label={labels.fileActions} className="flex h-[42px] items-center gap-1.5 border-b bg-slate-50 px-3">
       {actions.map((action) => {
@@ -31,7 +38,7 @@ export function ActionToolbar({ actions, selectedCount, labels, moreActions = []
             {action.separatorBefore ? <Separator orientation="vertical" className="mx-1 h-5" /> : null}
             <Button
               size="sm"
-              variant={action.destructive ? "ghost" : "outline"}
+              variant="outline"
               aria-label={action.label}
               data-action-id={action.id}
               className={action.destructive ? "text-destructive hover:text-destructive" : undefined}

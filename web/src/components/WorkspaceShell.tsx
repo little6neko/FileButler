@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Columns2, FileCode2, FileImage, FileVideo, Files, Languages, ListChecks, MonitorUp, ScanText, WandSparkles } from "lucide-react";
+import { Cloud, Columns2, FileCode2, FileImage, FileVideo, Files, Languages, ListChecks, MonitorUp, ScanText, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { UIStrings } from "../i18n";
 import type { MediaKind } from "../media";
@@ -44,7 +44,7 @@ export function WorkspaceShell({
   children: ReactNode;
 }) {
   return (
-    <main className="workspace-shell">
+    <main className="workspace-shell" data-workspace-mode={mode}>
       <header className="system-taskbar">
         <div className="taskbar-brand" title="FileButler" aria-hidden="true">F</div>
         <h1 className="sr-only">FileButler</h1>
@@ -70,6 +70,7 @@ export function WorkspaceShell({
                 onClick={() => onWindowActivate(window.id)}
               >
                 {window.kind === "powerRename" ? <ScanText />
+                  : window.kind === "cloud115" ? <Cloud />
                   : window.kind === "superRename" ? <WandSparkles />
                   : window.kind === "mediaPreview"
                     ? window.mediaKind === "video" ? <FileVideo /> : <FileImage />

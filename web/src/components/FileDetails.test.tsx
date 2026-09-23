@@ -3,12 +3,13 @@ import { beforeEach, afterEach, expect, it, vi } from "vitest";
 import { FileDetails } from "./FileDetails";
 import { detailChinese, detailSize, detailDuration, readDetails, type DetailItem, type DetailsTarget } from "../fileDetails";
 import { strings } from "../i18n";
+import { toast } from "sonner";
 
 vi.mock("../fileDetails", async (original) => ({ ...await original<typeof import("../fileDetails")>(), readDetails: vi.fn() }));
 const target: DetailsTarget = { rootId: "a", paths: ["a.txt"], names: ["a.txt"] };
 const item: DetailItem = { name: "a.txt", path: "a.txt", type: "file", location: "/data", size: 65982, allocated: 69632, modifiedUnix: 1, createdUnix: null, sha1: "" };
 beforeEach(() => { vi.mocked(readDetails).mockReset(); vi.mocked(readDetails).mockImplementation(async (_target, section) => section === "basic" ? [item] : section === "hash" ? { sha1: "A".repeat(40) } : { size: 1, allocated: 4096, files: 1, folders: 0 }); });
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 it("formats precise grouped bytes and long durations", () => {
   expect(detailSize(65982, detailChinese.bytes)).toBe("64.44 KB（65,982 字节）");
@@ -49,6 +50,32 @@ it("cancels requests on close and account changes", async () => {
   expect(screen.getByRole("alert")).toHaveTextContent("115账号已变化"); expect(screen.getByRole("button", { name: "重新获取" })).toBeDisabled();
 });
 it("copies the original directory path", async () => {
-  const writeText = vi.fn().mockResolvedValue(undefined); Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+  const writeText = vi.fn().mockResolvedValue(undefined); vi.stubGlobal("navigator", { clipboard: { writeText } });
   render(<FileDetails target={target} labels={strings["zh-CN"]} />); await screen.findByText("/data"); fireEvent.click(screen.getByRole("button", { name: "复制原始路径" })); await waitFor(() => expect(writeText).toHaveBeenCalledWith("/data"));
+});
+it.each([true, false])("copies without the Clipboard API and reports the result (success=%s)", async (success) => {
+  vi.stubGlobal("navigator", {});
+  const copied = vi.spyOn(toast, "success").mockImplementation(() => "success");
+  const failed = vi.spyOn(toast, "error").mockImplementation(() => "error");
+  const original = Object.getOwnPropertyDescriptor(document, "execCommand");
+  const execute = vi.fn(() => {
+    expect(document.querySelector("textarea")?.value).toBe("/data");
+    return success;
+  });
+  Object.defineProperty(document, "execCommand", { configurable: true, value: execute });
+  try {
+    render(<FileDetails target={target} labels={strings["zh-CN"]} />);
+    await screen.findByText("/data");
+    const button = screen.getByRole("button", { name: "复制原始路径" });
+    button.focus();
+    fireEvent.click(button);
+    await waitFor(() => expect(success ? copied : failed).toHaveBeenCalledTimes(1));
+    expect(success ? failed : copied).not.toHaveBeenCalled();
+    expect(execute).toHaveBeenCalledWith("copy");
+    expect(document.querySelector("textarea")).toBeNull();
+    expect(document.activeElement).toBe(button);
+  } finally {
+    if (original) Object.defineProperty(document, "execCommand", original);
+    else Reflect.deleteProperty(document, "execCommand");
+  }
 });

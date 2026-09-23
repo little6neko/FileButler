@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { File, Folder } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "./ui/button";
+import { copyText } from "../copyText";
 import { entryTypeLabel } from "../entryType";
 import { mediaKindForPath } from "../media";
 import { detailsTitle, detailSize, detailDuration, readDetails, type DetailsTarget, type DetailItem, type DetailTotals, type DetailMedia } from "../fileDetails";
@@ -72,7 +73,7 @@ export function FileDetails({ target, labels }: { target: DetailsTarget; labels:
       <dt>{text.size}</dt><dd>{computing ? text.calculating : detailSize(size, text.bytes)}</dd>
       <dt>{text.allocated}</dt><dd>{target.rootId !== "@115" && computing ? text.calculating : detailSize(allocated, text.bytes)}</dd>
       {multiple || directory ? <><dt>{text.contains}</dt><dd>{computing ? text.calculating : totals ? `${totals.files.toLocaleString("en-US")}${text.files}，${totals.folders.toLocaleString("en-US")}${text.folders}` : "--"}</dd></> : null}
-      <dt>{text.location}</dt><dd className="file-details-inline"><span>{location === null ? text.multipleLocations : location || "--"}</span><Button size="sm" variant="outline" disabled={!location || accountChanged} onClick={() => { if (location) void navigator.clipboard.writeText(location).then(() => toast.success(text.copied)).catch((e: unknown) => toast.error(String(e))); }}>{text.copy}</Button></dd>
+      <dt>{text.location}</dt><dd className="file-details-inline"><span>{location === null ? text.multipleLocations : location || "--"}</span><Button size="sm" variant="outline" disabled={!location || accountChanged} onClick={() => { if (location) void copyText(location).then(() => toast.success(text.copied)).catch((e: unknown) => toast.error(String(e))); }}>{text.copy}</Button></dd>
       {!multiple ? <>
         <dt>{text.modified}</dt><dd>{date(first?.modifiedUnix)}</dd>
         <dt>{text.created}</dt><dd>{date(first?.createdUnix)}</dd>

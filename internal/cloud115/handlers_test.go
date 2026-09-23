@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +19,28 @@ import (
 type blockingProvider struct {
 	started chan context.Context
 	release chan struct{}
+}
+
+func TestCloudJobsStartConcurrently(t *testing.T) {
+	provider := &blockingProvider{started: make(chan context.Context, 6), release: make(chan struct{})}
+	store := jobs.NewStore()
+	service := NewService(provider, store, roots.NewResolver(nil))
+	var running sync.WaitGroup
+	defer func() { close(provider.release); running.Wait() }()
+	for _, id := range []string{"a", "b", "c", "d", "e", "f"} {
+		if err := store.Create(context.Background(), jobs.Job{ID: id, ProgressTotal: 1}); err != nil {
+			t.Fatal(err)
+		}
+		running.Add(1)
+		go func() { defer running.Done(); service.run(id, "ops.execute", nil, []map[string]any{{}}) }()
+	}
+	for i := 0; i < 6; i++ {
+		select {
+		case <-provider.started:
+		case <-time.After(2 * time.Second):
+			t.Fatal("a task is waiting for another task to finish")
+		}
+	}
 }
 
 func (p *blockingProvider) Call(ctx context.Context, method string, args any, report jobs.Reporter) (json.RawMessage, error) {

@@ -24,13 +24,12 @@ type Service struct {
 	Provider          Provider
 	Store             jobs.Store
 	Roots             roots.Resolver
-	queue             chan struct{}
 	previews          map[string]batchPreview
 	operationPreviews map[string]operationPreview
 }
 
 func NewService(provider Provider, store jobs.Store, resolver roots.Resolver) *Service {
-	return &Service{Provider: provider, Store: store, Roots: resolver, queue: make(chan struct{}, 1), previews: make(map[string]batchPreview), operationPreviews: make(map[string]operationPreview)}
+	return &Service{Provider: provider, Store: store, Roots: resolver, previews: make(map[string]batchPreview), operationPreviews: make(map[string]operationPreview)}
 }
 
 type Request struct {
@@ -220,9 +219,7 @@ func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) run(id, method string, params map[string]any, items []map[string]any) {
 	ctx := context.Background()
-	// Serialize account mutations and extraction; HTTP requests and SSE never own this context.
-	s.queue <- struct{}{}
-	defer func() { <-s.queue }()
+	// Each job runs independently; HTTP requests and SSE never own this context.
 	_ = s.Store.MarkRunning(ctx, id)
 	failures := 0
 	for _, item := range items {

@@ -130,10 +130,6 @@ func (b *Bridge) Call(ctx context.Context, method string, params any, report job
 		return nil, err
 	}
 	p := b.process
-	if len(p.pending) >= 64 {
-		b.mu.Unlock()
-		return nil, errors.New("115 worker is busy, try again later")
-	}
 	b.next++
 	id := b.next
 	ch := make(chan message, 8)

@@ -1,6 +1,5 @@
 """Private JSON-lines provider. stdout is reserved exclusively for protocol messages."""
 import argparse
-import concurrent.futures
 import contextlib
 import io
 import json
@@ -34,6 +33,10 @@ class Adapter(CloudOperations):
         self.lock = threading.RLock()
 
     def load(self):
+        with self.lock:
+            return self.load_locked()
+
+    def load_locked(self):
         from p115client import P115Client
         if self.client is None:
             if not self.credentials.is_file():
@@ -115,10 +118,16 @@ def main():
     parser.add_argument("--credentials", required=True)
     args = parser.parse_args()
     adapter = Adapter(args.credentials)
-    acknowledgements = {}
-    emit({"ready": 1})
     # Dependencies sometimes print. Keep such output away from JSON and logs.
     sys.stdout = open(os.devnull, "w")
+    serve(adapter, sys.stdin.buffer)
+
+
+def serve(adapter, input_stream):
+    acknowledgements = {}
+    threads = set()
+    state_lock = threading.Lock()
+    emit({"ready": 1})
 
     def execute(message, ack):
         task_id = message["id"]
@@ -153,27 +162,45 @@ def main():
         except Exception:
             emit({"id": task_id, "error": "115请求失败，请检查网络、登录状态及依赖版本；写入结果不确定时请刷新后确认"})
         finally:
-            acknowledgements.pop(task_id, None)
+            with state_lock:
+                acknowledgements.pop(task_id, None)
+                threads.discard(threading.current_thread())
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+    try:
         while True:
-            line = sys.stdin.buffer.readline(1024*1024 + 1)
+            line = input_stream.readline(1024*1024 + 1)
             if not line:
                 break
             if len(line) > 1024*1024:
                 break
             message = json.loads(line)
             if message.get("ack"):
-                ack = acknowledgements.get(message["id"])
+                with state_lock:
+                    ack = acknowledgements.get(message["id"])
                 if ack is not None:
                     ack.put(bool(message.get("cancel")))
             else:
                 ack = queue.Queue(maxsize=1)
-                acknowledgements[message["id"]] = ack
-                pool.submit(execute, message, ack)
-        for ack in list(acknowledgements.values()):
+                thread = threading.Thread(target=execute, args=(message, ack))
+                with state_lock:
+                    acknowledgements[message["id"]] = ack
+                    threads.add(thread)
+                try:
+                    thread.start()
+                except RuntimeError:
+                    with state_lock:
+                        acknowledgements.pop(message["id"], None)
+                        threads.discard(thread)
+                    emit({"id": message["id"], "error": "系统资源不足，无法启动任务"})
+    finally:
+        with state_lock:
+            pending = list(acknowledgements.values())
+            running = list(threads)
+        for ack in pending:
             with contextlib.suppress(queue.Full):
                 ack.put_nowait(True)
+        for thread in running:
+            thread.join()
 
 
 if __name__ == "__main__":

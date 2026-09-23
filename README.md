@@ -54,10 +54,9 @@ python3.12 -m venv .venv115
 cloud115:
   python: "/path/to/FileButler/.venv115/bin/python"
   worker: "/path/to/FileButler/cloud115/worker.py"
-  credentials: "./data/115-cookies.txt"
 ```
 
-`credentials` 相对路径以配置文件目录为基准；默认保存在 `auth_file` 同目录。`worker` 默认从进程工作目录寻找 `cloud115/worker.py`，建议显式配置绝对路径。凭证等同账号访问权限，请保护数据目录，不要分享或提交。退出115登录会删除FileButler保存的凭证，不影响现有本地功能；115依赖不可用也不会阻止本地文件管理启动。
+115 Cookie 保存在 `database_file` 指定的 SQLite 数据库中，不再使用单独的凭证文件。`worker` 默认从进程工作目录寻找 `cloud115/worker.py`，建议显式配置绝对路径。凭证等同账号访问权限，请保护数据目录，不要分享或提交。退出115登录会删除FileButler保存的凭证，不影响现有本地功能；115依赖不可用也不会阻止本地文件管理启动。
 
 ## 快速开始
 
@@ -121,9 +120,9 @@ echo "$GHCR_TOKEN" | docker login ghcr.io -u little6neko --password-stdin
 
 1. 输入管理员用户名和至少 10 个字符的密码。
 2. 创建成功后，初始化入口会永久关闭。
-3. 管理员凭据保存到 `auth_file` 指定的 JSON 文件；Docker 配置默认为 `/app/data/auth.json`。
+3. 管理员密码哈希、会话签名密钥与115凭证保存到 `database_file` 指定的 SQLite 数据库；Docker 默认为 `/app/data/filebutler.db`。
 
-当前版本仅支持一个管理员账号，请妥善备份并保护 `auth.json`。
+当前版本仅支持一个管理员账号，请妥善备份并保护 `filebutler.db` 及其数据目录。
 
 ## 从源码构建
 
@@ -150,7 +149,7 @@ cp configs/filebutler.example.yaml filebutler.yaml
 ./bin/filebutler -config ./filebutler.yaml
 ```
 
-将示例配置复制到项目根目录很重要：相对的 `auth_file` 和 `static_dir` 会以配置文件所在目录为基准解析。前端未注入 `VITE_APP_VERSION` 时，界面版本显示为 `dev`；正式镜像会在构建时自动注入发布版本。
+将示例配置复制到项目根目录很重要：相对的 `database_file` 和 `static_dir` 会以配置文件所在目录为基准解析。前端未注入 `VITE_APP_VERSION` 时，界面版本显示为 `dev`；正式镜像会在构建时自动注入发布版本。
 
 ## 配置
 
@@ -158,7 +157,7 @@ cp configs/filebutler.example.yaml filebutler.yaml
 
 ```yaml
 listen: "127.0.0.1:8080"
-auth_file: "./data/auth.json"
+database_file: "./data/filebutler.db"
 static_dir: "./web/dist"
 job_concurrency: 2
 log_level: "info"
@@ -179,7 +178,7 @@ roots:
 | 配置项 | 说明 |
 | --- | --- |
 | `listen` | HTTP 监听地址。直接在主机运行时默认是 `127.0.0.1:8080`；容器内通常使用 `0.0.0.0:8080`。 |
-| `auth_file` | 管理员密码哈希和会话签名密钥的持久化文件。 |
+| `database_file` | SQLite 数据库路径，保存账号、签名密钥、115凭证和文件SHA1缓存。 |
 | `static_dir` | `npm run build` 生成的前端静态资源目录。 |
 | `job_concurrency` | 单个普通后台任务同时处理的项目数，最小值为 1。 |
 | `log_level` | 预留的日志级别字段，默认值为 `info`；当前日志仍输出到标准输出。 |
@@ -199,7 +198,11 @@ roots:
 
 ## 数据与任务状态
 
-- 管理员凭据持久化在 `auth_file` 中，当前不使用 SQLite。
+- SQLite 统一保存管理员密码哈希、会话签名密钥、115 Cookie 和 SHA1 缓存；Cookie未额外加密，应保护数据库及备份。
+- 数据库采用 WAL 模式，必须放在本机磁盘，不能放在 SMB/NFS 共享目录；在线备份应使用 SQLite 备份接口，或停服后备份完整数据目录。
+- 上传/下载时保存已计算的SHA1，115属性查询返回的SHA1也会保存；未变且已稳定的本地文件可复用缓存，不自动全盘扫描。
+- 清理哈希缓存不能删除整个数据库，否则账号和115凭证也会丢失。
+- 新版不读取或自动导入旧的账号JSON和Cookie文本文件。升级需自行保留旧数据并重新初始化/登录；不存在自动迁移或旧配置回退。
 - 后台任务和事件记录仅保存在内存中；服务重启后任务面板状态会清空，运行中的任务也不会自动恢复。
 - FileButler 当前不提供审计日志、文件版本历史或回收站。
 - 删除和重命名会直接修改映射目录中的真实文件，请先为重要数据建立独立备份。
@@ -261,5 +264,5 @@ npm --prefix web run build
 - 优先部署在内网、VPN 或其他受信网络中，不要把 FileButler 直接暴露到公网。
 - 对外访问时使用 HTTPS 反向代理，并将 `session.secure` 设置为 `true`。
 - 使用最小权限运行服务，只挂载确实需要管理的目录。
-- 限制 `auth.json` 的读取权限，因为其中包含密码哈希和会话签名密钥。
+- 限制数据库及其辅助文件的读取权限，因为其中包含密码哈希、会话签名密钥和115 Cookie。
 - 定期备份重要数据，并在执行大批量移动、删除或重命名前检查预览结果。

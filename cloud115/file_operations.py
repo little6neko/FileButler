@@ -216,6 +216,7 @@ class SharedFileOperations:
         report(progress_value("delete-source", fresh["items"][0]["sourcePath"]))
         try:
             if source_cloud:
+                self.invalidate_cloud()
                 local_target, downloaded, paths = self.verify_download(params)
                 if self.cloud_snapshot(params["id"]) != params["snapshot"]:
                     raise ProviderError("115源文件发生变化，未删除")
@@ -247,6 +248,7 @@ class SharedFileOperations:
                         del remaining[file_id]
             else:
                 self.verify_upload(params)
+                self.invalidate_local(params["localPath"])
                 remove_local_snapshot(params["localPath"], params["snapshot"], report)
         except Canceled:
             raise

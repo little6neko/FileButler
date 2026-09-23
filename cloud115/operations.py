@@ -11,6 +11,7 @@ from urllib.parse import urlsplit, parse_qs
 from errors import Canceled, ProviderError
 from batch import BatchOperations
 from file_operations import SharedFileOperations
+from hash_cache import HashCache
 
 
 def safe_name(name):
@@ -48,10 +49,12 @@ def progress_value(phase, name, done=0, total=0, cancelable=True, percent=None):
     return value
 
 
-class CloudOperations(BatchOperations, SharedFileOperations):
+class CloudOperations(BatchOperations, SharedFileOperations, HashCache):
     def info(self, file_id):
         from p115client.tool.attr import get_attr
-        return get_attr(self.load(), int(file_id), timeout=30)
+        item = get_attr(self.load(), int(file_id), timeout=30)
+        self.cloud_hash(item)
+        return item
 
     def browse(self, parent, offset=0):
         from p115client.tool.attr import normalize_attr_web
@@ -63,6 +66,7 @@ class CloudOperations(BatchOperations, SharedFileOperations):
         entries = []
         for raw in result["data"]:
             item = normalize_attr_web(raw)
+            self.cloud_hash(item)
             entries.append({"id": str(item["id"]), "parentId": str(item["parent_id"]), "name": item["name"], "isDirectory": item["is_dir"], "size": item["size"], "modifiedUnix": int(item.get("mtime") or 0)})
         return {"entries": entries, "total": int(result["count"]), "offset": offset}
 
@@ -167,11 +171,11 @@ class CloudOperations(BatchOperations, SharedFileOperations):
         if method == "upload":
             path = params["localPath"]
             with open_directory(os.path.dirname(path)) as directory:
-                self.upload_entry(directory, os.path.basename(path), dest, report)
+                self.upload_entry(directory, os.path.basename(path), dest, report, path)
             return {"ok": True}
         if method == "download":
             with open_directory(params["localPath"]) as directory:
-                self.download_entry(params["id"], directory, report)
+                self.download_entry(params["id"], directory, report, params["localPath"])
             return {"ok": True}
         if method == "mkdir":
             report(progress_value("waiting", params["name"], cancelable=False))
@@ -207,6 +211,7 @@ class CloudOperations(BatchOperations, SharedFileOperations):
             if method == "move" and str(self.info(item["id"])["parent_id"]) != str(dest):
                 raise ProviderError("115尚未确认移动完成，请刷新后核实")
         elif method == "delete":
+            self.invalidate_cloud()
             self.checked(client.fs_delete(item["id"], timeout=30))
         else:
             raise ProviderError("不支持的115操作")
@@ -218,7 +223,7 @@ class CloudOperations(BatchOperations, SharedFileOperations):
             report(progress_value("scan", child["name"]))
             self.operation("copy", {"id": child["id"], "destId": target}, report)
 
-    def upload_entry(self, directory, name, parent, report):
+    def upload_entry(self, directory, name, parent, report, local_path=None):
         safe_name(name)
         report(progress_value("scan", name))
         fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
@@ -227,30 +232,37 @@ class CloudOperations(BatchOperations, SharedFileOperations):
             if stat.S_ISDIR(info.st_mode):
                 dest = self.mkdir(parent, name)
                 for child in os.listdir(fd):
-                    self.upload_entry(fd, child, dest, report)
+                    self.upload_entry(fd, child, dest, report, os.path.join(local_path, child) if local_path else None)
             elif stat.S_ISREG(info.st_mode):
                 self.ensure_unused(parent, name)
                 with os.fdopen(os.dup(fd), "rb") as file:
-                    self.upload_file(file, name, parent, report)
+                    self.upload_file(file, name, parent, report, local_path)
             else:
                 raise ProviderError(f"不支持上传链接或特殊文件：{name}")
         finally:
             os.close(fd)
 
-    def upload_file(self, file, name, parent, report):
+    def upload_file(self, file, name, parent, report, local_path=None):
         before = os.fstat(file.fileno())
         total = before.st_size
-        digest = hashlib.sha1()
-        done = 0
         report(progress_value("hash", name, 0, total))
-        while chunk := file.read(1024*1024):
-            digest.update(chunk)
-            done += len(chunk)
-            report(progress_value("hash", name, done, total))
+        sha1 = self.local_hash("hash.get", local_path, before)
+        if not sha1:
+            digest = hashlib.sha1()
+            done = 0
+            while chunk := file.read(1024*1024):
+                digest.update(chunk)
+                done += len(chunk)
+                report(progress_value("hash", name, done, total))
+            sha1 = digest.hexdigest().upper()
         def check_unchanged():
             now = os.fstat(file.fileno())
             if (before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (now.st_size, now.st_mtime_ns, now.st_ctime_ns):
                 raise ProviderError("校验或上传期间文件发生变化，请核实云端结果后重新操作")
+        check_unchanged()
+        report(progress_value("hash", name, total, total))
+        check_unchanged()
+        self.local_hash("hash.put", local_path, before, sha1)
         check_unchanged()
         file.seek(0)
         report(progress_value("waiting", name))
@@ -269,7 +281,7 @@ class CloudOperations(BatchOperations, SharedFileOperations):
         try:
             # p115oss performs the server's range challenge and falls back to OSS
             # upload. Explicit hash avoids its uninstrumented full-file hashing.
-            result = self.load().upload_file(file, pid=parent, filename=name, filesha1=digest.hexdigest().upper(), filesize=total, reporthook=hook, timeout=120)
+            result = self.load().upload_file(file, pid=parent, filename=name, filesha1=sha1, filesize=total, reporthook=hook, timeout=120)
         except Exception:
             if cancel_error is not None:
                 raise cancel_error
@@ -277,7 +289,7 @@ class CloudOperations(BatchOperations, SharedFileOperations):
         check_unchanged()
         self.checked(result)
 
-    def download_entry(self, file_id, directory, report):
+    def download_entry(self, file_id, directory, report, local_directory=None):
         item = self.info(file_id)
         name = safe_name(item["name"])
         report(progress_value("scan", name))
@@ -287,7 +299,7 @@ class CloudOperations(BatchOperations, SharedFileOperations):
             child_fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
             try:
                 for child in self.children(file_id):
-                    self.download_entry(child["id"], child_fd, report)
+                    self.download_entry(child["id"], child_fd, report, os.path.join(local_directory, name) if local_directory else None)
             finally:
                 os.close(child_fd)
             return
@@ -315,12 +327,20 @@ class CloudOperations(BatchOperations, SharedFileOperations):
                         report(progress_value("download", name, done, total))
                 file.flush()
                 os.fsync(file.fileno())
+                downloaded = os.fstat(file.fileno())
             if done != total or (item.get("sha1") and digest.hexdigest().upper() != item["sha1"].upper()):
                 raise ProviderError("下载大小或摘要校验失败")
             # Hard-link publication is atomic and refuses replacement of a raced-in file.
             os.link(temp, name, src_dir_fd=directory, dst_dir_fd=directory, follow_symlinks=False)
         finally:
             os.unlink(temp, dir_fd=directory)
+        try:
+            published = os.stat(name, dir_fd=directory, follow_symlinks=False)
+        except OSError:
+            # A concurrent rename after successful publication is not a failed download.
+            return
+        if (published.st_dev, published.st_ino, published.st_size, published.st_mtime_ns) == (downloaded.st_dev, downloaded.st_ino, downloaded.st_size, downloaded.st_mtime_ns):
+            self.local_hash("hash.put", os.path.join(local_directory, name) if local_directory else None, published, digest.hexdigest().upper(), "download")
 
     def extract(self, item, dest, password, report):
         if item["is_dir"]:

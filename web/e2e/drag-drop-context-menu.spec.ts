@@ -132,9 +132,9 @@ test("keeps a context-opened directory window active and routes keyboard paste t
   await expect(entryRow(sourceWindow, "folder")).toBeVisible();
 
   const toolbarActions = sourceWindow.getByRole("navigation", { name: "File actions" }).locator("[data-action-id]");
-  await expect(toolbarActions).toHaveCount(4);
+  await expect(toolbarActions).toHaveCount(6);
   expect(await toolbarActions.evaluateAll((elements) => elements.map((element) => element.getAttribute("data-action-id")))).toEqual([
-    "rename", "powerRename", "mkdir", "delete",
+    "rename", "powerRename", "superRename", "mkdir", "more", "delete",
   ]);
   await expect(toolbarActions.first()).toHaveAttribute("data-variant", "outline");
 
@@ -143,10 +143,10 @@ test("keeps a context-opened directory window active and routes keyboard paste t
   await entryRow(sourceWindow, "folder").click({ button: "right" });
   const fullMenu = page.getByRole("menu", { name: "File actions" });
   const fullMenuActions = fullMenu.locator("[data-action-id]");
-  await expect(fullMenuActions).toHaveCount(8);
+  await expect(fullMenuActions).toHaveCount(10);
   expect(await fullMenuActions.evaluateAll((elements) => elements.map((element) => element.getAttribute("data-action-id")))).toEqual([
     "openInNewWindow", "clipboardCopy", "clipboardCut", "clipboardPaste",
-    "rename", "powerRename", "mkdir", "delete",
+    "selectLinkSource", "rename", "powerRename", "superRename", "mkdir", "delete",
   ]);
   await fullMenu.locator('[data-action-id="openInNewWindow"]').click();
 
@@ -161,6 +161,8 @@ test("keeps a context-opened directory window active and routes keyboard paste t
   ]);
   expect(directoryZ).toBeGreaterThan(sourceZ);
 
+  await expect(fullMenu).toHaveCount(0);
+  await expect(entryRow(directoryWindow, "source.txt")).toBeVisible();
   await page.keyboard.press("Control+V");
   await expect.poll(() => dryRuns.at(-1)).toMatchObject({
     type: "copy", sourceRoot: "data", sources: ["source.txt"], destRoot: "data", destPath: "folder",
@@ -302,7 +304,8 @@ test("previews same-pane and cross-pane drops with Windows-style defaults", asyn
   dialog = page.getByRole("dialog", { name: "move preview" });
   await dialog.getByRole("button", { name: "Cancel" }).click();
 
-  await right.getByRole("combobox", { name: "Right pane root" }).selectOption("archive");
+  await right.getByRole("combobox", { name: "Right pane root" }).click();
+  await page.getByRole("option", { name: "Archive", exact: true }).click();
   await expect(entryRow(right, "archive.txt")).toBeVisible();
   const differentRootDryRunCount = dryRuns.length;
   await dragFileTo(page, entryRow(left, "source.txt"), entryRow(right, "archive.txt"));
@@ -355,7 +358,8 @@ test("limits dragging to names and keeps feedback above table chrome", async ({ 
   await page.mouse.up();
   expect(await handle.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe("none");
 
-  await right.getByRole("combobox", { name: "Right pane root" }).selectOption("archive");
+  await right.getByRole("combobox", { name: "Right pane root" }).click();
+  await page.getByRole("option", { name: "Archive", exact: true }).click();
   await expect(entryRow(right, "archive.txt")).toBeVisible();
   await holdFileDragTo(page, source, entryRow(right, "archive.txt"));
   const validLayer = right.locator('.file-list-drop-feedback[data-drop-state="valid"]');
@@ -388,7 +392,8 @@ test("supports desktop row selection and auto-scrolls a long marquee", async ({ 
   await page.setViewportSize({ width: 1280, height: 720 });
   await openCompactWorkspace(page);
   const left = page.getByRole("region", { name: "Left pane" });
-  await left.getByRole("combobox", { name: "Left pane root" }).selectOption("long");
+  await left.getByRole("combobox", { name: "Left pane root" }).click();
+  await page.getByRole("option", { name: "Long list", exact: true }).click();
   await expect(entryRow(left, "item-01.txt")).toBeVisible();
 
   await entryRow(left, "item-02.txt").getByRole("cell").nth(2).click();
@@ -399,9 +404,11 @@ test("supports desktop row selection and auto-scrolls a long marquee", async ({ 
   await expect(left.getByLabel("Select item-02.txt")).toBeChecked();
   await expect(left.getByLabel("Select item-04.txt")).toBeChecked();
 
-  await left.getByRole("combobox", { name: "Left pane root" }).selectOption("data");
+  await left.getByRole("combobox", { name: "Left pane root" }).click();
+  await page.getByRole("option", { name: "Data", exact: true }).click();
   await expect(entryRow(left, "source.txt")).toBeVisible();
-  await left.getByRole("combobox", { name: "Left pane root" }).selectOption("long");
+  await left.getByRole("combobox", { name: "Left pane root" }).click();
+  await page.getByRole("option", { name: "Long list", exact: true }).click();
   await expect(entryRow(left, "item-01.txt")).toBeVisible();
 
   await page.keyboard.down("Shift");
@@ -459,7 +466,8 @@ test("updates only the changed row checkbox when selection changes", async ({ pa
   await openCompactWorkspace(page);
   const left = page.getByRole("region", { name: "Left pane" });
   const right = page.getByRole("region", { name: "Right pane" });
-  await left.getByRole("combobox", { name: "Left pane root" }).selectOption("long");
+  await left.getByRole("combobox", { name: "Left pane root" }).click();
+  await page.getByRole("option", { name: "Long list", exact: true }).click();
   await expect(entryRow(left, "item-01.txt")).toBeVisible();
   await expect(entryRow(right, "source.txt")).toBeVisible();
 
@@ -521,15 +529,15 @@ test("uses row and whitespace context selection while keeping all actions visibl
 
   await openBlankContextMenu(left.getByTestId("file-list-left"));
   menu = page.getByRole("menu", { name: "File actions" });
-  await expect(menu.locator("[data-action-id]")).toHaveCount(8);
+  await expect(menu.locator("[data-action-id]")).toHaveCount(11);
   expect(await menu.locator("[data-action-id]").evaluateAll((elements) => elements.map((element) => element.getAttribute("data-action-id")))).toEqual([
-    "copy", "move", "symlink", "hardlink", "rename", "powerRename", "mkdir", "delete",
+    "copy", "move", "clipboardCopy", "clipboardCut", "clipboardPaste", "selectLinkSource", "rename", "powerRename", "superRename", "mkdir", "delete",
   ]);
   await expect(menu.locator('[data-action-id="mkdir"]')).not.toHaveAttribute("aria-disabled", "true");
-  for (const id of ["copy", "move", "symlink", "hardlink", "rename", "powerRename", "delete"]) {
+  for (const id of ["copy", "move", "clipboardCopy", "clipboardCut", "clipboardPaste", "selectLinkSource", "rename", "powerRename", "delete"]) {
     await expect(menu.locator(`[data-action-id="${id}"]`)).toHaveAttribute("aria-disabled", "true");
   }
-  for (const id of ["openInNewWindow", "clipboardCopy", "clipboardCut", "clipboardPaste"]) {
+  for (const id of ["openInNewWindow", "symlink", "hardlink"]) {
     await expect(menu.locator(`[data-action-id="${id}"]`)).toHaveCount(0);
   }
 
@@ -541,7 +549,7 @@ test("uses row and whitespace context selection while keeping all actions visibl
   await openBlankContextMenu(left.getByTestId("file-list-left"));
   menu = page.getByRole("menu", { name: "File actions" });
   await expect(menu).toBeInViewport();
-  await expect(menu.locator("[data-action-id]")).toHaveCount(8);
+  await expect(menu.locator("[data-action-id]")).toHaveCount(11);
   await page.screenshot({ path: "test-results/file-context-menu-1024x768.png", fullPage: true });
 });
 
@@ -575,7 +583,7 @@ test("confirms a ready operation with Enter without opening Jobs", async ({ page
   await page.getByRole("button", { name: "Copy to right pane" }).click();
   const dialog = page.getByRole("dialog", { name: "copy preview" });
   await expect(dialog.getByRole("button", { name: "Start copy" })).toBeEnabled();
-  await expect(dialog).toBeFocused();
+  await expect.poll(() => dialog.evaluate((element) => element.contains(document.activeElement))).toBeTruthy();
 
   await page.keyboard.press("Enter");
 

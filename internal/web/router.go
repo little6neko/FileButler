@@ -13,11 +13,13 @@ import (
 	"github.com/little6neko/filebutler/internal/ops"
 	"github.com/little6neko/filebutler/internal/rename"
 	"github.com/little6neko/filebutler/internal/roots"
+	"github.com/little6neko/filebutler/internal/storage"
 	"github.com/little6neko/filebutler/internal/superrename"
 	"github.com/little6neko/filebutler/internal/textfile"
 )
 
 type Deps struct {
+	Database          *storage.Store
 	Cloud115          *cloud115.Service
 	Config            config.Config
 	Auth              *auth.Service
@@ -35,6 +37,7 @@ type Deps struct {
 func NewRouter(deps Deps) http.Handler {
 	router := chi.NewRouter()
 	textService := textfile.NewService(deps.Roots)
+	textService.Cache = deps.Database
 	superRenameScanner := superrename.Scanner{Resolver: deps.Roots}
 	superRenameRunner := deps.SuperRenameRunner
 	superRenameRunner.Store = deps.JobStore

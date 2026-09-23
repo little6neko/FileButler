@@ -2,8 +2,8 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
+	"github.com/little6neko/filebutler/internal/storage"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,8 +13,13 @@ import (
 )
 
 func TestInitStatusAndCreateAdminFile(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "nested", "auth.json")
-	service, err := Open(path)
+	path := filepath.Join(t.TempDir(), "nested", "filebutler.db")
+	db, err := storage.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	service, err := Open(db)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,15 +49,12 @@ func TestInitStatusAndCreateAdminFile(t *testing.T) {
 	if strings.Contains(string(data), "long-password") {
 		t.Fatal("authentication file contains the plaintext password")
 	}
-	var stored authenticationFile
-	if err := json.Unmarshal(data, &stored); err != nil {
+	stored, err := db.Admin(context.Background())
+	if err != nil {
 		t.Fatal(err)
 	}
-	if stored.Version != AuthenticationFileVersion || stored.Username != "admin" || !ValidPasswordHash(stored.PasswordHash) {
-		t.Fatalf("stored=%+v", stored)
-	}
-	if matches, err := filepath.Glob(filepath.Join(filepath.Dir(path), ".filebutler-auth-*")); err != nil || len(matches) != 0 {
-		t.Fatalf("temporary files=%v err=%v", matches, err)
+	if stored.Username != "admin" || !ValidPasswordHash(stored.PasswordHash) || len(stored.SigningKey) != 32 {
+		t.Fatal("invalid administrator record")
 	}
 }
 
@@ -119,7 +121,7 @@ func TestLoginUsesStatelessSignedSession(t *testing.T) {
 
 func TestMultipleLoginsDoNotGrowAuthenticationFile(t *testing.T) {
 	service := initializedService(t)
-	before, err := os.Stat(service.authFile)
+	before, err := os.Stat(service.store.Path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +130,7 @@ func TestMultipleLoginsDoNotGrowAuthenticationFile(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	after, err := os.Stat(service.authFile)
+	after, err := os.Stat(service.store.Path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,11 +147,11 @@ func TestOpenRejectsMalformedAuthenticationFiles(t *testing.T) {
 		"trailing-value": `{"version":1} {"version":1}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			path := filepath.Join(t.TempDir(), "auth.json")
+			path := filepath.Join(t.TempDir(), "filebutler.db")
 			if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if _, err := Open(path); err == nil {
+			if _, err := storage.Open(path); err == nil {
 				t.Fatal("malformed authentication file was accepted")
 			}
 		})
@@ -162,23 +164,10 @@ func TestReplacingSigningKeyInvalidatesExistingSessions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(service.authFile)
-	if err != nil {
+	if _, err := service.store.DB.Exec("UPDATE internal_settings SET value=? WHERE key='signing_key'", make([]byte, 32)); err != nil {
 		t.Fatal(err)
 	}
-	var stored authenticationFile
-	if err := json.Unmarshal(data, &stored); err != nil {
-		t.Fatal(err)
-	}
-	stored.SigningKey = strings.Repeat("A", 43)
-	replacement, err := json.Marshal(stored)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(service.authFile, replacement, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	reopened, err := Open(service.authFile)
+	reopened, err := Open(service.store)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +178,12 @@ func TestReplacingSigningKeyInvalidatesExistingSessions(t *testing.T) {
 
 func openMissingService(t *testing.T) *Service {
 	t.Helper()
-	service, err := Open(filepath.Join(t.TempDir(), "auth.json"))
+	db, err := storage.Open(filepath.Join(t.TempDir(), "filebutler.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	service, err := Open(db)
 	if err != nil {
 		t.Fatal(err)
 	}

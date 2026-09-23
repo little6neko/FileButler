@@ -14,6 +14,7 @@ import (
 	"github.com/little6neko/filebutler/internal/ops"
 	"github.com/little6neko/filebutler/internal/rename"
 	"github.com/little6neko/filebutler/internal/roots"
+	"github.com/little6neko/filebutler/internal/storage"
 	"github.com/little6neko/filebutler/internal/superrename"
 	"github.com/little6neko/filebutler/internal/web"
 )
@@ -26,7 +27,12 @@ func main() {
 	if err != nil {
 		log.Fatalf("load config: %v", err)
 	}
-	authService, err := auth.Open(cfg.AuthFile)
+	database, err := storage.Open(cfg.DatabaseFile)
+	if err != nil {
+		log.Fatalf("open database: %v", err)
+	}
+	defer database.Close()
+	authService, err := auth.Open(database)
 	if err != nil {
 		log.Fatalf("load authentication: %v", err)
 	}
@@ -37,14 +43,15 @@ func main() {
 	}
 	resolver := roots.NewResolver(rootItems)
 	jobStore := jobs.NewStore()
-	cloudBridge := cloud115.NewBridge(cfg.Cloud115.Python, cfg.Cloud115.Worker, cfg.Cloud115.Credentials)
+	cloudBridge := cloud115.NewBridge(cfg.Cloud115.Python, cfg.Cloud115.Worker, database, resolver)
 	defer cloudBridge.Close()
-	opsExecutor := ops.Executor{Resolver: resolver}
+	opsExecutor := ops.Executor{Resolver: resolver, Cache: database}
 	linkStaging := links.NewStagingManager(jobStore.RuntimeID())
 	linkMaintainer := links.StagingMaintainer{Manager: linkStaging, Jobs: jobStore}
 	linkPlanner := links.Planner{Resolver: resolver, Maintainer: linkMaintainer}
 	linkBrowser := browser.Service{Resolver: resolver, Maintainer: linkMaintainer}
 	router := web.NewRouter(web.Deps{
+		Database:     database,
 		Cloud115:     cloud115.NewService(cloudBridge, jobStore, resolver),
 		Config:       cfg,
 		Auth:         authService,
@@ -53,10 +60,10 @@ func main() {
 		OpsPlanner:   ops.Planner{Resolver: resolver},
 		JobStore:     jobStore,
 		OpsRunner:    jobs.Runner{Store: jobStore, Executor: ops.JobExecutor{Executor: opsExecutor}},
-		RenameRunner: jobs.Runner{Store: jobStore, Executor: rename.Executor{Resolver: resolver}},
+		RenameRunner: jobs.Runner{Store: jobStore, Executor: rename.Executor{Resolver: resolver, Cache: database}},
 		SuperRenameRunner: superrename.Runner{
 			Store:    jobStore,
-			Executor: superrename.Executor{Resolver: resolver},
+			Executor: superrename.Executor{Resolver: resolver, Cache: database},
 		},
 		LinkPlanner: linkPlanner,
 		LinkRunner: links.Runner{

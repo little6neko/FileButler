@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/little6neko/filebutler/internal/storage"
 	"os"
 	"path"
 	"path/filepath"
@@ -21,6 +22,7 @@ type GroupExecutor interface {
 }
 
 type Executor struct {
+	Cache         *storage.Store
 	Resolver      roots.Resolver
 	Now           func() time.Time
 	fileSystem    executorFileSystem
@@ -86,6 +88,8 @@ func (e Executor) ExecuteGroup(ctx context.Context, jobID string, rootID string,
 		return err
 	}
 	groupInfo, err := fs.Lstat(groupResolved.Actual.Abs)
+	e.Cache.InvalidateLocal(groupResolved.Actual.Root.ID, groupResolved.Actual.Root.Path, groupResolved.Actual.Rel)
+	defer e.Cache.InvalidateLocal(groupResolved.Actual.Root.ID, groupResolved.Actual.Root.Path, groupResolved.Actual.Rel)
 	if err != nil {
 		return err
 	}

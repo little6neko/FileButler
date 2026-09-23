@@ -9,7 +9,7 @@ from errors import Canceled, ProviderError
 
 class MemoryCloud(BatchOperations):
     def __init__(self, directory):
-        self.credentials = Path(directory) / "cookies"
+        self.data_dir = Path(directory)
         self.files = {"1": {"name": "a.jpg", "parent_id": "0", "is_dir": False}, "2": {"name": "b.jpg", "parent_id": "0", "is_dir": False}}
         self.client = SimpleNamespace(user_id=7, fs_rename=self.rename, fs_move=self.move)
         self.writes = []

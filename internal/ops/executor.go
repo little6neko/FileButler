@@ -9,10 +9,12 @@ import (
 
 	"github.com/little6neko/filebutler/internal/jobs"
 	"github.com/little6neko/filebutler/internal/roots"
+	"github.com/little6neko/filebutler/internal/storage"
 )
 
 type Executor struct {
 	Resolver roots.Resolver
+	Cache    *storage.Store
 }
 
 func (e Executor) Execute(ctx context.Context, item PlanItem) error {
@@ -32,6 +34,9 @@ func (e Executor) Execute(ctx context.Context, item PlanItem) error {
 		if err != nil {
 			return err
 		}
+		e.Cache.InvalidateLocal(src.Actual.Root.ID, src.Actual.Root.Path, src.Actual.Rel)
+		defer e.Cache.InvalidateLocal(src.Actual.Root.ID, src.Actual.Root.Path, src.Actual.Rel)
+		defer e.Cache.InvalidateLocal(dest.Actual.Root.ID, dest.Actual.Root.Path, dest.Actual.Rel)
 		return movePath(ctx, src.Actual.Abs, dest.Actual.Abs, nil)
 	case OpCopy:
 		src, err := resolveOperationSource(e.Resolver, item.SourceRoot, item.SourcePath)
@@ -42,12 +47,15 @@ func (e Executor) Execute(ctx context.Context, item PlanItem) error {
 		if err != nil {
 			return err
 		}
+		defer e.Cache.InvalidateLocal(dest.Actual.Root.ID, dest.Actual.Root.Path, dest.Actual.Rel)
 		return copyPath(ctx, src.Actual.Abs, dest.Actual.Abs)
 	case OpDelete:
 		src, err := resolveOperationSource(e.Resolver, item.SourceRoot, item.SourcePath)
 		if err != nil {
 			return err
 		}
+		e.Cache.InvalidateLocal(src.Actual.Root.ID, src.Actual.Root.Path, src.Actual.Rel)
+		defer e.Cache.InvalidateLocal(src.Actual.Root.ID, src.Actual.Root.Path, src.Actual.Rel)
 		return os.RemoveAll(src.Actual.Abs)
 	case OpMkdir:
 		dest, err := e.Resolver.ResolveCreate(item.DestRoot, item.DestPath)

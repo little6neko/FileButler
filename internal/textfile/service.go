@@ -12,9 +12,11 @@ import (
 	"sync"
 
 	"github.com/little6neko/filebutler/internal/roots"
+	"github.com/little6neko/filebutler/internal/storage"
 )
 
 type Service struct {
+	Cache       *storage.Store
 	resolver    roots.Resolver
 	locks       pathLocks
 	atomicWrite func(path string, content []byte, mode fs.FileMode) error
@@ -78,6 +80,8 @@ func (s *Service) Save(request SaveRequest) (SaveResult, error) {
 	if int64(len(encoded)) > MaxFileSize {
 		return SaveResult{}, ErrTooLarge
 	}
+	s.Cache.InvalidateLocal(resolved.Actual.Root.ID, resolved.Actual.Root.Path, resolved.Actual.Rel)
+	defer s.Cache.InvalidateLocal(resolved.Actual.Root.ID, resolved.Actual.Root.Path, resolved.Actual.Rel)
 	if err := s.atomicWrite(resolved.Actual.Abs, encoded, mode); err != nil {
 		return SaveResult{}, err
 	}

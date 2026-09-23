@@ -3,6 +3,8 @@ package cloud115
 import (
 	"context"
 	"errors"
+	"github.com/little6neko/filebutler/internal/roots"
+	"github.com/little6neko/filebutler/internal/storage"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,7 +20,12 @@ func TestInstalledProviderWithoutCredentials(t *testing.T) {
 		t.Skip("set FILEBUTLER_TEST_PYTHON to test the installed p115client provider")
 	}
 	script, _ := filepath.Abs("../../cloud115/worker.py")
-	b := NewBridge(python, script, filepath.Join(t.TempDir(), "cookies"))
+	db, err := storage.Open(filepath.Join(t.TempDir(), "filebutler.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	b := NewBridge(python, script, db, roots.NewResolver(nil))
 	defer b.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -37,7 +44,12 @@ func TestBridgeProgressCancellationAndRestart(t *testing.T) {
 		t.Skip("python3 unavailable")
 	}
 	script, _ := filepath.Abs("testdata/worker.py")
-	b := NewBridge(python, script, filepath.Join(t.TempDir(), "cookies"))
+	db, err := storage.Open(filepath.Join(t.TempDir(), "filebutler.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	b := NewBridge(python, script, db, roots.NewResolver(nil))
 	defer b.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

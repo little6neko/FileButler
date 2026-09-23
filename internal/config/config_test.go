@@ -1,10 +1,25 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 )
+
+func TestRejectPrivateDatabaseUnderPublicDirectoriesAndUnknownConfig(t *testing.T) {
+	dir := t.TempDir()
+	root := filepath.Join(dir, "files")
+	os.Mkdir(root, 0755)
+	for _, extra := range []string{"database_file: \"" + filepath.Join(root, "private", "fb.db") + "\"\n", "auth_file: old.json\n", "cloud115:\n  credentials: old.txt\n"} {
+		cfg := filepath.Join(dir, "fb.yaml")
+		body := extra + fmt.Sprintf("roots:\n  - id: files\n    path: %q\n", root)
+		os.WriteFile(cfg, []byte(body), 0600)
+		if _, err := Load(cfg); err == nil {
+			t.Fatal("unsafe or obsolete configuration accepted")
+		}
+	}
+}
 
 func TestLoadConfigValidatesAndAbsolutizesRoots(t *testing.T) {
 	dir := t.TempDir()
@@ -19,7 +34,7 @@ func TestLoadConfigValidatesAndAbsolutizesRoots(t *testing.T) {
 	configPath := filepath.Join(dir, "filebutler.yaml")
 	body := []byte(`
 listen: "127.0.0.1:8080"
-auth_file: "./auth.json"
+database_file: "./filebutler.db"
 job_concurrency: 2
 log_level: "debug"
 session:
@@ -47,8 +62,8 @@ roots:
 	if len(cfg.Roots) != 2 {
 		t.Fatalf("roots length = %d", len(cfg.Roots))
 	}
-	if cfg.AuthFile != filepath.Join(dir, "auth.json") {
-		t.Fatalf("auth file = %q", cfg.AuthFile)
+	if cfg.DatabaseFile != filepath.Join(dir, "filebutler.db") {
+		t.Fatalf("auth file = %q", cfg.DatabaseFile)
 	}
 }
 
@@ -60,7 +75,7 @@ func TestLoadConfigRejectsDuplicateRootIDs(t *testing.T) {
 	}
 	configPath := filepath.Join(dir, "filebutler.yaml")
 	body := []byte(`
-auth_file: "./auth.json"
+database_file: "./filebutler.db"
 roots:
   - id: "data"
     name: "Data A"
@@ -79,9 +94,9 @@ roots:
 	}
 }
 
-func TestLoadConfigDefaultsAuthenticationFileRelativeToConfig(t *testing.T) {
+func TestLoadConfigDefaultsDatabaseFileRelativeToConfig(t *testing.T) {
 	dir := t.TempDir()
-	root := filepath.Join(dir, "data")
+	root := filepath.Join(dir, "files")
 	if err := os.Mkdir(root, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +114,7 @@ roots:
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.AuthFile != filepath.Join(dir, "data", "auth.json") {
-		t.Fatalf("auth file = %q", cfg.AuthFile)
+	if cfg.DatabaseFile != filepath.Join(dir, "data", "filebutler.db") {
+		t.Fatalf("auth file = %q", cfg.DatabaseFile)
 	}
 }

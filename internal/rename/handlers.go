@@ -3,6 +3,7 @@ package rename
 import (
 	"context"
 	"encoding/json"
+	"github.com/little6neko/filebutler/internal/storage"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -205,6 +206,7 @@ func createRenameJob(w http.ResponseWriter, r *http.Request, store jobs.Store, r
 
 type Executor struct {
 	Resolver roots.Resolver
+	Cache    *storage.Store
 }
 
 func (e Executor) ExecuteItem(ctx context.Context, item jobs.ExecutableItem) error {
@@ -222,6 +224,9 @@ func (e Executor) ExecuteItem(ctx context.Context, item jobs.ExecutableItem) err
 	if err != nil {
 		return err
 	}
+	e.Cache.InvalidateLocal(src.Actual.Root.ID, src.Actual.Root.Path, src.Actual.Rel)
+	defer e.Cache.InvalidateLocal(src.Actual.Root.ID, src.Actual.Root.Path, src.Actual.Rel)
+	defer e.Cache.InvalidateLocal(dest.Actual.Root.ID, dest.Actual.Root.Path, dest.Actual.Rel)
 	return os.Rename(src.Actual.Abs, dest.Actual.Abs)
 }
 

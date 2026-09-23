@@ -9,10 +9,13 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/little6neko/filebutler/internal/jobs"
+	"github.com/little6neko/filebutler/internal/roots"
+	"github.com/little6neko/filebutler/internal/storage"
 )
 
 type Provider interface {
@@ -20,19 +23,24 @@ type Provider interface {
 }
 
 type message struct {
-	ID       uint64                 `json:"id"`
-	Ready    int                    `json:"ready,omitempty"`
-	Data     json.RawMessage        `json:"data,omitempty"`
-	Error    string                 `json:"error,omitempty"`
-	Canceled bool                   `json:"canceled,omitempty"`
-	Progress *jobs.TransferProgress `json:"progress,omitempty"`
+	StorageID uint64                 `json:"storageId,omitempty"`
+	Method    string                 `json:"storageMethod,omitempty"`
+	Params    json.RawMessage        `json:"params,omitempty"`
+	ID        uint64                 `json:"id"`
+	Ready     int                    `json:"ready,omitempty"`
+	Data      json.RawMessage        `json:"data,omitempty"`
+	Error     string                 `json:"error,omitempty"`
+	Canceled  bool                   `json:"canceled,omitempty"`
+	Progress  *jobs.TransferProgress `json:"progress,omitempty"`
 }
 
 type Bridge struct {
-	mu                          sync.Mutex
-	python, script, credentials string
-	next                        uint64
-	process                     *workerProcess
+	mu             sync.Mutex
+	python, script string
+	database       *storage.Store
+	resolver       roots.Resolver
+	next           uint64
+	process        *workerProcess
 }
 type workerProcess struct {
 	cmd     *exec.Cmd
@@ -40,15 +48,15 @@ type workerProcess struct {
 	pending map[uint64]chan message
 }
 
-func NewBridge(python, script, credentials string) *Bridge {
-	return &Bridge{python: python, script: script, credentials: credentials}
+func NewBridge(python, script string, database *storage.Store, resolver roots.Resolver) *Bridge {
+	return &Bridge{python: python, script: script, database: database, resolver: resolver}
 }
 
 func (b *Bridge) startLocked() error {
 	if b.process != nil {
 		return nil
 	}
-	cmd := exec.Command(b.python, "-u", b.script, "--credentials", b.credentials)
+	cmd := exec.Command(b.python, "-u", b.script, "--data-dir", filepath.Dir(b.database.Path))
 	in, err := cmd.StdinPipe()
 	if err != nil {
 		return err
@@ -98,6 +106,10 @@ func (b *Bridge) read(p *workerProcess, scanner *bufio.Scanner) {
 		var msg message
 		if json.Unmarshal(scanner.Bytes(), &msg) != nil {
 			break
+		}
+		if msg.StorageID != 0 {
+			go b.storageReply(p, msg)
+			continue
 		}
 		b.mu.Lock()
 		ch := p.pending[msg.ID]

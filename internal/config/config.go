@@ -1,6 +1,7 @@
 package config
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -13,7 +14,7 @@ import (
 type Config struct {
 	Cloud115       Cloud115Config `yaml:"cloud115"`
 	Listen         string         `yaml:"listen"`
-	AuthFile       string         `yaml:"auth_file"`
+	DatabaseFile   string         `yaml:"database_file"`
 	JobConcurrency int            `yaml:"job_concurrency"`
 	LogLevel       string         `yaml:"log_level"`
 	Session        SessionConfig  `yaml:"session"`
@@ -22,9 +23,8 @@ type Config struct {
 }
 
 type Cloud115Config struct {
-	Python      string `yaml:"python"`
-	Worker      string `yaml:"worker"`
-	Credentials string `yaml:"credentials"`
+	Python string `yaml:"python"`
+	Worker string `yaml:"worker"`
 }
 
 type SessionConfig struct {
@@ -44,29 +44,26 @@ func Load(path string) (Config, error) {
 		return Config{}, err
 	}
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&cfg); err != nil {
 		return Config{}, err
 	}
 	applyDefaults(&cfg)
 	baseDir := filepath.Dir(path)
-	if !filepath.IsAbs(cfg.AuthFile) {
-		cfg.AuthFile = filepath.Join(baseDir, cfg.AuthFile)
+	if !filepath.IsAbs(cfg.DatabaseFile) {
+		cfg.DatabaseFile = filepath.Join(baseDir, cfg.DatabaseFile)
 	}
-	absAuthFile, err := filepath.Abs(cfg.AuthFile)
+	absDatabaseFile, err := filepath.Abs(cfg.DatabaseFile)
 	if err != nil {
 		return Config{}, err
 	}
-	cfg.AuthFile = absAuthFile
+	cfg.DatabaseFile = absDatabaseFile
 	if cfg.Cloud115.Python == "" {
 		cfg.Cloud115.Python = "python3"
 	}
 	if cfg.Cloud115.Worker == "" {
 		cfg.Cloud115.Worker = "cloud115/worker.py"
-	}
-	if cfg.Cloud115.Credentials == "" {
-		cfg.Cloud115.Credentials = filepath.Join(filepath.Dir(cfg.AuthFile), "115-cookies.txt")
-	} else if !filepath.IsAbs(cfg.Cloud115.Credentials) {
-		cfg.Cloud115.Credentials = filepath.Join(baseDir, cfg.Cloud115.Credentials)
 	}
 	if cfg.StaticDir != "" && !filepath.IsAbs(cfg.StaticDir) {
 		cfg.StaticDir = filepath.Join(baseDir, cfg.StaticDir)
@@ -105,15 +102,66 @@ func Load(path string) (Config, error) {
 	if len(cfg.Roots) == 0 {
 		return Config{}, errors.New("at least one root is required")
 	}
+	privateDir, err := canonicalPath(filepath.Dir(cfg.DatabaseFile))
+	if err != nil {
+		return Config{}, err
+	}
+	for _, root := range cfg.Roots {
+		public, err := canonicalPath(root.Path)
+		if err != nil {
+			return Config{}, err
+		}
+		if inside(public, privateDir) {
+			return Config{}, errors.New("database directory must be outside browsable roots")
+		}
+	}
+	public, err := canonicalPath(cfg.StaticDir)
+	if err != nil {
+		return Config{}, err
+	}
+	if inside(public, privateDir) {
+		return Config{}, errors.New("database directory must be outside static assets")
+	}
 	return cfg, nil
+}
+
+func inside(base, path string) bool {
+	rel, err := filepath.Rel(base, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+func canonicalPath(path string) (string, error) {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
+	}
+	tail := []string{}
+	current := abs
+	for {
+		resolved, err := filepath.EvalSymlinks(current)
+		if err == nil {
+			for i := len(tail) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, tail[i])
+			}
+			return resolved, nil
+		}
+		if !errors.Is(err, os.ErrNotExist) {
+			return "", err
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			return "", err
+		}
+		tail = append(tail, filepath.Base(current))
+		current = parent
+	}
 }
 
 func applyDefaults(cfg *Config) {
 	if cfg.Listen == "" {
 		cfg.Listen = "127.0.0.1:8080"
 	}
-	if cfg.AuthFile == "" {
-		cfg.AuthFile = "./data/auth.json"
+	if cfg.DatabaseFile == "" {
+		cfg.DatabaseFile = "./data/filebutler.db"
 	}
 	if cfg.JobConcurrency <= 0 {
 		cfg.JobConcurrency = 1

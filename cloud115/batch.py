@@ -137,7 +137,7 @@ class BatchOperations:
 
         # Journal contains only IDs/names, never cookies; persist before mutations.
         token = uuid.uuid4().hex
-        directory = self.credentials.parent / "115-recovery"
+        directory = self.data_dir / "115-recovery"
         directory.mkdir(mode=0o700, parents=True, exist_ok=True)
         journal = directory / (token + ".json")
         states = [{**item, "currentName": item["name"], "currentParentId": item["parentId"], "stageName": ".filebutler-rename-" + token + "-" + str(index)} for index, item in enumerate(items)]

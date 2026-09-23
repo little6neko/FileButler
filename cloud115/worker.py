@@ -12,6 +12,7 @@ import time
 import secrets
 from errors import Canceled, ProviderError
 from operations import CloudOperations
+from private_storage import PrivateStorage
 
 PROTOCOL_OUTPUT = sys.stdout
 output_lock = threading.Lock()
@@ -24,8 +25,9 @@ def emit(message):
 
 
 class Adapter(CloudOperations):
-    def __init__(self, credentials):
-        self.credentials = Path(credentials)
+    def __init__(self, storage, data_dir):
+        self.storage = storage
+        self.data_dir = Path(data_dir)
         self.client = None
         self.qr = None
         self.qr_session = ""
@@ -39,9 +41,9 @@ class Adapter(CloudOperations):
     def load_locked(self):
         from p115client import P115Client
         if self.client is None:
-            if not self.credentials.is_file():
+            cookies = self.storage.call("credential.get")
+            if not cookies:
                 raise ProviderError("请先登录115网盘")
-            cookies = self.credentials.read_text().strip()
             if not cookies or "UID=" not in cookies:
                 raise ProviderError("115登录凭证无效，请清除后重新扫码")
             self.client = P115Client(cookies, console_qrcode=False)
@@ -59,12 +61,12 @@ class Adapter(CloudOperations):
         from p115client import P115Client
         with self.lock:
             if method == "status":
-                if not self.credentials.is_file():
+                if not self.storage.call("credential.get"):
                     return {"loggedIn": False}
                 client = self.load()
                 return {"loggedIn": bool(client.login_status(timeout=30))}
             if method == "login.start":
-                if self.credentials.is_file():
+                if self.storage.call("credential.get"):
                     raise ProviderError("请先退出当前115账号")
                 self.qr = self.checked(P115Client.login_qrcode_token(app="alipaymini", timeout=30))["data"]
                 self.qr_session = secrets.token_urlsafe(24)
@@ -88,16 +90,7 @@ class Adapter(CloudOperations):
                 if status == 2:
                     result = self.checked(P115Client.login_qrcode_scan_result(self.qr["uid"], app="alipaymini", timeout=30))
                     cookies = result["data"]["cookie"]
-                    self.credentials.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-                    import tempfile
-                    fd, name = tempfile.mkstemp(dir=self.credentials.parent)
-                    try:
-                        with os.fdopen(fd, "w") as file:
-                            file.write("; ".join(f"{key}={value}" for key, value in cookies.items()))
-                        os.replace(name, self.credentials)
-                    finally:
-                        if os.path.exists(name):
-                            os.unlink(name)
+                    self.storage.call("credential.set", {"cookie": "; ".join(f"{key}={value}" for key, value in cookies.items())})
                     self.client = None
                     self.qr = None
                     self.qr_session = ""
@@ -106,24 +99,25 @@ class Adapter(CloudOperations):
                     self.qr_session = ""
                 return {"status": status, "loggedIn": status == 2}
             if method == "logout":
+                self.storage.call("credential.delete")
                 self.client = None
                 self.qr = None
                 self.qr_session = ""
-                self.credentials.unlink(missing_ok=True)
                 return {"loggedIn": False}
         return self.operation(method, params, progress)
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--credentials", required=True)
+    parser.add_argument("--data-dir", required=True)
     args = parser.parse_args()
-    adapter = Adapter(args.credentials)
+    storage = PrivateStorage(emit)
+    adapter = Adapter(storage, args.data_dir)
     # Dependencies sometimes print. Keep such output away from JSON and logs.
     sys.stdout = open(os.devnull, "w")
-    serve(adapter, sys.stdin.buffer)
+    serve(adapter, sys.stdin.buffer, storage)
 
 
-def serve(adapter, input_stream):
+def serve(adapter, input_stream, storage=None):
     acknowledgements = {}
     threads = set()
     state_lock = threading.Lock()
@@ -174,6 +168,9 @@ def serve(adapter, input_stream):
             if len(line) > 1024*1024:
                 break
             message = json.loads(line)
+            if "storageReply" in message:
+                if storage is not None: storage.receive(message)
+                continue
             if message.get("ack"):
                 with state_lock:
                     ack = acknowledgements.get(message["id"])
@@ -193,6 +190,7 @@ def serve(adapter, input_stream):
                         threads.discard(thread)
                     emit({"id": message["id"], "error": "系统资源不足，无法启动任务"})
     finally:
+        if storage is not None: storage.close()
         with state_lock:
             pending = list(acknowledgements.values())
             running = list(threads)

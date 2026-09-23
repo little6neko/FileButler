@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"encoding/json"
+	"github.com/little6neko/filebutler/internal/storage"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -266,7 +267,12 @@ func testRouterWithRoot(t *testing.T, root string) http.Handler {
 	t.Helper()
 	resolver := roots.NewResolver([]roots.Root{{ID: "data", Name: "Data", Path: root}})
 	cfg := config.Config{Session: config.SessionConfig{CookieName: "filebutler_session"}, Roots: []config.RootConfig{{ID: "data", Name: "Data", Path: root}}}
-	authSvc, err := auth.Open(filepath.Join(t.TempDir(), "auth.json"))
+	database, err := storage.Open(filepath.Join(t.TempDir(), "filebutler.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { database.Close() })
+	authSvc, err := auth.Open(database)
 	if err != nil {
 		t.Fatal(err)
 	}

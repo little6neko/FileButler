@@ -3,3 +3,6 @@ __pycache__/
 *.pyc
 115-cookies.txt
 .venv115/
+*.db
+*.db-wal
+*.db-shm

@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"github.com/little6neko/filebutler/internal/storage"
 	"io"
 	"strings"
 	"sync"
@@ -11,10 +12,10 @@ import (
 )
 
 const (
-	AuthenticationFileVersion = 1
-	SessionLifetime           = 24 * time.Hour
-	administratorID           = int64(1)
-	signingKeyLength          = 32
+	sessionVersion   = 1
+	SessionLifetime  = 24 * time.Hour
+	administratorID  = int64(1)
+	signingKeyLength = 32
 )
 
 var (
@@ -38,26 +39,28 @@ type credentials struct {
 
 type Service struct {
 	mu          sync.RWMutex
-	authFile    string
+	store       *storage.Store
 	credentials *credentials
 	now         func() time.Time
 	random      io.Reader
 }
 
-func Open(authFile string) (*Service, error) {
+func Open(store *storage.Store) (*Service, error) {
 	service := &Service{
-		authFile: authFile,
-		now:      time.Now,
-		random:   rand.Reader,
+		store:  store,
+		now:    time.Now,
+		random: rand.Reader,
 	}
-	loaded, err := loadAuthenticationFile(authFile)
-	if errors.Is(err, errAuthenticationFileMissing) {
-		return service, nil
-	}
+	loaded, err := store.Admin(context.Background())
 	if err != nil {
 		return nil, err
 	}
-	service.credentials = loaded
+	if loaded != nil {
+		if loaded.Username == "" || loaded.Username != strings.TrimSpace(loaded.Username) || !ValidPasswordHash(loaded.PasswordHash) || len(loaded.SigningKey) != signingKeyLength {
+			return nil, errors.New("invalid authentication record")
+		}
+		service.credentials = &credentials{version: sessionVersion, username: loaded.Username, passwordHash: loaded.PasswordHash, signingKey: loaded.SigningKey}
+	}
 	return service, nil
 }
 
@@ -93,13 +96,13 @@ func (s *Service) CreateAdmin(ctx context.Context, username, password string) (U
 		return User{}, err
 	}
 	record := credentials{
-		version:      AuthenticationFileVersion,
+		version:      sessionVersion,
 		username:     username,
 		passwordHash: hash,
 		signingKey:   key,
 	}
-	if err := createAuthenticationFile(s.authFile, record); err != nil {
-		if errors.Is(err, ErrAlreadyInitialized) {
+	if err := s.store.CreateAdmin(ctx, storage.Admin{Username: record.username, PasswordHash: record.passwordHash, SigningKey: record.signingKey}); err != nil {
+		if errors.Is(err, storage.ErrInitialized) {
 			return User{}, ErrAlreadyInitialized
 		}
 		return User{}, err

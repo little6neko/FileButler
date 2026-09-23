@@ -46,10 +46,25 @@ test("local details supports independent windows, SHA1 refresh and blank-directo
   await expect(details.getByText("64.44 KB（65,982 字节）", { exact: true })).toBeVisible();
   await expect(details.getByText("共包含", { exact: true })).toHaveCount(0);
   expect(calls.map((call) => call.section)).toEqual(["basic"]);
+  async function expectInlineButtons() {
+    for (const name of ["复制原始路径", "重新获取"]) {
+      const button = details.getByRole("button", { name, exact: true });
+      await expect(button).toHaveAttribute("data-variant", "outline");
+      const gap = await button.evaluate((element) => {
+        const value = element.parentElement!.querySelector("span")!;
+        return element.getBoundingClientRect().left - value.getBoundingClientRect().right;
+      });
+      expect(gap).toBeCloseTo(8, 0);
+      const grows = await button.evaluate((element) => getComputedStyle(element.parentElement!.querySelector("span")!).flexGrow);
+      expect(grows).toBe("0");
+    }
+  }
+  await expectInlineButtons();
   await details.getByRole("button", { name: "复制原始路径" }).click();
   expect(await page.evaluate(() => sessionStorage.getItem("copied-path"))).toBe("/files");
   await details.getByRole("button", { name: "重新获取" }).click();
   await expect(details.getByText("A".repeat(40), { exact: true })).toBeVisible();
+  await expectInlineButtons();
   await details.getByRole("button", { name: "最小化窗口" }).click();
   await files.locator(".file-list").click({ button: "right", position: { x: 20, y: 200 } });
   await page.getByRole("menuitem", { name: "详细信息" }).click();

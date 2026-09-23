@@ -1814,7 +1814,7 @@ body {
 .file-details dt { color: var(--muted-foreground); }
 .file-details dd { min-width: 0; overflow-wrap: anywhere; }
 .file-details-inline { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.file-details-inline > span { flex: 1; min-width: 100px; }
+.file-details-inline > span { min-width: 0; max-width: 100%; }
 .file-details-inline button { flex-shrink: 0; }
 .file-details [role="alert"] { margin-top: 16px; }
 .compact-details-windows { position: fixed; inset: 44px 0 0; pointer-events: none; z-index: 40; }

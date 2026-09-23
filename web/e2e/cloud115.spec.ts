@@ -34,7 +34,7 @@ test("shared cloud menus open PowerRename and SuperRename with cloud-only APIs",
   await page.goto("/");
   await page.getByRole("button", { name: "打开115网盘", exact: true }).click();
   const cloud = page.locator('.desktop-window[data-window-kind="cloud115"]');
-  await cloud.getByRole("button", { name: /Cloud tester/ }).click();
+  await cloud.getByRole("button", { name: /Cloud tester/ }).dblclick();
   await cloud.getByRole("button", { name: "old.jpg", exact: true }).click();
   await cloud.getByRole("button", { name: "More", exact: true }).click();
   await expect(page.getByRole("menuitem", { name: /^Copy$/ })).toBeVisible();
@@ -136,7 +136,7 @@ test("desktop icons are vertical and local/cloud drag creates background transfe
   await expect(local.locator('[data-entry-path="local.txt"]')).toBeVisible();
   await cloudIcon.click();
   const cloud = page.locator('[data-window-kind="cloud115"].desktop-window');
-  await cloud.getByRole("button", { name: /Cloud user/ }).click();
+  await cloud.getByRole("button", { name: /Cloud user/ }).dblclick();
   await expect(cloud.getByText("cloud.txt", { exact: true })).toBeVisible();
   const title = (await cloud.locator(".desktop-window-titlebar").boundingBox())!;
   await page.mouse.move(title.x + 200, title.y + 15);
@@ -155,7 +155,9 @@ test("desktop icons are vertical and local/cloud drag creates background transfe
   await expect(cloud.getByRole("button", { name: "Start copy", exact: true })).toBeEnabled();
   expect(transfers).toHaveLength(0);
   expect(previews.at(-1)).toMatchObject({ type: "copy", sourceRoot: "test", sources: ["local.txt"], destRoot: "@115", destPath: "0", accountId: "1" });
-  await cloud.getByRole("radio", { name: "move", exact: true }).click();
+  // dnd-kit suppresses clicks for 50ms after drop. Model a normal mouse press
+  // so this next interaction is not mistaken for the drag's trailing click.
+  await cloud.getByRole("radio", { name: "move", exact: true }).click({ delay: 75 });
   await expect(cloud.getByText("上传成功后将删除本地源文件。")).toBeVisible();
   await cloud.getByRole("button", { name: "Start move", exact: true }).click();
   await expect.poll(() => transfers.length).toBe(1);
@@ -172,7 +174,7 @@ test("desktop icons are vertical and local/cloud drag creates background transfe
   await expect(local.getByRole("button", { name: "Start copy", exact: true })).toBeEnabled();
   expect(transfers).toHaveLength(1);
   expect(previews.at(-1)).toMatchObject({ type: "copy", sourceRoot: "@115", sources: ["123"], destRoot: "test", destPath: ".", accountId: "1" });
-  await local.getByRole("radio", { name: "move", exact: true }).click();
+  await local.getByRole("radio", { name: "move", exact: true }).click({ delay: 75 });
   await expect(local.getByText("下载成功后将删除115上的源文件。")).toBeVisible();
   await local.getByRole("button", { name: "Start move", exact: true }).click();
   await expect.poll(() => transfers.length).toBe(2);

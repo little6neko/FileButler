@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { DndContext } from "@dnd-kit/core";
+import userEvent from "@testing-library/user-event";
 import { cloudCall } from "../cloud115";
 import { Cloud115Accounts } from "./Cloud115Accounts";
 import { Cloud115Window } from "./Cloud115Window";
@@ -24,7 +25,9 @@ it("shows capacity cards, places add last and opens only the selected account", 
   const add = screen.getByRole("button", { name: "添加新账号" });
   expect(add.parentElement?.lastElementChild).toBe(add);
   expect(within(add).queryByRole("progressbar")).toBeNull();
-  fireEvent.click(first); expect(open).toHaveBeenCalledWith("1");
+  await userEvent.click(first); expect(open).not.toHaveBeenCalled();
+  await userEvent.dblClick(first); expect(open).toHaveBeenCalledExactlyOnceWith("1");
+  for (const button of within(screen.getByRole("navigation")).getAllByRole("button")) expect(button).toBeDisabled();
 });
 
 it("does not block the account list on a slow account profile", async () => {
@@ -43,7 +46,7 @@ it("new windows start on the account list and another account's event leaves the
   const props = { windowId: "cloud", layer: 1, onJobCreated: vi.fn() };
   const view = render(<DndContext><Cloud115Window {...props} /></DndContext>);
   expect(screen.queryByText("file-1.txt")).toBeNull();
-  fireEvent.click(await screen.findByRole("button", { name: /账号1/ }));
+  fireEvent.doubleClick(await screen.findByRole("button", { name: /账号1/ }));
   await screen.findByText("file-1.txt");
   act(() => window.dispatchEvent(new CustomEvent("cloud115-account-changed", { detail: { accountId: "2" } })));
   expect(screen.getByText("file-1.txt")).toBeVisible();
@@ -56,11 +59,41 @@ it("new windows start on the account list and another account's event leaves the
   expect(screen.queryByText("file-1.txt")).toBeNull();
 });
 
-it("returning from a directory window and selecting another account starts at that account's root", async () => {
+it("the path account menu switches to another account's root without an account-list toolbar button", async () => {
   render(<DndContext><Cloud115Window windowId="cloud" layer={1} onJobCreated={vi.fn()} initialAccountId="1" initialTrail={[{ id: "0", name: "root" }, { id: "9", name: "private-folder" }]} /></DndContext>);
   await screen.findByText("file-1.txt");
-  fireEvent.click(screen.getByRole("button", { name: "账号列表" }));
-  fireEvent.click(await screen.findByRole("button", { name: /账号2/ }));
+  expect(screen.queryByRole("button", { name: "账号列表" })).toBeNull();
+  await userEvent.click(screen.getByRole("button", { name: "切换115账号" }));
+  await userEvent.click(await screen.findByRole("menuitem", { name: "账号2" }));
   await screen.findByText("file-2.txt");
   await waitFor(() => expect(screen.queryByText("private-folder")).toBeNull());
+});
+
+it.each(["success", "cancel", "failure"])("adding from the account menu: %s keeps the current directory until confirmed", async (outcome) => {
+  const original = vi.mocked(cloudCall).getMockImplementation()!;
+  let finish!: (value: unknown) => void;
+  vi.mocked(cloudCall).mockImplementation(async (method, ...args) => {
+    if (method === "login.start") return { image: "data:image/svg+xml;base64,PHN2Zy8+", loginSession: "new-account-session" };
+    if (method === "login.check") return new Promise((resolve) => { finish = resolve; });
+    return original(method, ...args);
+  });
+  render(<DndContext><Cloud115Window windowId="cloud" layer={1} onJobCreated={vi.fn()} initialAccountId="1" initialTrail={[{ id: "0", name: "root" }, { id: "9", name: "private-folder" }]} /></DndContext>);
+  await screen.findByText("file-1.txt");
+  await userEvent.click(screen.getByRole("button", { name: "切换115账号" }));
+  await userEvent.click(await screen.findByRole("menuitem", { name: "添加新账号" }));
+  await waitFor(() => expect(finish).toBeTypeOf("function"));
+  expect(screen.getByText("file-1.txt")).toBeVisible();
+  expect(screen.getByRole("button", { name: "private-folder" })).toBeVisible();
+  if (outcome === "cancel") await userEvent.click(screen.getByRole("button", { name: "取消" }));
+  await act(async () => finish(outcome === "failure" ? { loggedIn: false, status: -1 } : { loggedIn: true, status: 2, accountId: "2" }));
+  if (outcome === "success") {
+    await screen.findByText("file-2.txt");
+    expect(screen.queryByText("private-folder")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  } else {
+    expect(screen.getByText("file-1.txt")).toBeVisible();
+    expect(screen.getByRole("button", { name: "private-folder" })).toBeVisible();
+    expect(screen.queryByText("file-2.txt")).toBeNull();
+    if (outcome === "failure") expect(await screen.findByText("二维码已过期，请重新获取")).toBeVisible();
+  }
 });

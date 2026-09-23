@@ -48,7 +48,7 @@ test("QR login enters the cloud automatically after phone confirmation", async (
   await expect(page.getByText("已扫码，等待在115客户端确认")).toBeVisible();
   await expect(page.getByRole("button", { name: "我已扫码，检查登录" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "notes.txt", exact: true })).toHaveCount(0);
-  await page.getByRole("button", { name: /Cloud tester/ }).click();
+  await page.getByRole("button", { name: /Cloud tester/ }).dblclick();
   await expect(page.getByRole("button", { name: "notes.txt", exact: true })).toBeVisible();
   const checks = calls.filter((call) => call.method === "login.check");
   expect(checks).toHaveLength(2);
@@ -64,7 +64,7 @@ test("cloud previews load bytes directly, text is read-only and archive double c
   await page.goto("/");
   await page.getByRole("button", { name: "打开115网盘", exact: true }).click();
   const cloud = page.locator('.desktop-window[data-window-kind="cloud115"]');
-  await cloud.getByRole("button", { name: /Cloud tester/ }).click();
+  await cloud.getByRole("button", { name: /Cloud tester/ }).dblclick();
   await expect(cloud.getByRole("button", { name: "notes.txt", exact: true })).toBeVisible();
   expect(await cloud.locator(".file-pane").evaluate((element) => getComputedStyle(element).boxShadow)).toBe("none");
   await expect(page.locator('.taskbar-window-button[data-window-kind="cloud115"] .lucide-cloud')).toBeVisible();
@@ -99,7 +99,7 @@ test("cloud previews load bytes directly, text is read-only and archive double c
   await expect(preview.getByRole("button", { name: "复制直链" })).toBeDisabled();
   await preview.getByRole("button", { name: "Close window" }).click();
 
-  await cloud.getByRole("button", { name: /Cloud tester/ }).click();
+  await cloud.getByRole("button", { name: /Cloud tester/ }).dblclick();
   await cloud.getByRole("button", { name: "blocked.txt", exact: true }).dblclick();
   preview = page.locator('.desktop-window[data-window-kind="cloudPreview"]');
   await expect(preview.getByRole("alert")).toBeVisible();

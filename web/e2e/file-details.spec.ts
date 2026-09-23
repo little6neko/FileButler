@@ -30,7 +30,7 @@ async function setup(page: Page, cloud = false, compact = false) {
     return route.fulfill({ json: { data } });
   });
   await page.goto("/");
-  if (cloud) { await page.getByRole("button", { name: "打开115网盘", exact: true }).click(); await page.getByRole("button", { name: /^Cloud/ }).click(); }
+  if (cloud) { await page.getByRole("button", { name: "打开115网盘", exact: true }).click(); await page.getByRole("button", { name: /^Cloud/ }).dblclick(); }
   else if (!compact) { await page.getByRole("button", { name: "打开文件管理器", exact: true }).click(); await page.getByRole("button", { name: /^A/ }).dblclick(); }
   return calls;
 }

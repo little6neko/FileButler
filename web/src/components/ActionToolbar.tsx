@@ -12,9 +12,10 @@ type Props = {
   selectedCount: number;
   labels: UIStrings;
   moreActions?: FileContextAction[];
+  disabled?: boolean;
 };
 
-export function ActionToolbar({ actions, selectedCount, labels, moreActions = [] }: Props) {
+export function ActionToolbar({ actions, selectedCount, labels, moreActions = [], disabled = false }: Props) {
   const hiddenActions: FileContextAction[] = [];
   let boundary = false;
   for (const action of moreActions) {
@@ -31,7 +32,7 @@ export function ActionToolbar({ actions, selectedCount, labels, moreActions = []
           <Fragment key={action.id}>
             {action.id === "delete" && hiddenActions.length > 0 ? <>
               <Separator orientation="vertical" className="mx-1 h-5" />
-              <MenuRoot><MenuTrigger render={<Button size="sm" variant="outline" aria-label={labels.moreActions} data-action-id="more" />}><Ellipsis /><span className="action-label">{labels.moreActions}</span></MenuTrigger>
+              <MenuRoot><MenuTrigger disabled={disabled} render={<Button size="sm" variant="outline" aria-label={labels.moreActions} data-action-id="more" />}><Ellipsis /><span className="action-label">{labels.moreActions}</span></MenuTrigger>
                 <MenuPortal><MenuPositioner align="start" sideOffset={4}><MenuPopup aria-label={labels.moreActions}><FileActionMenuItems actions={hiddenActions} /></MenuPopup></MenuPositioner></MenuPortal>
               </MenuRoot>
             </> : null}
@@ -43,7 +44,7 @@ export function ActionToolbar({ actions, selectedCount, labels, moreActions = []
               data-action-id={action.id}
               className={action.destructive ? "text-destructive hover:text-destructive" : undefined}
               onClick={action.run}
-              disabled={action.disabled}
+              disabled={disabled || action.disabled}
             >
               <Icon /><span className="action-label">{action.label}</span>
             </Button>

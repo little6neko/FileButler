@@ -57,6 +57,7 @@ type FilePaneProps = {
   onViewStateChange?(state: FilePaneViewState): void;
   showRootSelector?: boolean;
   pathRootLabel?: string;
+  pathRootControl?: ReactNode;
   rootCatalogLabel?: string;
   onOpenRootCatalog?(): void;
   navigation?: FilePaneNavigation;
@@ -113,6 +114,7 @@ export function FilePane({
   onViewStateChange,
   showRootSelector = true,
   pathRootLabel,
+  pathRootControl,
   rootCatalogLabel,
   onOpenRootCatalog,
   navigation,
@@ -374,7 +376,7 @@ export function FilePane({
             icon={<ArrowUp />}
           />
         </div>
-        {!showRootSelector ? (
+        {pathRootControl ?? (!showRootSelector ? (
           <span className="root-marker" aria-label={labels.rootLabel(title)} title={pathRootLabel}>
             {pathRootLabel ?? "/"}
           </span>
@@ -407,7 +409,7 @@ export function FilePane({
               ))}
             </SelectContent>
           </Select>
-        )}
+        ))}
         <div className="path-combobox">
           <Input
             aria-label={labels.pathLabel(title)}

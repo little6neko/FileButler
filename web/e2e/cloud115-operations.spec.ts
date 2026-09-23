@@ -38,7 +38,7 @@ async function setup(page: Page, progress = false) {
   await local.getByRole("button", { name: /Data/ }).dblclick();
   await page.getByRole("button", { name: "打开115网盘", exact: true }).click();
   const cloud = page.locator('.desktop-window[data-window-kind="cloud115"]');
-  await cloud.getByRole("button", { name: /Cloud user/ }).click();
+  await cloud.getByRole("button", { name: /Cloud user/ }).dblclick();
   await expect(cloud.getByRole("button", { name: "cloud.txt", exact: true })).toBeVisible();
   const title = (await cloud.locator(".desktop-window-titlebar").boundingBox())!;
   await page.mouse.move(title.x + 200, title.y + 15); await page.mouse.down();

@@ -985,8 +985,8 @@ body {
   box-shadow: 0 0 0 2px color-mix(in oklab, var(--primary) 24%, transparent);
 }
 
-.cloud-account-card { height: auto; min-height: 96px; }
-.cloud-account-add { display: flex; flex-direction: column; justify-content: center; gap: 4px; text-align: center; }
+.cloud-account-add { display: flex; justify-content: center; gap: 8px; text-align: center; }
+.pane-location-trigger { min-width: 0; max-width: 180px; justify-content: space-between; }
 
 .virtual-root-card[data-drop-state="invalid"] {
   border-color: var(--destructive);

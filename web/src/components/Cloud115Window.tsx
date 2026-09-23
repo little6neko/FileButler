@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { CloudDownload, FolderArchive, FolderPlus, LogOut, Pencil, ScanText, Trash2, WandSparkles, Info, Users } from "lucide-react";
+import { CloudDownload, FolderArchive, FolderPlus, LogOut, Pencil, ScanText, Trash2, WandSparkles, Info } from "lucide-react";
 import type { DetailsTarget } from "../fileDetails";
 import { cloudCall, cloudDirectory, isCloudArchive, type CloudEntry, type CloudLocation, type CloudRequest } from "../cloud115";
 import { createAppClipboard, setAppClipboard, useAppClipboard, type ClipboardTarget } from "../appClipboard";
@@ -7,6 +7,8 @@ import type { FileDropFeedback } from "../fileDrag";
 import type { OpsRequest } from "../api/types";
 import { toast } from "sonner";
 import { Cloud115Accounts } from "./Cloud115Accounts";
+import { Cloud115AccountMenu } from "./Cloud115AccountMenu";
+import { Cloud115LoginDialog } from "./Cloud115LoginDialog";
 import { createFileSelectionStore } from "../fileSelectionStore";
 import { fileSelectionMode } from "../fileSelection";
 import { fileOpenKind } from "../fileOpenKind";
@@ -42,19 +44,24 @@ type Cloud115WindowProps = {
 
 export function Cloud115Window(props: Cloud115WindowProps) {
   const [location, setLocation] = useState({ accountId: props.initialAccountId ?? "", trail: props.initialTrail });
+  const [addingAccount, setAddingAccount] = useState(false);
   const accountId = location.accountId;
   const { onTitle, windowId } = props;
   useEffect(() => { if (!accountId) onTitle?.(windowId, "115网盘"); }, [accountId, onTitle, windowId]);
-  const open = (next: string) => setLocation({ accountId: next, trail: undefined });
+  const open = useCallback((next: string) => setLocation({ accountId: next, trail: undefined }), []);
+  const added = useCallback((next: string) => { setAddingAccount(false); open(next); }, [open]);
   useEffect(() => {
     const changed = (event: Event) => { if ((event as CustomEvent<{ accountId: string }>).detail?.accountId === accountId) setLocation({ accountId: "", trail: undefined }); };
     window.addEventListener("cloud115-account-changed", changed);
     return () => window.removeEventListener("cloud115-account-changed", changed);
   }, [accountId]);
-  return accountId ? <Cloud115Files key={accountId} {...props} initialTrail={location.trail} accountId={accountId} onHome={() => open("")} /> : <Cloud115Accounts onOpen={open} />;
+  return <div className="relative h-full min-h-0">
+    {accountId ? <Cloud115Files key={accountId} {...props} operationOpen={props.operationOpen || addingAccount} initialTrail={location.trail} accountId={accountId} onSwitch={open} onAdd={() => setAddingAccount(true)} /> : <Cloud115Accounts onOpen={open} labels={props.labels} />}
+    {addingAccount ? <Cloud115LoginDialog onSuccess={added} onClose={() => setAddingAccount(false)} /> : null}
+  </div>;
 }
 
-function Cloud115Files({ accountId, onHome, onTitle, windowId, layer, onJobCreated, initialTrail = rootLocation, onOpenNewWindow, onPowerRename, onSuperRename, onPreview, onOperation, onPaste, onRegister, onDetails, operationOpen = false, dropFeedback = null, labels = strings["zh-CN"] }: Cloud115WindowProps & { accountId: string; onHome(): void }) {
+function Cloud115Files({ accountId, onSwitch, onAdd, onTitle, windowId, layer, onJobCreated, initialTrail = rootLocation, onOpenNewWindow, onPowerRename, onSuperRename, onPreview, onOperation, onPaste, onRegister, onDetails, operationOpen = false, dropFeedback = null, labels = strings["zh-CN"] }: Cloud115WindowProps & { accountId: string; onSwitch(id: string): void; onAdd(): void }) {
   const events = useOptionalJobEventsStore();
   const [loggedIn, setLoggedIn] = useState(false);
   const [profile, setProfile] = useState({ accountId, name: accountId });
@@ -111,7 +118,7 @@ function Cloud115Files({ accountId, onHome, onTitle, windowId, layer, onJobCreat
       if (disposed) return;
       setLoggedIn(status.loggedIn);
       if (status.loggedIn) void refreshProfile();
-      else setError("登录已失效，请返回账号列表重新登录");
+      else setError("登录已失效，请从账号菜单添加账号以重新登录");
     }).catch((e) => { if (!disposed) setError(String(e)); });
     function dispose() { disposed = true; generation.current++; pathGeneration.current++; profileGeneration.current++; }
     return dispose;
@@ -214,15 +221,16 @@ function Cloud115Files({ accountId, onHome, onTitle, windowId, layer, onJobCreat
       onDetails?.({ rootId: "@115", accountId: profile.accountId, paths, names });
     } }];
   }
-  if (!loggedIn) return <div className="grid gap-3 p-4"><Button variant="outline" onClick={onHome}>返回账号列表</Button><p role={error ? "alert" : "status"}>{error || "正在连接115账号…"}</p></div>;
+  const accountMenu = <Cloud115AccountMenu accountId={accountId} name={profile.name} disabled={operationOpen || Boolean(prompt || offlineTarget) || busy} onSelect={onSwitch} onAdd={onAdd} />;
+  if (!loggedIn) return <div className="grid gap-3 p-4">{accountMenu}<p role={error ? "alert" : "status"}>{error || "正在连接115账号…"}</p></div>;
 
   return <div className="file-window-layout relative" data-no-file-drop={prompt || offlineTarget || operationOpen ? "" : undefined}>
-    <ActionToolbar actions={[{ kind: "command", id: "accounts", label: "账号列表", icon: Users, disabled: false, run: onHome }, ...baseActions(), { kind: "command", id: "logout", label: "退出登录", icon: LogOut, separatorBefore: true, disabled: busy, run: () => void logout() }]} moreActions={menuActions()} selectedCount={summary.selectedCount} labels={labels} />
+    <ActionToolbar actions={[...baseActions(), { kind: "command", id: "logout", label: "退出登录", icon: LogOut, separatorBefore: true, disabled: busy || operationOpen, run: () => void logout() }]} moreActions={menuActions()} selectedCount={summary.selectedCount} labels={labels} />
     <div className="relative min-h-0 [&>.file-pane]:h-full" aria-label="115文件列表">
       <FilePane paneKey={windowId} provider="cloud115" directoryId={parent.id} title="115网盘" roots={[]} selectedRootId="@115" currentPath={currentPath}
         accountId={profile.accountId} ancestorIds={trail.map((part) => part.id)} dropFeedback={dropFeedback}
         cutPaths={clipboard?.operation === "move" && clipboard.sourceRootId === "@115" && clipboard.accountId === profile.accountId && clipboard.sourceParentPath === parent.id ? new Set(clipboard.paths) : undefined}
-        entries={entries} selectionStore={selection} showRootSelector={false} pathRootLabel={profile.name} labels={labels}
+        entries={entries} selectionStore={selection} showRootSelector={false} pathRootLabel={profile.name} pathRootControl={accountMenu} labels={labels}
         loading={loading} error={listError} isActive dropLayer={layer} dropWindowId={windowId} dropDisabled={!ready || Boolean(prompt || offlineTarget)}
         onRootChange={() => {}} onPathChange={(path) => void navigatePath(path)} onOpenDirectory={(entry) => navigate([...trail, { id: entry.relativePath, name: entry.name }])}
         onOpenFile={(entry) => {

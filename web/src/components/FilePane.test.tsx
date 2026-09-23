@@ -216,12 +216,13 @@ it("uses arrow keys to choose a directory suggestion", async () => {
   expect(onPathChange).toHaveBeenCalledWith("photos");
 });
 
-it("shows a slash root marker instead of a selector for one mapped root", () => {
+it("keeps the root menu available even for one mapped root", async () => {
   renderPane();
 
-  expect(screen.queryByRole("combobox", { name: "Left pane root" })).not.toBeInTheDocument();
-  expect(screen.getByLabelText("Left pane root")).toHaveTextContent("/");
+  expect(screen.getByRole("button", { name: "Left pane root" })).toHaveTextContent("Data");
   expect(screen.getByRole("button", { name: "/" })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Left pane root" }));
+  expect(await screen.findByRole("menuitem", { name: "Data" })).toHaveAttribute("aria-current", "true");
 });
 
 it("uses the shared rounded selector for multiple roots and reports a root change", async () => {
@@ -235,19 +236,17 @@ it("uses the shared rounded selector for multiple roots and reports a root chang
     onRootChange,
   });
 
-  const trigger = screen.getByRole("combobox", { name: "Left pane root" });
-  expect(trigger).toHaveAttribute("data-slot", "select-trigger");
-  expect(trigger).toHaveClass("pane-root-select-trigger");
+  const trigger = screen.getByRole("button", { name: "Left pane root" });
+  expect(trigger).toHaveAttribute("data-slot", "menu-trigger");
+  expect(trigger).toHaveClass("pane-location-trigger");
   expect(trigger).toHaveTextContent("Data");
 
   await userEvent.click(trigger);
-  const options = await screen.findAllByRole("option");
+  const options = await screen.findAllByRole("menuitem");
   expect(options.map((option) => option.textContent)).toEqual(["Data", "Backup"]);
-  expect(screen.getByRole("option", { name: "Data" })).toHaveAttribute("aria-selected", "true");
-  expect(document.querySelector('[data-slot="select-content"]')).toHaveClass("rounded-lg", "pane-root-select-menu");
-  expect(screen.getByRole("option", { name: "Backup" })).toHaveClass("rounded-md");
+  expect(screen.getByRole("menuitem", { name: "Data" })).toHaveAttribute("aria-current", "true");
 
-  await userEvent.click(screen.getByRole("option", { name: "Backup" }));
+  await userEvent.click(screen.getByRole("menuitem", { name: "Backup" }));
   expect(onRootChange).toHaveBeenCalledOnce();
   expect(onRootChange).toHaveBeenCalledWith("backup");
 });
@@ -536,7 +535,7 @@ it("restores a session view state and reports later sort changes", async () => {
   })));
 });
 
-it("renders full-mode root navigation without a root selector", async () => {
+it("renders full-mode root navigation with a root menu and the existing catalog shortcut", async () => {
   const onOpenRootCatalog = vi.fn();
   renderPane({
     roots: [{ id: "data", name: "Data" }, { id: "backup", name: "Backup" }],
@@ -547,6 +546,7 @@ it("renders full-mode root navigation without a root selector", async () => {
   });
 
   expect(screen.queryByRole("combobox", { name: /root/i })).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Left pane root" })).toHaveTextContent("Data");
   expect(screen.getByRole("button", { name: "Data" })).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "All locations" }));
   expect(onOpenRootCatalog).toHaveBeenCalledOnce();

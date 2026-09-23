@@ -69,6 +69,9 @@ test("account home, independent windows, account-bound requests and cross-accoun
   await expect(first.getByTestId("cloud-accounts")).toBeVisible();
   await expect(second.getByRole("button", { name: "same.txt", exact: true })).toBeVisible();
   await second.getByRole("button", { name: "切换115账号" }).click();
+  const selectorWidth = (await second.getByRole("button", { name: "切换115账号" }).boundingBox())!.width;
+  expect(selectorWidth).toBe(132);
+  expect((await page.getByRole("menu").boundingBox())!.width).toBe(selectorWidth);
   await page.getByRole("menuitem", { name: "账号1", exact: true }).click();
   await expect(second.getByRole("button", { name: "切换115账号" })).toHaveText(/账号1/);
   await expect.poll(() => requests.filter((r) => r.method === "browse").at(-1)?.params.accountId).toBe("1");

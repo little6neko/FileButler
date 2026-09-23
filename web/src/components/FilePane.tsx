@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { MenuItem, MenuPopup, MenuPortal, MenuPositioner, MenuRoot, MenuTrigger } from "@/components/ui/menu";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { LocationMenu } from "./LocationMenu";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Entry, Root } from "../api/types";
 import { entryTypeLabel, type EntryTypeLabels } from "../entryType";
@@ -180,7 +180,6 @@ export function FilePane({
       ? [{ label: rootCatalogLabel, path: virtualRootSegmentPath }, ...segments]
       : segments;
   }, [currentPath, onOpenRootCatalog, pathRootLabel, rootCatalogLabel]);
-  const singleRoot = roots.length <= 1;
   const paneTarget: FileDropData = {
     accountId,
     ancestorIds,
@@ -376,40 +375,12 @@ export function FilePane({
             icon={<ArrowUp />}
           />
         </div>
-        {pathRootControl ?? (!showRootSelector ? (
-          <span className="root-marker" aria-label={labels.rootLabel(title)} title={pathRootLabel}>
-            {pathRootLabel ?? "/"}
-          </span>
-        ) : singleRoot ? (
-          <span className="root-marker" aria-label={labels.rootLabel(title)}>
-            /
-          </span>
-        ) : (
-          <Select
-            items={roots.map((root) => ({ value: root.id, label: root.name }))}
-            value={selectedRootId}
-            onValueChange={(next) => {
-              if (next !== null && next !== selectedRootId) onRootChange(next);
-            }}
-          >
-            <SelectTrigger
-              size="sm"
-              aria-label={labels.rootLabel(title)}
-              className="pane-root-select-trigger"
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent
-              align="start"
-              alignItemWithTrigger={false}
-              className="pane-root-select-menu"
-            >
-              {roots.map((root) => (
-                <SelectItem key={root.id} value={root.id}>{root.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        ))}
+        {pathRootControl ?? <LocationMenu
+          label={labels.rootLabel(title)}
+          name={pathRootLabel ?? (roots.find((root) => root.id === selectedRootId)?.name || selectedRootId || "/")}
+          value={selectedRootId} items={roots} disabled={roots.length === 0 || dropDisabled}
+          onSelect={onRootChange}
+        />}
         <div className="path-combobox">
           <Input
             aria-label={labels.pathLabel(title)}

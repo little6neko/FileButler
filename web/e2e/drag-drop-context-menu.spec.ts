@@ -15,6 +15,37 @@ type CheckboxMutationProbe = {
   observers: MutationObserver[];
 };
 
+test("root menus navigate only their own window and retain back/forward history", async ({ page }) => {
+  await installMockApi(page);
+  await page.goto("/");
+  const icon = page.getByRole("button", { name: "Open File Manager" });
+  await icon.click();
+  const first = page.locator('.desktop-window[data-window-kind="file"]').nth(0);
+  await first.getByRole("button", { name: /Data/ }).dblclick();
+  const path = first.getByRole("textbox", { name: /path$/ });
+  await path.fill("/folder"); await path.press("Enter");
+  await expect(path).toHaveValue("/folder");
+  await first.getByRole("button", { name: /root$/ }).click();
+  const selectorWidth = (await first.getByRole("button", { name: /root$/ }).boundingBox())!.width;
+  expect(selectorWidth).toBe(132);
+  expect((await page.getByRole("menu").boundingBox())!.width).toBe(selectorWidth);
+  await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
+  await expect(first.getByRole("button", { name: /root$/ })).toHaveText("Archive");
+  await expect(path).toHaveValue("/");
+  await first.getByRole("button", { name: 'Back to "folder"' }).click();
+  await expect(path).toHaveValue("/folder");
+  await expect(first.getByRole("button", { name: /root$/ })).toHaveText("Data");
+  await first.getByRole("button", { name: 'Forward to "Archive"' }).click();
+  await expect(path).toHaveValue("/");
+  await icon.click();
+  const second = page.locator('.desktop-window[data-window-kind="file"]').nth(1);
+  await second.getByRole("button", { name: /Data/ }).dblclick();
+  await second.getByRole("button", { name: /root$/ }).click();
+  await page.getByRole("menuitem", { name: "Long list", exact: true }).click();
+  await expect(second.getByRole("button", { name: /root$/ })).toHaveText("Long list");
+  await expect(first.getByRole("button", { name: /root$/ })).toHaveText("Archive");
+});
+
 test("opens independent full-mode windows and pastes between their active locations", async ({ page }) => {
   const { dryRuns } = await installMockApi(page);
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -304,8 +335,8 @@ test("previews same-pane and cross-pane drops with Windows-style defaults", asyn
   dialog = page.getByRole("dialog", { name: "move preview" });
   await dialog.getByRole("button", { name: "Cancel" }).click();
 
-  await right.getByRole("combobox", { name: "Right pane root" }).click();
-  await page.getByRole("option", { name: "Archive", exact: true }).click();
+  await right.getByRole("button", { name: "Right pane root" }).click();
+  await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
   await expect(entryRow(right, "archive.txt")).toBeVisible();
   const differentRootDryRunCount = dryRuns.length;
   await dragFileTo(page, entryRow(left, "source.txt"), entryRow(right, "archive.txt"));
@@ -358,8 +389,8 @@ test("limits dragging to names and keeps feedback above table chrome", async ({ 
   await page.mouse.up();
   expect(await handle.evaluate((element) => getComputedStyle(element).outlineStyle)).toBe("none");
 
-  await right.getByRole("combobox", { name: "Right pane root" }).click();
-  await page.getByRole("option", { name: "Archive", exact: true }).click();
+  await right.getByRole("button", { name: "Right pane root" }).click();
+  await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
   await expect(entryRow(right, "archive.txt")).toBeVisible();
   await holdFileDragTo(page, source, entryRow(right, "archive.txt"));
   const validLayer = right.locator('.file-list-drop-feedback[data-drop-state="valid"]');
@@ -392,8 +423,8 @@ test("supports desktop row selection and auto-scrolls a long marquee", async ({ 
   await page.setViewportSize({ width: 1280, height: 720 });
   await openCompactWorkspace(page);
   const left = page.getByRole("region", { name: "Left pane" });
-  await left.getByRole("combobox", { name: "Left pane root" }).click();
-  await page.getByRole("option", { name: "Long list", exact: true }).click();
+  await left.getByRole("button", { name: "Left pane root" }).click();
+  await page.getByRole("menuitem", { name: "Long list", exact: true }).click();
   await expect(entryRow(left, "item-01.txt")).toBeVisible();
 
   await entryRow(left, "item-02.txt").getByRole("cell").nth(2).click();
@@ -404,11 +435,11 @@ test("supports desktop row selection and auto-scrolls a long marquee", async ({ 
   await expect(left.getByLabel("Select item-02.txt")).toBeChecked();
   await expect(left.getByLabel("Select item-04.txt")).toBeChecked();
 
-  await left.getByRole("combobox", { name: "Left pane root" }).click();
-  await page.getByRole("option", { name: "Data", exact: true }).click();
+  await left.getByRole("button", { name: "Left pane root" }).click();
+  await page.getByRole("menuitem", { name: "Data", exact: true }).click();
   await expect(entryRow(left, "source.txt")).toBeVisible();
-  await left.getByRole("combobox", { name: "Left pane root" }).click();
-  await page.getByRole("option", { name: "Long list", exact: true }).click();
+  await left.getByRole("button", { name: "Left pane root" }).click();
+  await page.getByRole("menuitem", { name: "Long list", exact: true }).click();
   await expect(entryRow(left, "item-01.txt")).toBeVisible();
 
   await page.keyboard.down("Shift");
@@ -466,8 +497,8 @@ test("updates only the changed row checkbox when selection changes", async ({ pa
   await openCompactWorkspace(page);
   const left = page.getByRole("region", { name: "Left pane" });
   const right = page.getByRole("region", { name: "Right pane" });
-  await left.getByRole("combobox", { name: "Left pane root" }).click();
-  await page.getByRole("option", { name: "Long list", exact: true }).click();
+  await left.getByRole("button", { name: "Left pane root" }).click();
+  await page.getByRole("menuitem", { name: "Long list", exact: true }).click();
   await expect(entryRow(left, "item-01.txt")).toBeVisible();
   await expect(entryRow(right, "source.txt")).toBeVisible();
 

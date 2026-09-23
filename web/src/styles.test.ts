@@ -116,18 +116,18 @@ it("keeps the breadcrumb row compact with matching pane dividers", () => {
 });
 
 it("keeps the compact root selector inside its pane header", () => {
-  expect(rule(".pane-header")).toContain("grid-template-columns: auto auto minmax(120px, 160px) minmax(120px, 1fr) auto;");
+  expect(rule(".pane-header")).toContain("grid-template-columns: auto auto 132px minmax(120px, 1fr) auto;");
   expect(rule(".pane-navigation")).toContain("display: inline-flex;");
   expect(rule(".pane-navigation")).toContain("grid-column: 2;");
 
-  const trigger = rule(".pane-root-select-trigger");
+  const trigger = rule(".pane-location-trigger");
   expect(trigger).toContain("width: 100%;");
   expect(trigger).toContain("min-width: 0;");
   expect(trigger).toContain("height: 30px;");
 
-  const menu = rule(".pane-root-select-menu");
-  expect(menu).toContain("width: max(160px, var(--anchor-width));");
-  expect(menu).toContain("max-height: min(20rem, var(--available-height));");
+  const menu = rule('[data-slot="menu-popup"].pane-location-menu');
+  expect(menu).toContain("width: var(--anchor-width);");
+  expect(menu).toContain("min-width: var(--anchor-width);");
   expect(css).not.toContain(".pane-header select");
 });
 

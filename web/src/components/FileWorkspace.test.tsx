@@ -255,6 +255,26 @@ it.each([
   expect(container.querySelectorAll(".taskbar-window-button")).toHaveLength(1);
 });
 
+it("switches the current window's root through the path menu and preserves back/forward history", async () => {
+  const user = userEvent.setup();
+  const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
+  await user.click(await screen.findByRole("button", { name: "Open File Manager" }));
+  const window = container.querySelector<HTMLElement>(".desktop-window")!;
+  await user.dblClick(await within(window).findByRole("button", { name: /Source/ }));
+  await user.dblClick(await within(window).findByRole("button", { name: "folder" }));
+  await waitFor(() => expect(within(window).getByRole("textbox", { name: /path$/ })).toHaveValue("/folder"));
+  await user.click(within(window).getByRole("button", { name: /root$/ }));
+  await user.click(await screen.findByRole("menuitem", { name: "Target" }));
+  await waitFor(() => expect(api.browse).toHaveBeenLastCalledWith("target", "."));
+  expect(within(window).getByRole("textbox", { name: /path$/ })).toHaveValue("/");
+  expect(within(window).getByRole("button", { name: /root$/ })).toHaveTextContent("Target");
+  await user.click(within(window).getByRole("button", { name: 'Back to "folder"' }));
+  await waitFor(() => expect(api.browse).toHaveBeenLastCalledWith("source", "folder"));
+  expect(within(window).getByRole("textbox", { name: /path$/ })).toHaveValue("/folder");
+  await user.click(within(window).getByRole("button", { name: 'Forward to "Target"' }));
+  await waitFor(() => expect(api.browse).toHaveBeenLastCalledWith("target", "."));
+});
+
 it("toggles the jobs sheet and closes it for taskbar window or mode changes", async () => {
   const user = userEvent.setup();
   const { container } = render(<FileWorkspace initialMode="desktop" persistMode={false} />);
@@ -1506,8 +1526,8 @@ it("runs compact toolbar links through the link API without consuming the saved 
   const leftPane = await screen.findByRole("region", { name: "Left pane" });
   const rightPane = await screen.findByRole("region", { name: "Right pane" });
 
-  await user.click(within(rightPane).getByRole("combobox", { name: "Right pane root" }));
-  await user.click(await screen.findByRole("option", { name: "Target" }));
+  await user.click(within(rightPane).getByRole("button", { name: "Right pane root" }));
+  await user.click(await screen.findByRole("menuitem", { name: "Target" }));
   await waitFor(() => expect(api.browse).toHaveBeenCalledWith("target", "."));
 
   const sourceName = await within(leftPane).findByText("a.txt");

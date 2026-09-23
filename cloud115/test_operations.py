@@ -51,6 +51,34 @@ class FakeOperations(CloudOperations):
 
 
 class OperationsTests(unittest.TestCase):
+    def test_preview_url_never_fetches_bytes_or_exposes_headers(self):
+        class URL(str):
+            headers = {"User-Agent": "Browser-UA"}
+        client = Mock(user_id=7)
+        client.download_url.return_value = URL("https://cdn.example/file?f=1&t=9999999999")
+        operations = FakeOperations(client)
+        with patch.object(operations, "info", return_value={"is_dir": False, "pickcode": "pc", "name": "a.jpg", "size": 42}), patch("operations.urlopen") as fetch:
+            result = operations.operation("preview.url", {"id": "1", "userAgent": "Browser-UA"}, None)
+        self.assertEqual(set(result), {"url", "name", "size", "accountId"})
+        self.assertEqual(result["accountId"], "7")
+        client.download_url.assert_called_once_with("pc", user_agent="Browser-UA", app="android", timeout=30)
+        fetch.assert_not_called()
+
+    def test_preview_url_rejects_cookie_bound_or_unsafe_urls(self):
+        class URL(str):
+            headers = {}
+        client = Mock(user_id=7)
+        operations = FakeOperations(client)
+        for value in ("https://cdn.example/file?f=3", "javascript:alert(1)", "https://user:password@cdn.example/file"):
+            client.download_url.return_value = URL(value)
+            with patch.object(operations, "info", return_value={"is_dir": False, "pickcode": "pc", "name": "a.jpg"}), self.assertRaises(ProviderError):
+                operations.operation("preview.url", {"id": "1"}, None)
+        value = URL("https://cdn.example/file")
+        value.headers = {"Cookie": "secret"}
+        client.download_url.return_value = value
+        with patch.object(operations, "info", return_value={"is_dir": False, "pickcode": "pc", "name": "a.jpg"}), self.assertRaisesRegex(ProviderError, "额外认证"):
+            operations.operation("preview.url", {"id": "1"}, None)
+
     def test_paginated_directory_changes_are_not_treated_as_complete(self):
         operations = FakeOperations()
         for second in (

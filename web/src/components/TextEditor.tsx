@@ -19,6 +19,7 @@ import { ErrorBanner } from "./ErrorBanner";
 import { TextEditorLanguageSelect } from "./TextEditorLanguageSelect";
 
 type Props = {
+  readOnly?: boolean;
   session: TextEditorSession;
   labels?: UIStrings;
   loader?: CodeMirrorLoader;
@@ -51,6 +52,7 @@ type CodeMirrorRuntime = {
 const textEncoder = new TextEncoder();
 
 export function TextEditor({
+  readOnly = false,
   session,
   labels = strings.en,
   loader = codeMirrorLoader,
@@ -106,6 +108,7 @@ export function TextEditor({
             core,
             session,
             labels.textEditorLabel(session.fileName),
+            readOnly,
           );
           const initialized = session.initializeRuntime(adapter);
           if (!isCodeMirrorRuntime(initialized)) throw new Error("unable to initialize editor runtime");
@@ -140,7 +143,7 @@ export function TextEditor({
       mountedView.destroy();
       parent.replaceChildren();
     };
-  }, [labels, loader, mountKey, session, snapshot.hasDocument]);
+  }, [labels, loader, mountKey, readOnly, session, snapshot.hasDocument]);
 
   const editorReady = snapshot.hasDocument &&
     !effectiveMountState.loading &&
@@ -191,7 +194,7 @@ export function TextEditor({
   return (
     <div className="text-editor-layout" data-editor-status={snapshot.status}>
       <div className="text-editor-toolbar">
-        <Button
+        {!readOnly ? <Button
           type="button"
           size="sm"
           variant="outline"
@@ -202,8 +205,8 @@ export function TextEditor({
         >
           <Save aria-hidden="true" />
           {labels.save}
-        </Button>
-        <span className="text-editor-save-state" aria-live="polite">{saveStatus}</span>
+        </Button> : null}
+        <span className="text-editor-save-state" aria-live="polite">{readOnly ? (labels === strings["zh-CN"] ? "只读预览" : "Read-only preview") : saveStatus}</span>
         <TextEditorLanguageSelect
           selection={snapshot.languageSelection}
           automaticLanguage={snapshot.automaticLanguage}
@@ -246,6 +249,7 @@ function createCodeMirrorAdapter(
   core: CodeMirrorCore,
   session: TextEditorSession,
   accessibleLabel: string,
+  readOnly = false,
 ): EditorDocumentAdapter {
   let createdRuntime: CodeMirrorRuntime | null = null;
   return {
@@ -261,6 +265,8 @@ function createCodeMirrorAdapter(
         degradationScheduled: false,
       };
       const extensions: Extension[] = [
+        core.state.EditorState.readOnly.of(readOnly),
+        core.view.EditorView.editable.of(!readOnly),
         core.view.lineNumbers(),
         core.view.highlightActiveLineGutter(),
         core.view.highlightSpecialChars(),

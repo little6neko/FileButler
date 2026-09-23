@@ -18,11 +18,12 @@ import { createClipboardActions, type FileAction } from "./fileActions";
 type Prompt = { method: "mkdir" | "rename" | "delete" | "extract"; name: string; password: string; ids: string[]; destId: string };
 const rootLocation: CloudLocation = [{ id: "0", name: "115网盘" }];
 
-export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = rootLocation, onOpenNewWindow, onPowerRename, onSuperRename, labels = strings["zh-CN"] }: {
+export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = rootLocation, onOpenNewWindow, onPowerRename, onSuperRename, onPreview, labels = strings["zh-CN"] }: {
   windowId: string; layer: number; onJobCreated(id: string): void;
   initialTrail?: CloudLocation; onOpenNewWindow?(trail: CloudLocation): void; labels?: UIStrings;
   onPowerRename?(parentId: string, ids: string[], sourceTitle: string): void;
   onSuperRename?(parentId: string, sourceTitle: string): void;
+  onPreview?(entry: CloudEntry, entries: CloudEntry[], accountId: string): void;
 }) {
   const events = useOptionalJobEventsStore();
   const [loggedIn, setLoggedIn] = useState(false);
@@ -216,6 +217,14 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
         entries={entries} selectionStore={selection} showRootSelector={false} pathRootLabel={profile.name} labels={labels}
         loading={loading} error={listError} isActive dropLayer={layer} dropWindowId={windowId} dropDisabled={Boolean(prompt || offlineTarget)}
         onRootChange={() => {}} onPathChange={(path) => void navigatePath(path)} onOpenDirectory={(entry) => navigate([...trail, { id: entry.relativePath, name: entry.name }])}
+        onOpenFile={(entry) => {
+          if (!ready || prompt || offlineTarget) return;
+          const source = cloudEntries.find((item) => item.id === entry.relativePath);
+          if (!source) return;
+          if (isCloudArchive(source)) { setError(""); setPrompt({ method: "extract", ids: [source.id], destId: parent.id, name: "", password: "" }); }
+          else if (profile.accountId) onPreview?.(source, cloudEntries, profile.accountId);
+          else setError("正在读取账号信息，请稍后重试");
+        }}
         onToggleSelection={selection.toggle} onSelectEntry={(id, modifiers) => selection.select(id, fileSelectionMode(modifiers))}
         onSelectAll={selection.selectAll} onSelectPaths={(paths) => selection.replace(paths)} onVisibleOrderChange={selection.setVisibleOrder}
         onRefresh={() => { void refresh(); void refreshProfile(); }}

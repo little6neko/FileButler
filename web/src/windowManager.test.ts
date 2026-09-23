@@ -8,6 +8,8 @@ import {
   isSuperRenameWindow,
   minimizeWindow,
   openFileWindow,
+  openCloud115Window,
+  openCloudPreviewWindow,
   openMediaPreviewWindow,
   openPowerRenameWindow,
   openTextEditorWindow,
@@ -24,6 +26,17 @@ import {
 const bounds = { width: 1000, height: 700 };
 
 describe("window manager", () => {
+  it("preserves a cloud directory trail and independent preview identity", () => {
+    const trail = [{ id: "0", name: "115" }, { id: "42", name: "Pictures" }];
+    let state = openCloud115Window(createWindowManagerState(), "cloud", bounds, trail);
+    state = openCloudPreviewWindow(state, "preview", bounds);
+    expect(state.windows).toMatchObject([
+      { id: "cloud", kind: "cloud115", trail },
+      { id: "preview", kind: "cloudPreview", instanceId: "preview" },
+    ]);
+    state = restoreWindow(minimizeWindow(state, "preview"), "preview");
+    expect(state.windows[1]).toMatchObject({ kind: "cloudPreview", instanceId: "preview", status: "normal" });
+  });
   it("opens windows with deterministic cascading rectangles and focus order", () => {
     let state = createWindowManagerState();
     state = openFileWindow(state, "window-1", "session-1", bounds);

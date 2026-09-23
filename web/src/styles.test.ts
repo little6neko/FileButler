@@ -57,7 +57,8 @@ it("overlays the job cancel button with file-row-like interaction feedback", () 
 it("keeps compact sticky file headers and an active-pane ring", () => {
   expect(rule(".file-table thead th")).toContain("position: sticky;");
   expect(rule(".file-table thead th")).toContain("height: 29px;");
-  expect(rule('.file-pane[data-active="true"]')).toContain("box-shadow:");
+  expect(rule('.file-pane[data-active="true"]:not([data-provider="cloud115"])')).toContain("box-shadow:");
+  expect(rule('.workspace-shell[data-workspace-mode="compact"] > .system-taskbar')).toContain("box-shadow: none;");
 });
 
 it("fades circular media navigation controls through window, hover, and disabled states", () => {
@@ -85,6 +86,7 @@ it("fades circular media navigation controls through window, hover, and disabled
 });
 
 it("fits full-mode media inside the window without changing compact preview overflow", () => {
+  expect(rule('.desktop-window[data-window-kind="cloudPreview"]:hover .media-preview-navigation-button')).toContain("pointer-events: auto;");
   expect(rule(".media-preview-content")).toContain("overflow: auto;");
 
   const fullContent = rule(".media-preview-window-layout .media-preview-content");
@@ -175,6 +177,6 @@ it("draws pane and row drop feedback above sticky headers without intercepting i
 
 function rule(selector: string) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const match = css.match(new RegExp(`${escaped}\\s*\\{([^}]*)\\}`));
+  const match = css.match(new RegExp(`${escaped}(?:\\s*,[^{}]+)?\\s*\\{([^}]*)\\}`));
   return match?.[1] ?? "";
 }

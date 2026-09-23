@@ -48,7 +48,7 @@ type Request struct {
 }
 
 var numericID = regexp.MustCompile(`^(0|[1-9][0-9]{0,19})$`)
-var queries = map[string]bool{"status": true, "login.start": true, "login.check": true, "logout": true, "browse": true, "profile": true, "resolve": true, "offline.add": true}
+var queries = map[string]bool{"status": true, "login.start": true, "login.check": true, "logout": true, "browse": true, "profile": true, "resolve": true, "offline.add": true, "preview.url": true}
 var mutations = map[string]bool{"mkdir": true, "rename": true, "copy": true, "move": true, "delete": true, "upload": true, "download": true, "extract": true}
 
 func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
@@ -93,6 +93,18 @@ func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		params["loginSession"] = req.LoginSession
+	}
+	if method == "preview.url" {
+		w.Header().Set("Cache-Control", "no-store")
+		if _, ok := auth.CurrentUser(r.Context()); !ok {
+			respond(w, 401, nil, "authentication required")
+			return
+		}
+		if req.ID == "" {
+			respond(w, 400, nil, "请选择预览文件")
+			return
+		}
+		params["userAgent"] = r.UserAgent()
 	}
 	if method == "offline.add" {
 		link := strings.TrimSpace(req.URL)

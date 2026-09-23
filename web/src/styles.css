@@ -816,7 +816,8 @@ body {
   right: 12px;
 }
 
-.desktop-window[data-window-kind="mediaPreview"]:hover .media-preview-navigation-button {
+.desktop-window[data-window-kind="mediaPreview"]:hover .media-preview-navigation-button,
+.desktop-window[data-window-kind="cloudPreview"]:hover .media-preview-navigation-button {
   opacity: 0.58;
   pointer-events: auto;
 }
@@ -832,7 +833,8 @@ body {
   box-shadow: 0 5px 16px rgb(15 23 42 / 38%);
 }
 
-.desktop-window[data-window-kind="mediaPreview"]:hover .media-preview-navigation-button:hover:not(:disabled) {
+.desktop-window[data-window-kind="mediaPreview"]:hover .media-preview-navigation-button:hover:not(:disabled),
+.desktop-window[data-window-kind="cloudPreview"]:hover .media-preview-navigation-button:hover:not(:disabled) {
   opacity: 1;
 }
 
@@ -848,6 +850,7 @@ body {
 }
 
 .desktop-window[data-window-kind="mediaPreview"]:hover .media-preview-navigation-button:disabled,
+.desktop-window[data-window-kind="cloudPreview"]:hover .media-preview-navigation-button:disabled,
 .media-preview-dialog:hover .media-preview-navigation-button:disabled {
   opacity: 0.34;
 }

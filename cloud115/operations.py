@@ -6,7 +6,7 @@ import time
 import uuid
 from contextlib import contextmanager
 from urllib.request import Request, urlopen
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, parse_qs
 
 from errors import Canceled, ProviderError
 from batch import BatchOperations
@@ -113,6 +113,22 @@ class CloudOperations(BatchOperations):
             return self.batch_execute(params, report)
         if method == "browse":
             return self.browse(parent, params.get("offset", 0))
+        if method == "preview.url":
+            item = self.info(params["id"])
+            if item["is_dir"]:
+                raise ProviderError("目录不能作为文件预览")
+            url = client.download_url(item["pickcode"], user_agent=params.get("userAgent", ""), app="android", timeout=30)
+            parsed = urlsplit(str(url))
+            if parsed.scheme not in ("http", "https") or not parsed.hostname or parsed.username or parsed.password:
+                raise ProviderError("115返回了无效直链")
+            headers = {key.lower(): value for key, value in getattr(url, "headers", {}).items()}
+            flags = parse_qs(parsed.query).get("f", [""])[0]
+            if "cookie" in headers or "authorization" in headers or flags not in ("", "0", "1"):
+                raise ProviderError("该直链需要额外认证，浏览器无法安全直连；不会通过FB中转")
+            if any(key not in ("user-agent", "accept", "accept-encoding", "connection") for key in headers):
+                raise ProviderError("该直链要求额外请求头，浏览器无法直接预览")
+            # Never serialize SDK headers or account credentials.
+            return {"url": str(url), "name": item["name"], "size": int(item.get("size") or 0), "accountId": str(client.user_id)}
         if method == "profile":
             name = "115网盘"
             try:

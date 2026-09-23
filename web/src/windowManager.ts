@@ -46,7 +46,8 @@ export type SuperRenameWindowRecord = BaseWindowRecord & {
 };
 
 export type Cloud115WindowRecord = BaseWindowRecord & { kind: "cloud115"; instanceId: string; trail?: { id: string; name: string }[] };
-export type DesktopWindowRecord = FileWindowRecord | PowerRenameWindowRecord | MediaPreviewWindowRecord | TextEditorWindowRecord | SuperRenameWindowRecord | Cloud115WindowRecord;
+export type CloudPreviewWindowRecord = BaseWindowRecord & { kind: "cloudPreview"; instanceId: string };
+export type DesktopWindowRecord = FileWindowRecord | PowerRenameWindowRecord | MediaPreviewWindowRecord | TextEditorWindowRecord | SuperRenameWindowRecord | Cloud115WindowRecord | CloudPreviewWindowRecord;
 
 export type WindowManagerState = {
   windows: DesktopWindowRecord[];
@@ -71,6 +72,10 @@ export function createWindowManagerState(): WindowManagerState {
 
 export function openCloud115Window(state: WindowManagerState, id: string, bounds: DesktopBounds, trail?: { id: string; name: string }[]): WindowManagerState {
   return openWindow(state, id, { kind: "cloud115", instanceId: id, trail }, bounds);
+}
+
+export function openCloudPreviewWindow(state: WindowManagerState, id: string, bounds: DesktopBounds): WindowManagerState {
+  return openWindow(state, id, { kind: "cloudPreview", instanceId: id }, bounds);
 }
 
 export function openFileWindow(
@@ -127,6 +132,7 @@ function openWindow(
     | Pick<MediaPreviewWindowRecord, "kind" | "instanceId">
     | Pick<TextEditorWindowRecord, "kind" | "instanceId">
     | Pick<SuperRenameWindowRecord, "kind" | "instanceId">
+    | Pick<CloudPreviewWindowRecord, "kind" | "instanceId">
     | Pick<Cloud115WindowRecord, "kind" | "instanceId" | "trail">,
   bounds: DesktopBounds,
 ): WindowManagerState {
@@ -141,9 +147,7 @@ function openWindow(
     zOrder: order,
     focusOrder: order,
   };
-  const window: DesktopWindowRecord = identity.kind === "file"
-    ? { ...base, kind: identity.kind, sessionId: identity.sessionId }
-    : { ...base, kind: identity.kind, instanceId: identity.instanceId };
+  const window: DesktopWindowRecord = { ...base, ...identity };
   return {
     windows: [...state.windows, window],
     activeWindowId: id,

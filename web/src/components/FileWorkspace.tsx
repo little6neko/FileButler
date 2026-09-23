@@ -22,6 +22,9 @@ import {
 } from "@dnd-kit/core";
 import { Cloud, FileCode2, FileImage, FileVideo, Files, ScanText, WandSparkles } from "lucide-react";
 import { Cloud115Window } from "./Cloud115Window";
+import { Cloud115Preview, type CloudPreviewInstance } from "./Cloud115Preview";
+import { mediaKindForPath } from "../media";
+import type { CloudEntry } from "../cloud115";
 import { cloudCall, type CloudDrag } from "../cloud115";
 import { cloudPowerRenameClient, cloudSuperRenameClient, type PowerRenameClient } from "../cloud115Rename";
 import { toast } from "sonner";
@@ -91,6 +94,7 @@ import {
   minimizeWindow,
   openFileWindow,
   openCloud115Window,
+  openCloudPreviewWindow,
   openMediaPreviewWindow,
   openPowerRenameWindow,
   openSuperRenameWindow,
@@ -326,6 +330,7 @@ export function FileWorkspace({
   const dragSourceRef = useRef<FileDragSource | null>(null);
   const cloudDragRef = useRef<CloudDrag | null>(null);
   const [cloudDrag, setCloudDrag] = useState<CloudDrag | null>(null);
+  const [cloudPreviews, setCloudPreviews] = useState<Record<string, CloudPreviewInstance>>({});
   const refreshStateRef = useRef({ running: false, pending: false });
   const contextJobEvents = useOptionalJobEventsStore();
   const [fallbackJobEvents] = useState(() => new JobEventsStore());
@@ -645,6 +650,12 @@ export function FileWorkspace({
   });
 
   const taskbarWindows = windowState.windows.reduce<TaskbarWindow[]>((items, window) => {
+    if (window.kind === "cloudPreview") {
+      const preview = cloudPreviews[window.id];
+      const entry = preview?.entries.find((item) => item.id === preview.entryId);
+      if (entry) items.push({ id: window.id, kind: window.kind, title: entry.name, mediaKind: mediaKindForPath(entry.name) ?? undefined, status: window.status });
+      return items;
+    }
     if (window.kind === "cloud115") {
       items.push({ id: window.id, kind: window.kind, title: "115网盘", status: window.status });
       return items;
@@ -896,7 +907,15 @@ export function FileWorkspace({
     };
 
     if (window.kind === "cloud115") {
-      return <WindowFrame key={window.id} {...frameProps} title="115网盘" icon={<Cloud aria-hidden="true" />}><Cloud115Window windowId={window.id} layer={window.zOrder} onJobCreated={handleJobCreated} initialTrail={window.trail} onOpenNewWindow={openCloud115DesktopWindow} onPowerRename={openCloudPowerRename} onSuperRename={openCloudSuperRename} labels={labels} /></WindowFrame>;
+      return <WindowFrame key={window.id} {...frameProps} title="115网盘" icon={<Cloud aria-hidden="true" />}><Cloud115Window windowId={window.id} layer={window.zOrder} onJobCreated={handleJobCreated} initialTrail={window.trail} onOpenNewWindow={openCloud115DesktopWindow} onPowerRename={openCloudPowerRename} onSuperRename={openCloudSuperRename} onPreview={openCloudPreview} labels={labels} /></WindowFrame>;
+    }
+
+    if (window.kind === "cloudPreview") {
+      const preview = cloudPreviews[window.id];
+      const entry = preview?.entries.find((item) => item.id === preview.entryId);
+      if (!preview || !entry) return null;
+      const kind = mediaKindForPath(entry.name);
+      return <WindowFrame key={window.id} {...frameProps} title={entry.name} icon={kind === "image" ? <FileImage /> : kind === "video" ? <FileVideo /> : <FileCode2 />}><Cloud115Preview instance={preview} labels={labels} onNavigate={(entryId) => setCloudPreviews((current) => ({ ...current, [window.id]: { ...preview, entryId } }))} /></WindowFrame>;
     }
 
     if (isFileWindow(window)) {
@@ -1910,6 +1929,12 @@ export function FileWorkspace({
     commitWindowState((current) => openCloud115Window(current, id, desktopBoundsRef.current, trail));
   }
 
+  function openCloudPreview(entry: CloudEntry, entries: CloudEntry[], accountId: string) {
+    const id = `window-${++windowCounterRef.current}`;
+    setCloudPreviews((current) => ({ ...current, [id]: { entryId: entry.id, entries: [...entries], accountId } }));
+    commitWindowState((current) => openCloudPreviewWindow(current, id, desktopBoundsRef.current));
+  }
+
   function openCloudPowerRename(parentId: string, paths: string[], sourceTitle: string) {
     const id = `window-${++windowCounterRef.current}`;
     const instance: PowerRenameInstance = { id, rootId: "@115", paths, sourceTitle, options: { ...defaultRenameOptions, readMetadata: false }, submitting: false, submitError: null, client: cloudPowerRenameClient(parentId) };
@@ -2023,6 +2048,11 @@ export function FileWorkspace({
   function closeDesktopWindow(id: string) {
     const target = windowStateRef.current.windows.find((window) => window.id === id);
     if (!target) return;
+    if (target.kind === "cloudPreview") {
+      commitWindowState((current) => closeWindow(current, id));
+      setCloudPreviews((current) => withoutKey(current, id));
+      return;
+    }
     commitWindowDialogs((current) => clearWindowDialog(current, id));
     if (isMediaPreviewWindow(target)) {
       commitWindowState((current) => closeWindow(current, id));

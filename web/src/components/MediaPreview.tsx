@@ -22,9 +22,11 @@ type NavigationProps = {
   onNext?(): void;
 };
 
-type ContentProps = Pick<Props, "name" | "url" | "kind"> & NavigationProps;
+type ContentProps = Pick<Props, "name" | "url" | "kind"> & NavigationProps & { onLoad?(): void; onError?(): void };
 
 export function MediaPreviewContent({
+  onLoad,
+  onError,
   name,
   url,
   kind,
@@ -40,9 +42,9 @@ export function MediaPreviewContent({
   return (
     <div className="media-preview-content" data-testid="media-preview-content">
       {kind === "image" ? (
-        <img key={mediaKey} src={url} alt={name} />
+        <img key={mediaKey} src={url} alt={name} onLoad={onLoad} onError={onError} referrerPolicy="no-referrer" />
       ) : (
-        <video key={mediaKey} src={url} controls aria-label={name} />
+        <video key={mediaKey} src={url} controls aria-label={name} onLoadedData={onLoad} onError={onError} />
       )}
       {showNavigation ? (
         <>

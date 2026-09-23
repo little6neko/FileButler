@@ -10,7 +10,7 @@ export type WorkspaceMode = "compact" | "desktop";
 
 export type TaskbarWindow = {
   id: string;
-  kind: "file" | "powerRename" | "mediaPreview" | "textEditor" | "superRename" | "cloud115";
+  kind: "file" | "powerRename" | "mediaPreview" | "textEditor" | "superRename" | "cloud115" | "cloudPreview";
   mediaKind?: MediaKind;
   title: string;
   status: WindowStatus;
@@ -72,7 +72,8 @@ export function WorkspaceShell({
                 {window.kind === "powerRename" ? <ScanText />
                   : window.kind === "cloud115" ? <Cloud />
                   : window.kind === "superRename" ? <WandSparkles />
-                  : window.kind === "mediaPreview"
+                  : window.kind === "cloudPreview" && !window.mediaKind ? <FileCode2 />
+                  : window.kind === "mediaPreview" || window.kind === "cloudPreview"
                     ? window.mediaKind === "video" ? <FileVideo /> : <FileImage />
                     : window.kind === "textEditor" ? <FileCode2 />
                     : <Files />}

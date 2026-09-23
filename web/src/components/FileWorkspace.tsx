@@ -864,7 +864,7 @@ export function FileWorkspace({
           <span><Files aria-hidden="true" /></span>
           <strong>{labels.fileManager}</strong>
         </button>
-        <button type="button" className="desktop-app-icon" aria-label="打开115网盘" onClick={() => commitWindowState((current) => openCloud115Window(current, `cloud115-${crypto.randomUUID()}`, desktopBounds))}>
+        <button type="button" className="desktop-app-icon" aria-label="打开115网盘" onClick={openCloud115DesktopWindow}>
           <span><Cloud aria-hidden="true" /></span><strong>115网盘</strong>
         </button>
         </div>
@@ -1897,6 +1897,11 @@ export function FileWorkspace({
     const id = `window-${++windowCounterRef.current}`;
     commitWindowState((current) => openFileWindow(current, id, sessionId, desktopBoundsRef.current));
     return id;
+  }
+
+  function openCloud115DesktopWindow() {
+    const id = `window-${++windowCounterRef.current}`;
+    commitWindowState((current) => openCloud115Window(current, id, desktopBoundsRef.current));
   }
 
   function openPowerRenameForSession(sessionId: string) {

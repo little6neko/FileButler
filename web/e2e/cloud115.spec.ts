@@ -1,5 +1,32 @@
 import { expect, test } from "@playwright/test";
 
+test("opens distinct 115 windows without secure-context crypto APIs", async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(crypto, "randomUUID", { value: undefined, configurable: true });
+  });
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/jobs/events") {
+      return route.fulfill({ contentType: "text/event-stream", body: 'event: jobs.snapshot\ndata: {"runtimeId":"test","cursor":0,"reset":false,"jobs":[]}\n\n' });
+    }
+    const data = path === "/api/init/status" ? { needsInitialization: false }
+      : path === "/api/auth/me" ? { id: 1, username: "admin" }
+      : path === "/api/cloud115/status" ? { loggedIn: false } : [];
+    await route.fulfill({ json: { data } });
+  });
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  const icon = page.getByRole("button", { name: "打开115网盘", exact: true });
+  await icon.click();
+  await expect(page.getByText("登录115网盘", { exact: true })).toBeVisible();
+  await icon.click();
+  const windows = page.locator('.desktop-window[data-window-kind="cloud115"]');
+  await expect(windows).toHaveCount(2);
+  await expect(page.getByText("登录115网盘", { exact: true })).toHaveCount(2);
+  expect(errors).toEqual([]);
+});
+
 test("desktop icons are vertical and local/cloud drag creates background transfers", async ({ page }) => {
   const transfers: { method: string; params: Record<string, unknown> }[] = [];
   await page.setViewportSize({ width: 2000, height: 1000 });

@@ -61,7 +61,7 @@ test("local details supports independent windows, SHA1 refresh and blank-directo
   }
   await expectInlineButtons();
   await details.getByRole("button", { name: "复制原始路径" }).click();
-  expect(await page.evaluate(() => sessionStorage.getItem("copied-path"))).toBe("/files");
+  expect(await page.evaluate(() => sessionStorage.getItem("copied-path"))).toBe("/files/a.txt");
   await details.getByRole("button", { name: "重新获取" }).click();
   await expect(details.getByText("A".repeat(40), { exact: true })).toBeVisible();
   await expectInlineButtons();

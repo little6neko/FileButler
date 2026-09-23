@@ -49,9 +49,29 @@ it("cancels requests on close and account changes", async () => {
   await screen.findByText("txt"); act(() => window.dispatchEvent(new Event("cloud115-account-changed")));
   expect(screen.getByRole("alert")).toHaveTextContent("115账号已变化"); expect(screen.getByRole("button", { name: "重新获取" })).toBeDisabled();
 });
-it("copies the original directory path", async () => {
+it.each([
+  { rootId: "a", path: "a.txt", name: "a.txt", type: "file" as const, location: "/data", expected: "/data/a.txt" },
+  { rootId: "a", path: "folder", name: "folder", type: "directory" as const, location: "/data", expected: "/data/folder" },
+  { rootId: "a", path: ".", name: "data", type: "directory" as const, location: "/data", expected: "/data" },
+  { rootId: "a", path: "0", name: "0", type: "directory" as const, location: "/data", expected: "/data/0" },
+  { rootId: "@115", path: "123", name: "文件.txt", type: "file" as const, location: "/资料", expected: "/资料/文件.txt" },
+  { rootId: "@115", path: "456", name: "folder", type: "directory" as const, location: "/", expected: "/folder" },
+  { rootId: "@115", path: "0", name: "根目录", type: "directory" as const, location: "/", expected: "/" },
+])("copies a single item's full path: $rootId $path", async ({ rootId, path, name, type, location, expected }) => {
   const writeText = vi.fn().mockResolvedValue(undefined); vi.stubGlobal("navigator", { clipboard: { writeText } });
-  render(<FileDetails target={target} labels={strings["zh-CN"]} />); await screen.findByText("/data"); fireEvent.click(screen.getByRole("button", { name: "复制原始路径" })); await waitFor(() => expect(writeText).toHaveBeenCalledWith("/data"));
+  vi.mocked(readDetails).mockImplementation(async (_target, section) => section === "basic" ? [{ ...item, path, name, type, location }] : { size: 0, allocated: 0, files: 0, folders: 0 });
+  render(<FileDetails target={{ rootId, paths: [path], names: [name] }} labels={strings["zh-CN"]} />);
+  await screen.findByText(location);
+  fireEvent.click(screen.getByRole("button", { name: "复制原始路径" }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith(expected));
+});
+it.each(["a", "@115"])("copies only the shared directory for multiple items in %s", async (rootId) => {
+  const writeText = vi.fn().mockResolvedValue(undefined); vi.stubGlobal("navigator", { clipboard: { writeText } });
+  vi.mocked(readDetails).mockImplementation(async (_target, section) => section === "basic" ? [item, { ...item, name: "folder", path: "folder", type: "directory" }] : { size: 0, allocated: 0, files: 0, folders: 0 });
+  render(<FileDetails target={{ rootId, paths: ["1", "2"], names: ["a.txt", "folder"] }} labels={strings["zh-CN"]} />);
+  await screen.findByText("/data");
+  fireEvent.click(screen.getByRole("button", { name: "复制原始路径" }));
+  await waitFor(() => expect(writeText).toHaveBeenCalledWith("/data"));
 });
 it.each([true, false])("copies without the Clipboard API and reports the result (success=%s)", async (success) => {
   vi.stubGlobal("navigator", {});
@@ -59,7 +79,7 @@ it.each([true, false])("copies without the Clipboard API and reports the result 
   const failed = vi.spyOn(toast, "error").mockImplementation(() => "error");
   const original = Object.getOwnPropertyDescriptor(document, "execCommand");
   const execute = vi.fn(() => {
-    expect(document.querySelector("textarea")?.value).toBe("/data");
+    expect(document.querySelector("textarea")?.value).toBe("/data/a.txt");
     return success;
   });
   Object.defineProperty(document, "execCommand", { configurable: true, value: execute });

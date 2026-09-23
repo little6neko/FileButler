@@ -35,6 +35,25 @@ func TestCloudPowerUsesSharedNaturalNumberingAndRejectsMetadata(t *testing.T) {
 	}
 }
 
+func TestCloudPowerSkipsUnsafeUnselectedNamesButRejectsUnsafeTargets(t *testing.T) {
+	scan := sampleScan()
+	scan.Groups[0].Entries = append(scan.Groups[0].Entries, cloudEntry{ID: "99", ParentID: "10", Name: "无关/文件.txt"})
+	opts := rename.Options{Search: "^.*", Replace: "${start=1,padding=3}", UseRegex: true, NameOnly: true}
+	plan, items, err := planPower(scan, opts)
+	if err != nil || plan.HasConflict || len(items) != 2 {
+		t.Fatalf("%+v %v", plan, err)
+	}
+	opts.Replace = "new\\name"
+	plan, _, err = planPower(scan, opts)
+	if err == nil && !plan.HasConflict {
+		t.Fatal("unsafe target accepted")
+	}
+	scan.SelectedIDs = append(scan.SelectedIDs, "99")
+	if _, _, err := planPower(scan, opts); err == nil {
+		t.Fatal("unsafe selected source accepted")
+	}
+}
+
 func TestCloudSuperUsesSharedVideoAndNestedGroupRules(t *testing.T) {
 	inventory := superInventory(sampleScan().Groups)
 	group := inventory.Groups[0]

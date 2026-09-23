@@ -62,6 +62,11 @@ def swap():
 
 
 class BatchTests(unittest.TestCase):
+    def test_power_scan_ignores_unselected_sibling_path_characters(self):
+        self.cloud.files["3"] = {"name": "无关/文件.txt", "parent_id": "0", "is_dir": False}
+        result = self.cloud.batch_scan({"kind": "power", "ids": ["1"]})
+        self.assertEqual(result["selectedIds"], ["1"])
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"path"
 	"sort"
@@ -209,6 +210,12 @@ func planPower(scan cloudScan, options rename.Options) (rename.PlanResult, []bat
 	occupied := map[string]bool{}
 	for _, group := range scan.Groups {
 		for _, entry := range group.Entries {
+			if entry.Name == "" || entry.Name == "." || entry.Name == ".." || strings.ContainsAny(entry.Name, "/\\\x00") {
+				if selected[entry.ID] {
+					return rename.PlanResult{}, nil, fmt.Errorf("选中条目 %s 的原名称无法用于批量路径预览：%q", entry.ID, entry.Name)
+				}
+				continue
+			}
 			key := path.Join(group.Path, entry.Name)
 			occupied[key] = true
 			if selected[entry.ID] && !(entry.IsDirectory && opts.ExcludeFolders || !entry.IsDirectory && opts.ExcludeFiles) {
@@ -223,7 +230,7 @@ func planPower(scan cloudScan, options rename.Options) (rename.PlanResult, []bat
 	}
 	items := []batchItem{}
 	for i, item := range plan.Items {
-		if item.NewName == "" || item.NewName == "." || item.NewName == ".." || strings.ContainsRune(item.NewName, 0) {
+		if item.NewName == "" || item.NewName == "." || item.NewName == ".." || strings.ContainsAny(item.NewName, "/\\\x00") {
 			plan.Items[i].Conflict = true
 			plan.Items[i].ErrorText = "目标名称无效"
 			plan.HasConflict = true

@@ -8,7 +8,7 @@ from errors import ProviderError
 
 
 class BatchOperations:
-    def batch_children(self, parent):
+    def batch_children(self, parent, validate_names=False):
         entries = []
         for entry in self.children(parent):
             entries.append(entry)
@@ -16,8 +16,12 @@ class BatchOperations:
                 raise ProviderError("目录超过单次批量处理上限10000项，请分组操作")
         ids, names = set(), set()
         for entry in entries:
-            from operations import safe_name
-            safe_name(entry["name"])
+            if validate_names:
+                from operations import safe_name
+                try:
+                    safe_name(entry["name"])
+                except ProviderError as error:
+                    raise ProviderError(f"条目 {entry['id']} 的名称无法用于批量路径预览：{entry['name']!r}") from error
             if entry["id"] in ids or entry["name"] in names:
                 raise ProviderError("目录中存在重复ID或同名项目，请先处理后重新预览")
             ids.add(entry["id"])
@@ -35,7 +39,7 @@ class BatchOperations:
                 info = self.info(file_id) if file_id != "0" else {"name": "115网盘", "parent_id": "0", "is_dir": True}
                 if not info["is_dir"]:
                     raise ProviderError("预览目录不存在")
-                directories[file_id] = {"id": file_id, "parentId": str(info["parent_id"]), "name": info["name"], "path": path, "entries": self.batch_children(file_id)}
+                directories[file_id] = {"id": file_id, "parentId": str(info["parent_id"]), "name": info["name"], "path": path, "entries": self.batch_children(file_id, validate_names=kind != "power")}
             return directories[file_id]
 
         if kind == "power":
@@ -46,6 +50,11 @@ class BatchOperations:
                 if file_id in selected:
                     continue
                 info = self.info(file_id)
+                from operations import safe_name
+                try:
+                    safe_name(info["name"])
+                except ProviderError as error:
+                    raise ProviderError(f"选中条目 {file_id} 的原名称无法用于批量路径预览：{info['name']!r}") from error
                 parent_id = str(info["parent_id"])
                 group = directory(parent_id, parent_id)
                 if not any(entry["id"] == file_id and entry["name"] == info["name"] for entry in group["entries"]):
@@ -77,7 +86,7 @@ class BatchOperations:
             group = directory(current, path)
             video = next((entry for entry in group["entries"] if entry["name"] == "视频" and entry["isDirectory"]), None)
             group["videoId"] = video["id"] if video else ""
-            group["videoEntries"] = self.batch_children(video["id"]) if video else []
+            group["videoEntries"] = self.batch_children(video["id"], validate_names=True) if video else []
             groups.append(group)
         return {"accountId": str(client.user_id), "groups": groups, "selectedIds": []}
 

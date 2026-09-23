@@ -132,7 +132,7 @@ docker run -d \
 如需固定版本，可在运行前设置镜像标签，例如：
 
 ```bash
-export FILEBUTLER_TAG=v0.3.0
+export FILEBUTLER_TAG=v0.3.1
 ```
 
 版本标签是不可变发布，`latest` 会随最新正式版本更新。如果镜像包不可见或拉取被拒绝，请使用具有 `read:packages` 权限的 GitHub Token 登录 GHCR：

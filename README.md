@@ -184,7 +184,6 @@ cp configs/filebutler.example.yaml filebutler.yaml
 listen: "127.0.0.1:8080"
 database_file: "./data/filebutler.db"
 static_dir: "./web/dist"
-job_concurrency: 2
 log_level: "info"
 
 session:
@@ -205,7 +204,6 @@ roots:
 | `listen` | HTTP 监听地址。直接在主机运行时默认是 `127.0.0.1:8080`；容器内通常使用 `0.0.0.0:8080`。 |
 | `database_file` | SQLite 数据库路径，保存账号、签名密钥、115凭证和文件SHA1缓存。 |
 | `static_dir` | `npm run build` 生成的前端静态资源目录。 |
-| `job_concurrency` | 单个普通后台任务同时处理的项目数，最小值为 1。 |
 | `log_level` | 预留的日志级别字段，默认值为 `info`；当前日志仍输出到标准输出。 |
 | `session.cookie_name` | 登录会话 Cookie 名称。 |
 | `session.secure` | 是否为会话 Cookie 添加 `Secure`。仅在 HTTPS 入口下设为 `true`。 |

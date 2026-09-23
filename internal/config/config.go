@@ -12,14 +12,13 @@ import (
 )
 
 type Config struct {
-	Cloud115       Cloud115Config `yaml:"cloud115"`
-	Listen         string         `yaml:"listen"`
-	DatabaseFile   string         `yaml:"database_file"`
-	JobConcurrency int            `yaml:"job_concurrency"`
-	LogLevel       string         `yaml:"log_level"`
-	Session        SessionConfig  `yaml:"session"`
-	Roots          []RootConfig   `yaml:"roots"`
-	StaticDir      string         `yaml:"static_dir"`
+	Cloud115     Cloud115Config `yaml:"cloud115"`
+	Listen       string         `yaml:"listen"`
+	DatabaseFile string         `yaml:"database_file"`
+	LogLevel     string         `yaml:"log_level"`
+	Session      SessionConfig  `yaml:"session"`
+	Roots        []RootConfig   `yaml:"roots"`
+	StaticDir    string         `yaml:"static_dir"`
 }
 
 type Cloud115Config struct {
@@ -162,9 +161,6 @@ func applyDefaults(cfg *Config) {
 	}
 	if cfg.DatabaseFile == "" {
 		cfg.DatabaseFile = "./data/filebutler.db"
-	}
-	if cfg.JobConcurrency <= 0 {
-		cfg.JobConcurrency = 1
 	}
 	if cfg.LogLevel == "" {
 		cfg.LogLevel = "info"

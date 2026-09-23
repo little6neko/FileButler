@@ -1,7 +1,6 @@
 listen: "0.0.0.0:8080"
 database_file: "/app/data/filebutler.db"
 static_dir: "/app/web/dist"
-job_concurrency: 2
 log_level: "info"
 cloud115:
   python: "python3"

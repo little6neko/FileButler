@@ -1,6 +1,5 @@
 listen: "0.0.0.0:8080"
 database_file: "./data/filebutler.db"
-job_concurrency: 2
 log_level: "info"
 session:
   cookie_name: "filebutler_session"

@@ -4,8 +4,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestLoadConfigRejectsRemovedJobConcurrency(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "filebutler.yaml")
+	if err := os.WriteFile(path, []byte("job_concurrency: 2\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil || !strings.Contains(err.Error(), "field job_concurrency not found") {
+		t.Fatalf("expected removed field error, got %v", err)
+	}
+}
 
 func TestRejectPrivateDatabaseUnderPublicDirectoriesAndUnknownConfig(t *testing.T) {
 	dir := t.TempDir()
@@ -35,7 +47,6 @@ func TestLoadConfigValidatesAndAbsolutizesRoots(t *testing.T) {
 	body := []byte(`
 listen: "127.0.0.1:8080"
 database_file: "./filebutler.db"
-job_concurrency: 2
 log_level: "debug"
 session:
   cookie_name: "filebutler_session"

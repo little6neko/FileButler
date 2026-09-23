@@ -10,6 +10,7 @@ import queue
 import sys
 import threading
 import time
+import secrets
 from errors import Canceled, ProviderError
 from operations import CloudOperations
 
@@ -28,6 +29,8 @@ class Adapter(CloudOperations):
         self.credentials = Path(credentials)
         self.client = None
         self.qr = None
+        self.qr_session = ""
+        self.qr_deadline = 0
         self.lock = threading.RLock()
 
     def load(self):
@@ -61,16 +64,22 @@ class Adapter(CloudOperations):
                 if self.credentials.is_file():
                     raise ProviderError("请先退出当前115账号")
                 self.qr = self.checked(P115Client.login_qrcode_token(app="alipaymini", timeout=30))["data"]
+                self.qr_session = secrets.token_urlsafe(24)
+                self.qr_deadline = time.monotonic() + 300
                 import qrcode
                 from qrcode.image.svg import SvgPathImage
                 image = qrcode.make(self.qr["qrcode"], image_factory=SvgPathImage)
                 data = io.BytesIO()
                 image.save(data)
                 import base64
-                return {"image": "data:image/svg+xml;base64," + base64.b64encode(data.getvalue()).decode()}
+                return {"image": "data:image/svg+xml;base64," + base64.b64encode(data.getvalue()).decode(), "loginSession": self.qr_session}
             if method == "login.check":
-                if not self.qr:
-                    raise ProviderError("二维码已失效，请重新获取")
+                if not self.qr or not params.get("loginSession") or params["loginSession"] != self.qr_session:
+                    return {"status": -3, "loggedIn": False}
+                if time.monotonic() >= self.qr_deadline:
+                    self.qr = None
+                    self.qr_session = ""
+                    return {"status": -1, "loggedIn": False}
                 result = self.checked(P115Client.login_qrcode_scan_status({key: self.qr[key] for key in ("uid", "time", "sign")}, timeout=30))
                 status = int(result["data"]["status"])
                 if status == 2:
@@ -88,10 +97,15 @@ class Adapter(CloudOperations):
                             os.unlink(name)
                     self.client = None
                     self.qr = None
+                    self.qr_session = ""
+                elif status in (-1, -2):
+                    self.qr = None
+                    self.qr_session = ""
                 return {"status": status, "loggedIn": status == 2}
             if method == "logout":
                 self.client = None
                 self.qr = None
+                self.qr_session = ""
                 self.credentials.unlink(missing_ok=True)
                 return {"loggedIn": False}
         return self.operation(method, params, progress)

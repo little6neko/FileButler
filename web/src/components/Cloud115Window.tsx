@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExtern
 import { CloudDownload, FolderArchive, FolderPlus, LogOut, Pencil, ScanText, Trash2, WandSparkles } from "lucide-react";
 import { cloudCall, cloudDirectory, isCloudArchive, type CloudEntry, type CloudLocation, type CloudRequest } from "../cloud115";
 import { useCloudClipboard, setCloudClipboard, clearCloudClipboardIfUnchanged } from "../cloud115Clipboard";
+import { useCloud115Login } from "../useCloud115Login";
 import { createFileSelectionStore } from "../fileSelectionStore";
 import { fileSelectionMode } from "../fileSelection";
 import type { Entry } from "../api/types";
@@ -27,6 +28,12 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
   const [loggedIn, setLoggedIn] = useState(false);
   const [profile, setProfile] = useState({ accountId: "", name: "115网盘" });
   const [image, setImage] = useState("");
+  const [loginSession, setLoginSession] = useState("");
+  const loginSucceeded = useCallback(() => {
+    setImage(""); setLoginSession(""); setCloudClipboard(null);
+    window.dispatchEvent(new Event("cloud115-account-changed"));
+  }, []);
+  const loginMessage = useCloud115Login(loginSession, loginSucceeded);
   const [error, setError] = useState("");
   const [listError, setListError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -91,6 +98,7 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
       generation.current++; pathGeneration.current++; profileGeneration.current++;
       selection.clear(); setCloudEntries([]); setProfile({ accountId: "", name: "115网盘" });
       setLoggedIn(false); setPrompt(null); setOfflineTarget(null);
+      setLoginSession(""); setImage("");
       setHistory({ locations: [rootLocation], index: 0 });
       void check();
     }
@@ -124,17 +132,23 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
     generation.current++; pathGeneration.current++; selection.clear(); setCloudEntries([]); setListError("");
     setHistory((h) => ({ ...h, index }));
   }
-  async function login(method: "login.start" | "login.check" | "logout") {
+  async function login(method: "login.start" | "logout") {
     setBusy(true); setError("");
+    setLoginSession("");
     try {
-      const result = await cloudCall<{ image?: string; loggedIn?: boolean; status?: number }>(method);
-      if (result.image) setImage(result.image);
+      const result = await cloudCall<{ image?: string; loginSession?: string; loggedIn?: boolean }>(method);
+      if (result.image && result.loginSession) { setImage(result.image); setLoginSession(result.loginSession); }
       if (result.loggedIn || method === "logout") {
         setImage(""); setCloudClipboard(null);
         window.dispatchEvent(new Event("cloud115-account-changed"));
       }
-      if (method === "login.check" && !result.loggedIn) setError(result.status === -1 || result.status === -2 ? "二维码已过期或取消，请重新获取" : "尚未确认登录，请在115客户端确认后重试");
-    } catch (error) { setError(String(error)); }
+    } catch (error) {
+      setError(String(error));
+      // A previous check may have finished while a replacement QR was requested.
+      if (method === "login.start") {
+        try { if ((await cloudCall<{ loggedIn: boolean }>("status")).loggedIn) loginSucceeded(); } catch { /* Keep the original error. */ }
+      }
+    }
     finally { setBusy(false); }
   }
   async function submit(method: string, params: CloudRequest) {
@@ -189,7 +203,8 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
   if (!loggedIn) return <div className="grid h-full content-start justify-items-center gap-4 overflow-auto p-6">
     <h2 className="font-semibold">登录115网盘</h2><p className="text-sm">使用115客户端扫描二维码。凭证仅保存在服务端。</p>
     {image ? <img src={image} width={220} height={220} alt="115登录二维码" /> : null}
-    <div className="flex gap-2"><Button disabled={busy} onClick={() => void login("login.start")}>获取二维码</Button>{image ? <Button disabled={busy} onClick={() => void login("login.check")}>我已扫码，检查登录</Button> : null}</div>
+    <div className="flex gap-2"><Button disabled={busy} onClick={() => void login("login.start")}>{image ? "重新获取二维码" : "获取二维码"}</Button></div>
+    {loginMessage ? <p role="status" className="text-sm">{loginMessage}</p> : null}
     {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
     <Button variant="ghost" disabled={busy} onClick={() => void login("logout")}>清除失效登录</Button>
   </div>;

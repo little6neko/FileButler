@@ -4,7 +4,7 @@ import type { RenameOptions } from "./api/types";
 export type CloudEntry = { id: string; parentId: string; name: string; isDirectory: boolean; size: number; modifiedUnix?: number };
 export type CloudLocation = { id: string; name: string }[];
 export type CloudPage = { entries: CloudEntry[]; total: number; offset: number };
-export type CloudRequest = { id?: string; ids?: string[]; parentId?: string; destId?: string; name?: string; password?: string; offset?: number; rootId?: string; path?: string; paths?: string[]; url?: string; options?: RenameOptions; previewToken?: string; revisions?: Record<string, string> };
+export type CloudRequest = { id?: string; ids?: string[]; parentId?: string; destId?: string; name?: string; password?: string; offset?: number; rootId?: string; path?: string; paths?: string[]; url?: string; options?: RenameOptions; previewToken?: string; revisions?: Record<string, string>; loginSession?: string };
 export type CloudDrag = { kind: "cloud115-entry"; entries: CloudEntry[] };
 
 export async function cloudDirectory(parentId: string, isCurrent: () => boolean = () => true): Promise<CloudEntry[]> {
@@ -30,8 +30,8 @@ export function isCloudArchive(entry: CloudEntry | undefined) {
   return Boolean(entry && !entry.isDirectory && /\.(zip|rar|7z)$/i.test(entry.name));
 }
 
-export async function cloudCall<T>(method: string, params: CloudRequest = {}): Promise<T> {
-  const response = await fetch(`/api/cloud115/${method}`, { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params) });
+export async function cloudCall<T>(method: string, params: CloudRequest = {}, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(`/api/cloud115/${method}`, { method: "POST", credentials: "include", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params), signal });
   const body = await response.json();
   if (!response.ok) throw new APIError(body.error?.code ?? "cloud115_error", body.error?.message ?? response.statusText, response.status);
   return body.data as T;

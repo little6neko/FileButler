@@ -41,20 +41,20 @@ it("loads directory and creates a rename task without refreshing early", async (
   await waitFor(() => expect(vi.mocked(cloudCall).mock.calls.filter(([method]) => method === "browse")).toHaveLength(2));
 });
 
-it("shows a login QR and checks login explicitly", async () => {
+it("automatically enters the file list after scan confirmation without a second button", async () => {
   let loggedIn = false;
   vi.mocked(cloudCall).mockImplementation(async (method) => {
     if (method === "status") return { loggedIn };
-    if (method === "login.start") return { image: "data:image/svg+xml;base64,PHN2Zy8+" };
+    if (method === "login.start") return { image: "data:image/svg+xml;base64,PHN2Zy8+", loginSession: "login-session-test-1" };
     if (method === "login.check") { loggedIn = true; return { loggedIn: true, status: 2 }; }
     if (method === "profile") return { accountId: "1", name: "测试115账号" };
     return { entries: [entry], offset: 0, total: 1 };
   });
   setup();
   fireEvent.click(screen.getByRole("button", { name: "获取二维码" }));
-  await screen.findByAltText("115登录二维码");
-  fireEvent.click(screen.getByRole("button", { name: "我已扫码，检查登录" }));
   await screen.findByText("sample.txt");
+  expect(screen.queryByRole("button", { name: "我已扫码，检查登录" })).not.toBeInTheDocument();
+  expect(cloudCall).toHaveBeenCalledWith("login.check", { loginSession: "login-session-test-1" }, expect.any(AbortSignal));
 });
 
 it("submits unique links to the current directory without creating a completed download task", async () => {

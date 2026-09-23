@@ -33,17 +33,18 @@ func NewService(provider Provider, store jobs.Store, resolver roots.Resolver) *S
 }
 
 type Request struct {
-	ID       string   `json:"id"`
-	IDs      []string `json:"ids"`
-	ParentID string   `json:"parentId"`
-	DestID   string   `json:"destId"`
-	Name     string   `json:"name"`
-	Password string   `json:"password"`
-	Offset   int      `json:"offset"`
-	RootID   string   `json:"rootId"`
-	Path     string   `json:"path"`
-	Paths    []string `json:"paths"`
-	URL      string   `json:"url"`
+	ID           string   `json:"id"`
+	IDs          []string `json:"ids"`
+	ParentID     string   `json:"parentId"`
+	DestID       string   `json:"destId"`
+	Name         string   `json:"name"`
+	Password     string   `json:"password"`
+	Offset       int      `json:"offset"`
+	RootID       string   `json:"rootId"`
+	Path         string   `json:"path"`
+	Paths        []string `json:"paths"`
+	URL          string   `json:"url"`
+	LoginSession string   `json:"loginSession"`
 }
 
 var numericID = regexp.MustCompile(`^(0|[1-9][0-9]{0,19})$`)
@@ -86,6 +87,13 @@ func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	params := map[string]any{"id": req.ID, "parentId": req.ParentID, "destId": req.DestID, "name": req.Name, "password": req.Password, "offset": req.Offset, "path": req.Path}
+	if method == "login.check" {
+		if len(req.LoginSession) < 16 || len(req.LoginSession) > 128 {
+			respond(w, 400, nil, "二维码会话无效，请重新获取")
+			return
+		}
+		params["loginSession"] = req.LoginSession
+	}
 	if method == "offline.add" {
 		link := strings.TrimSpace(req.URL)
 		parsed, err := url.Parse(link)

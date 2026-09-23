@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { DndContext } from "@dnd-kit/core";
 import { Cloud115Window } from "./Cloud115Window";
@@ -32,13 +32,83 @@ it("loads directory and creates a rename task without refreshing early", async (
   await screen.findByText("sample.txt");
   fireEvent.click(screen.getByRole("checkbox", { name: "选择 sample.txt" }));
   fireEvent.click(screen.getByRole("button", { name: "重命名" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "名称" }), { target: { value: "renamed.txt" } });
-  fireEvent.click(screen.getByRole("button", { name: "确认" }));
+  const dialog = screen.getByRole("dialog", { name: "重命名" });
+  const input = within(dialog).getByRole("textbox", { name: "新名称" }) as HTMLInputElement;
+  expect(input).toHaveFocus();
+  expect(input.selectionEnd).toBe(6);
+  fireEvent.change(input, { target: { value: "renamed.txt" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "重命名" }));
   await waitFor(() => expect(created).toHaveBeenCalledWith("job"));
+  expect(cloudCall).toHaveBeenCalledWith("rename", expect.objectContaining({ ids: ["1"], name: "renamed.txt", accountId: "1" }));
   expect(vi.mocked(cloudCall).mock.calls.filter(([method]) => method === "browse")).toHaveLength(1);
   const job: Job = { accountId: "1", id: "job", type: "rename", sourceRootId: "@115", destRootId: "@115", status: "completed", actorId: 1, progressTotal: 1, progressDone: 1, failedCount: 0, cancelRequested: false, errorMessage: "", createdAtUnix: 1, updatedAtUnix: 2, eventVersion: 1 };
   act(() => store.handleChanged({ runtimeId: "r", cursor: 1, job }));
   await waitFor(() => expect(vi.mocked(cloudCall).mock.calls.filter(([method]) => method === "browse")).toHaveLength(2));
+});
+
+it("uses the shared mkdir form with empty validation, trimmed input and Enter submission", async () => {
+  const { created } = setup();
+  await screen.findByText("sample.txt");
+  fireEvent.click(screen.getByRole("button", { name: "新建文件夹" }));
+  const dialog = screen.getByRole("dialog", { name: "新建文件夹" });
+  expect(dialog.closest("[data-window-local-dialog]")).not.toBeNull();
+  const input = within(dialog).getByRole("textbox", { name: "文件夹名称" });
+  expect(input).toHaveFocus();
+  expect(within(dialog).getByRole("button", { name: "确认" })).toBeDisabled();
+  fireEvent.change(input, { target: { value: "  albums  " } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  await waitFor(() => expect(created).toHaveBeenCalledWith("job"));
+  expect(cloudCall).toHaveBeenCalledWith("mkdir", expect.objectContaining({ parentId: "0", name: "albums", accountId: "1" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+});
+
+it.each(["新建文件夹", "重命名"])("keeps the shared %s form open on failure and allows retry", async (action) => {
+  const original = vi.mocked(cloudCall).getMockImplementation()!;
+  let failed = true;
+  vi.mocked(cloudCall).mockImplementation(async (method, ...args) => {
+    if ((method === "mkdir" || method === "rename") && failed) throw new Error("名称冲突");
+    return original(method, ...args);
+  });
+  setup();
+  await screen.findByText("sample.txt");
+  fireEvent.click(screen.getByRole("checkbox", { name: "选择 sample.txt" }));
+  fireEvent.click(screen.getByRole("button", { name: action }));
+  const dialog = screen.getByRole("dialog", { name: action });
+  const input = within(dialog).getByRole("textbox");
+  fireEvent.change(input, { target: { value: "new-name" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent("名称冲突");
+  expect(input).toHaveValue("new-name");
+  expect(input).not.toBeDisabled();
+  failed = false;
+  fireEvent.keyDown(input, { key: "Enter" });
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+});
+
+it.each(["新建文件夹", "重命名"])("blocks duplicate submissions and dismissal while %s is pending", async (action) => {
+  const original = vi.mocked(cloudCall).getMockImplementation()!;
+  let finish!: (value: { id: string }) => void;
+  vi.mocked(cloudCall).mockImplementation((method, ...args) => {
+    if (method === "mkdir" || method === "rename") return new Promise((resolve) => { finish = resolve; });
+    return original(method, ...args);
+  });
+  setup();
+  await screen.findByText("sample.txt");
+  fireEvent.click(screen.getByRole("checkbox", { name: "选择 sample.txt" }));
+  fireEvent.click(screen.getByRole("button", { name: action }));
+  const dialog = screen.getByRole("dialog", { name: action });
+  const input = within(dialog).getByRole("textbox");
+  fireEvent.change(input, { target: { value: "new-name" } });
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(input).toBeDisabled();
+  expect(within(dialog).getByRole("button", { name: "取消" })).toBeDisabled();
+  fireEvent.keyDown(input, { key: "Enter" });
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  fireEvent.pointerDown(dialog.closest("[data-window-local-dialog]")!);
+  expect(dialog).toBeInTheDocument();
+  expect(vi.mocked(cloudCall).mock.calls.filter(([method]) => method === "mkdir" || method === "rename")).toHaveLength(1);
+  await act(async () => finish({ id: "job" }));
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 
 it.each(["movie.avi", "MOVIE.AVI", "program.exe"])("does not open or request a preview for unsupported %s", async (name) => {

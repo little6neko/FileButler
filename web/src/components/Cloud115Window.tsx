@@ -18,11 +18,16 @@ import { useOptionalJobEventsStore } from "../jobEventsContext";
 import { Button } from "./ui/button";
 import { Cloud115OfflineDialog } from "./Cloud115OfflineDialog";
 import { WindowDialogLayer } from "./WindowDialogLayer";
+import { MkdirContent } from "./MkdirDialog";
+import { SingleRenameContent } from "./SingleRenameDialog";
 import { FilePane } from "./FilePane";
 import { ActionToolbar } from "./ActionToolbar";
 import { createClipboardActions, type FileAction } from "./fileActions";
 
-type Prompt = { method: "mkdir" | "rename" | "extract"; name: string; password: string; ids: string[]; destId: string };
+type Prompt =
+  | { method: "mkdir"; destId: string }
+  | { method: "rename"; ids: string[]; name: string; entryType: Entry["type"] }
+  | { method: "extract"; password: string; ids: string[]; destId: string };
 export type CloudFileController = { copy(operation: "copy" | "move"): boolean; paste(): void; selectAll(): void; back(): void; blocked: boolean };
 const rootLocation: CloudLocation = [{ id: "0", name: "115网盘" }];
 
@@ -163,13 +168,17 @@ function Cloud115Files({ accountId, onSwitch, onAdd, onTitle, windowId, layer, o
       const result = await cloudCall<{ id: string }>(method, { ...params, accountId });
       onJobCreated(result.id);
       setPrompt(null); selection.clear();
-    } catch (error) { setError(String(error)); }
-    finally { setBusy(false); }
+    } finally { setBusy(false); }
   }
   function openPrompt(method: Prompt["method"]) {
     const ids = selection.getOrderedPaths();
     setError("");
-    setPrompt({ method, ids, destId: parent.id, name: method === "rename" ? cloudEntries.find((entry) => entry.id === ids[0])?.name ?? "" : "", password: "" });
+    if (method === "mkdir") setPrompt({ method, destId: parent.id });
+    else if (method === "extract") setPrompt({ method, ids, destId: parent.id, password: "" });
+    else {
+      const entry = cloudEntries.find((entry) => entry.id === ids[0]);
+      if (entry) setPrompt({ method, ids, name: entry.name, entryType: entry.isDirectory ? "directory" : "file" });
+    }
   }
   const ready = !busy && !loading && !listError && Boolean(profile.accountId) && !operationOpen;
   function copySelection(operation: "copy" | "move") {
@@ -237,7 +246,7 @@ function Cloud115Files({ accountId, onSwitch, onAdd, onTitle, windowId, layer, o
           if (!ready || prompt || offlineTarget) return;
           const source = cloudEntries.find((item) => item.id === entry.relativePath);
           if (!source) return;
-          if (isCloudArchive(source)) { setError(""); setPrompt({ method: "extract", ids: [source.id], destId: parent.id, name: "", password: "" }); }
+          if (isCloudArchive(source)) { setError(""); setPrompt({ method: "extract", ids: [source.id], destId: parent.id, password: "" }); }
           else {
             const kind = fileOpenKind(entry).kind;
             if (kind !== "media" && kind !== "text") return;
@@ -260,12 +269,22 @@ function Cloud115Files({ accountId, onSwitch, onAdd, onTitle, windowId, layer, o
       {error && !prompt ? <p role="alert" className="absolute bottom-8 left-2 right-2 rounded border bg-background p-2 text-sm text-destructive">{error}</p> : null}
     </div>
     {prompt ? <WindowDialogLayer labelledBy={promptId} onClose={() => { if (!busy) setPrompt(null); }}>
-      <form className="grid gap-3" onSubmit={(event) => { event.preventDefault(); void submit(prompt.method, { ids: prompt.ids, parentId: prompt.destId, destId: prompt.destId, name: prompt.name, password: prompt.password }); }}>
-        <h2 id={promptId} className="font-semibold">{prompt.method === "mkdir" ? labels.mkdir : prompt.method === "rename" ? labels.rename : prompt.method === "extract" ? "在线解压" : labels.delete}</h2>
-        {prompt.method === "extract" ? <><p>解压到以压缩包命名的新文件夹，不覆盖已有目录</p><input className="rounded border bg-background p-2" type="password" autoComplete="off" placeholder="解压密码（可选）" aria-label="解压密码" value={prompt.password} onChange={(event) => setPrompt({ ...prompt, password: event.target.value })} /></> : <input className="rounded border bg-background p-2" autoFocus required aria-label="名称" value={prompt.name} onChange={(event) => setPrompt({ ...prompt, name: event.target.value })} />}
+      {prompt.method === "mkdir" ? <MkdirContent
+        titleId={promptId} labels={labels} onClose={() => setPrompt(null)}
+        onSubmit={(name) => submit("mkdir", { parentId: prompt.destId, name })}
+      /> : prompt.method === "rename" ? <SingleRenameContent
+        titleId={promptId} labels={labels} initialName={prompt.name} entryType={prompt.entryType}
+        onClose={() => setPrompt(null)} onSubmit={(name) => submit("rename", { ids: prompt.ids, name })}
+      /> : <form className="grid gap-3" onSubmit={(event) => {
+        event.preventDefault();
+        void submit("extract", { ids: prompt.ids, destId: prompt.destId, password: prompt.password }).catch((error) => setError(String(error)));
+      }}>
+        <h2 id={promptId} className="font-semibold">在线解压</h2>
+        <p>解压到以压缩包命名的新文件夹，不覆盖已有目录</p>
+        <input className="rounded border bg-background p-2" type="password" autoComplete="off" placeholder="解压密码（可选）" aria-label="解压密码" value={prompt.password} onChange={(event) => setPrompt({ ...prompt, password: event.target.value })} />
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={busy} onClick={() => setPrompt(null)}>{labels.cancel}</Button><Button type="submit" disabled={busy}>确认</Button></div>
-      </form>
+      </form>}
     </WindowDialogLayer> : null}
     {offlineTarget ? <Cloud115OfflineDialog target={{ ...offlineTarget, accountId }} onClose={() => setOfflineTarget(null)} /> : null}
   </div>;

@@ -3,6 +3,10 @@ auth_file: "/app/data/auth.json"
 static_dir: "/app/web/dist"
 job_concurrency: 2
 log_level: "info"
+cloud115:
+  python: "python3"
+  worker: "/app/cloud115/worker.py"
+  credentials: "/app/data/115-cookies.txt"
 session:
   cookie_name: "filebutler_session"
   secure: false

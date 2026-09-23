@@ -2,3 +2,5 @@
 web/node_modules
 web/dist
 data
+**/__pycache__
+**/115-cookies.txt

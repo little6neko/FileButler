@@ -1,1 +1,5 @@
 .superpowers/
+__pycache__/
+*.pyc
+115-cookies.txt
+.venv115/

@@ -1805,3 +1805,17 @@ body {
     @apply font-sans;
   }
 }
+/* Shared properties content; narrow windows scroll without clipping values. */
+.file-details { height: 100%; overflow: auto; padding: 20px 24px; background: var(--background); }
+.file-details-heading { display: flex; align-items: center; gap: 16px; margin: 4px 0 24px; overflow-wrap: anywhere; }
+.file-details-heading svg { width: 44px; height: 44px; flex-shrink: 0; }
+.file-details hr { margin-bottom: 18px; }
+.file-details dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 14px 20px; align-items: baseline; }
+.file-details dt { color: var(--muted-foreground); }
+.file-details dd { min-width: 0; overflow-wrap: anywhere; }
+.file-details-inline { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.file-details-inline > span { flex: 1; min-width: 100px; }
+.file-details-inline button { flex-shrink: 0; }
+.file-details [role="alert"] { margin-top: 16px; }
+.compact-details-windows { position: fixed; inset: 44px 0 0; pointer-events: none; z-index: 40; }
+.compact-details-windows > .desktop-window { pointer-events: auto; }

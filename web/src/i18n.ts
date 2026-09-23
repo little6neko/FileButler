@@ -1,7 +1,9 @@
+import { detailChinese, detailEnglish, type DetailsLabels } from "./fileDetails";
 export type LanguageMode = "auto" | "en" | "zh-CN";
 export type Language = "en" | "zh-CN";
 
 export type UIStrings = {
+  details: DetailsLabels;
   subtitle: string;
   language: string;
   languageAuto: string;
@@ -252,6 +254,7 @@ export type UIStrings = {
 
 export const strings: Record<Language, UIStrings> = {
   en: {
+    details: detailEnglish,
     subtitle: "Self-hosted file operations",
     language: "Language",
     languageAuto: "Auto",
@@ -550,6 +553,7 @@ export const strings: Record<Language, UIStrings> = {
       })[status] ?? status,
   },
   "zh-CN": {
+    details: detailChinese,
     subtitle: "自托管文件操作",
     language: "语言",
     languageAuto: "自动",

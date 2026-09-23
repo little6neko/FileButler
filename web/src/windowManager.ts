@@ -47,7 +47,8 @@ export type SuperRenameWindowRecord = BaseWindowRecord & {
 
 export type Cloud115WindowRecord = BaseWindowRecord & { kind: "cloud115"; instanceId: string; trail?: { id: string; name: string }[] };
 export type CloudPreviewWindowRecord = BaseWindowRecord & { kind: "cloudPreview"; instanceId: string };
-export type DesktopWindowRecord = FileWindowRecord | PowerRenameWindowRecord | MediaPreviewWindowRecord | TextEditorWindowRecord | SuperRenameWindowRecord | Cloud115WindowRecord | CloudPreviewWindowRecord;
+export type DetailsWindowRecord = BaseWindowRecord & { kind: "details"; instanceId: string };
+export type DesktopWindowRecord = FileWindowRecord | PowerRenameWindowRecord | MediaPreviewWindowRecord | TextEditorWindowRecord | SuperRenameWindowRecord | Cloud115WindowRecord | CloudPreviewWindowRecord | DetailsWindowRecord;
 
 export type WindowManagerState = {
   windows: DesktopWindowRecord[];
@@ -85,6 +86,10 @@ export function openFileWindow(
   bounds: DesktopBounds,
 ): WindowManagerState {
   return openWindow(state, id, { kind: "file", sessionId }, bounds);
+}
+
+export function openDetailsWindow(state: WindowManagerState, id: string, bounds: DesktopBounds): WindowManagerState {
+  return openWindow(state, id, { kind: "details", instanceId: id }, bounds);
 }
 
 export function openPowerRenameWindow(
@@ -133,6 +138,7 @@ function openWindow(
     | Pick<TextEditorWindowRecord, "kind" | "instanceId">
     | Pick<SuperRenameWindowRecord, "kind" | "instanceId">
     | Pick<CloudPreviewWindowRecord, "kind" | "instanceId">
+    | Pick<DetailsWindowRecord, "kind" | "instanceId">
     | Pick<Cloud115WindowRecord, "kind" | "instanceId" | "trail">,
   bounds: DesktopBounds,
 ): WindowManagerState {

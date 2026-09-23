@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { CloudDownload, FolderArchive, FolderPlus, LogOut, Pencil, ScanText, Trash2, WandSparkles } from "lucide-react";
+import { CloudDownload, FolderArchive, FolderPlus, LogOut, Pencil, ScanText, Trash2, WandSparkles, Info } from "lucide-react";
+import type { DetailsTarget } from "../fileDetails";
 import { cloudCall, cloudDirectory, isCloudArchive, type CloudEntry, type CloudLocation, type CloudRequest } from "../cloud115";
 import { createAppClipboard, getAppClipboard, setAppClipboard, useAppClipboard, type ClipboardTarget } from "../appClipboard";
 import type { FileDropFeedback } from "../fileDrag";
@@ -23,7 +24,8 @@ type Prompt = { method: "mkdir" | "rename" | "extract"; name: string; password: 
 export type CloudFileController = { copy(operation: "copy" | "move"): boolean; paste(): void; selectAll(): void; back(): void; blocked: boolean };
 const rootLocation: CloudLocation = [{ id: "0", name: "115网盘" }];
 
-export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = rootLocation, onOpenNewWindow, onPowerRename, onSuperRename, onPreview, onOperation, onPaste, onRegister, operationOpen = false, dropFeedback = null, labels = strings["zh-CN"] }: {
+export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = rootLocation, onOpenNewWindow, onPowerRename, onSuperRename, onPreview, onOperation, onPaste, onRegister, onDetails, operationOpen = false, dropFeedback = null, labels = strings["zh-CN"] }: {
+  onDetails?(target: DetailsTarget): void;
   onOperation?(request: OpsRequest): void;
   onPaste?(target: ClipboardTarget): void;
   onRegister?(id: string, controller: CloudFileController | null): void;
@@ -221,7 +223,11 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
       ...action, separatorBefore: index === 0 || action.separatorBefore,
       ...(action.id === "offline" ? { run: () => setOfflineTarget({ id: dest.id, name: dest.id === parent.id ? profile.name + (currentPath === "." ? "" : " / " + currentPath) : profile.name + " / " + (currentPath === "." ? "" : currentPath + "/") + dest.name }) } : {}),
     }));
-    return [...clipboardActions, ...ordinary];
+    return [...clipboardActions, ...ordinary, { kind: "command", id: "details", label: labels.details.title, icon: Info, separatorBefore: true, disabled: !ready || !onDetails, run: () => {
+      const paths = (!context || contextPath) && ids.length ? ids : [parent.id];
+      const names = paths.map((id) => cloudEntries.find((item) => item.id === id)?.name ?? (parent.id === "0" ? profile.name : parent.name));
+      onDetails?.({ rootId: "@115", accountId: profile.accountId, paths, names });
+    } }];
   }
   if (!loggedIn) return <div className="grid h-full content-start justify-items-center gap-4 overflow-auto p-6">
     <h2 className="font-semibold">登录115网盘</h2><p className="text-sm">使用115客户端扫描二维码。凭证仅保存在服务端。</p>

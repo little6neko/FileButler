@@ -1445,7 +1445,7 @@ it("orders full-mode toolbar and context-menu actions", async () => {
   expect(within(menu).getAllByRole("menuitem").map((item) => item.dataset.actionId)).toEqual([
     "openInNewWindow", "clipboardCopy", "clipboardCut", "clipboardPaste",
     "selectLinkSource",
-    "rename", "powerRename", "superRename", "mkdir", "delete",
+    "rename", "powerRename", "superRename", "mkdir", "delete", "details",
   ]);
 });
 
@@ -1474,7 +1474,7 @@ it("uses the compact context workflow without duplicating direct link commands",
     "copy", "move",
     "clipboardCopy", "clipboardCut", "clipboardPaste",
     "selectLinkSource", "cancelLinkSource", "createLinkAs",
-    "rename", "powerRename", "superRename", "mkdir", "delete",
+    "rename", "powerRename", "superRename", "mkdir", "delete", "details",
   ]);
   expect(parentIds).not.toContain("hardlink");
   expect(parentIds).not.toContain("symlink");

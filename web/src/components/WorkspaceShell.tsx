@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { Cloud, Columns2, FileCode2, FileImage, FileVideo, Files, Languages, ListChecks, MonitorUp, ScanText, WandSparkles } from "lucide-react";
+import { Cloud, Columns2, FileCode2, FileImage, FileVideo, Files, Info, Languages, ListChecks, MonitorUp, ScanText, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { UIStrings } from "../i18n";
 import type { MediaKind } from "../media";
@@ -10,7 +10,7 @@ export type WorkspaceMode = "compact" | "desktop";
 
 export type TaskbarWindow = {
   id: string;
-  kind: "file" | "powerRename" | "mediaPreview" | "textEditor" | "superRename" | "cloud115" | "cloudPreview";
+  kind: "file" | "powerRename" | "mediaPreview" | "textEditor" | "superRename" | "cloud115" | "cloudPreview" | "details";
   mediaKind?: MediaKind;
   title: string;
   status: WindowStatus;
@@ -54,7 +54,8 @@ export function WorkspaceShell({
               <Files />
               <span>{labels.fileManager}</span>
             </Button>
-          ) : windows.map((window) => {
+          ) : null}
+          {windows.filter((window) => mode !== "compact" || window.kind === "details").map((window) => {
             const active = activeWindowId === window.id && window.status !== "minimized";
             return (
               <Button
@@ -70,6 +71,7 @@ export function WorkspaceShell({
                 onClick={() => onWindowActivate(window.id)}
               >
                 {window.kind === "powerRename" ? <ScanText />
+                  : window.kind === "details" ? <Info />
                   : window.kind === "cloud115" ? <Cloud />
                   : window.kind === "superRename" ? <WandSparkles />
                   : window.kind === "cloudPreview" && !window.mediaKind ? <FileCode2 />

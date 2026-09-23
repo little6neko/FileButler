@@ -143,10 +143,10 @@ test("keeps a context-opened directory window active and routes keyboard paste t
   await entryRow(sourceWindow, "folder").click({ button: "right" });
   const fullMenu = page.getByRole("menu", { name: "File actions" });
   const fullMenuActions = fullMenu.locator("[data-action-id]");
-  await expect(fullMenuActions).toHaveCount(10);
+  await expect(fullMenuActions).toHaveCount(11);
   expect(await fullMenuActions.evaluateAll((elements) => elements.map((element) => element.getAttribute("data-action-id")))).toEqual([
     "openInNewWindow", "clipboardCopy", "clipboardCut", "clipboardPaste",
-    "selectLinkSource", "rename", "powerRename", "superRename", "mkdir", "delete",
+    "selectLinkSource", "rename", "powerRename", "superRename", "mkdir", "delete", "details",
   ]);
   await fullMenu.locator('[data-action-id="openInNewWindow"]').click();
 
@@ -529,9 +529,9 @@ test("uses row and whitespace context selection while keeping all actions visibl
 
   await openBlankContextMenu(left.getByTestId("file-list-left"));
   menu = page.getByRole("menu", { name: "File actions" });
-  await expect(menu.locator("[data-action-id]")).toHaveCount(11);
+  await expect(menu.locator("[data-action-id]")).toHaveCount(12);
   expect(await menu.locator("[data-action-id]").evaluateAll((elements) => elements.map((element) => element.getAttribute("data-action-id")))).toEqual([
-    "copy", "move", "clipboardCopy", "clipboardCut", "clipboardPaste", "selectLinkSource", "rename", "powerRename", "superRename", "mkdir", "delete",
+    "copy", "move", "clipboardCopy", "clipboardCut", "clipboardPaste", "selectLinkSource", "rename", "powerRename", "superRename", "mkdir", "delete", "details",
   ]);
   await expect(menu.locator('[data-action-id="mkdir"]')).not.toHaveAttribute("aria-disabled", "true");
   for (const id of ["copy", "move", "clipboardCopy", "clipboardCut", "clipboardPaste", "selectLinkSource", "rename", "powerRename", "delete"]) {
@@ -549,7 +549,7 @@ test("uses row and whitespace context selection while keeping all actions visibl
   await openBlankContextMenu(left.getByTestId("file-list-left"));
   menu = page.getByRole("menu", { name: "File actions" });
   await expect(menu).toBeInViewport();
-  await expect(menu.locator("[data-action-id]")).toHaveCount(11);
+  await expect(menu.locator("[data-action-id]")).toHaveCount(12);
   await page.screenshot({ path: "test-results/file-context-menu-1024x768.png", fullPage: true });
 });
 

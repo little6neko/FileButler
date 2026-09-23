@@ -448,12 +448,12 @@ it("clears selection on whitespace but keeps every action visible", async () => 
     "copy", "move",
     "clipboardCopy", "clipboardCut", "clipboardPaste",
     "selectLinkSource",
-    "rename", "powerRename", "superRename", "mkdir", "delete",
+    "rename", "powerRename", "superRename", "mkdir", "delete", "details",
   ]);
   expect(items.find((item) => item.dataset.actionId === "mkdir")).not.toHaveAttribute("aria-disabled", "true");
   expect(items.find((item) => item.dataset.actionId === "superRename")).not.toHaveAttribute("aria-disabled", "true");
   expect(items
-    .filter((item) => item.dataset.actionId !== "mkdir" && item.dataset.actionId !== "superRename")
+    .filter((item) => !["mkdir", "superRename", "details"].includes(item.dataset.actionId ?? ""))
     .every((item) => item.getAttribute("aria-disabled") === "true")).toBe(true);
 });
 

@@ -95,6 +95,7 @@ import {
   openFileWindow,
   openCloud115Window,
   openCloudPreviewWindow,
+  openDetailsWindow,
   openMediaPreviewWindow,
   openPowerRenameWindow,
   openSuperRenameWindow,
@@ -161,6 +162,9 @@ import {
 import { TextEditorDialog } from "./TextEditorDialog";
 import { VirtualRootView } from "./VirtualRootView";
 import { WindowFrame } from "./WindowFrame";
+import { FileDetails } from "./FileDetails";
+import { detailsTitle, type DetailsTarget } from "../fileDetails";
+import { Info } from "lucide-react";
 import { WindowDialogLayer } from "./WindowDialogLayer";
 import { WorkspaceShell, type TaskbarWindow, type WorkspaceMode } from "./WorkspaceShell";
 
@@ -289,6 +293,8 @@ export function FileWorkspace({
   const [previewState, setPreviewState] = useState<PreviewState | null>(null);
   const [linkPreviewState, setLinkPreviewState] = useState<LinkPreviewState | null>(null);
   const [mediaPreview, setMediaPreview] = useState<MediaPreviewState | null>(null);
+  const [detailTargets, setDetailTargets] = useState<Record<string, DetailsTarget>>({});
+  const detailsCounter = useRef(0);
   const [mkdirSessionId, setMkdirSessionId] = useState<string | null>(null);
   const [singleRenameSessionId, setSingleRenameSessionId] = useState<string | null>(null);
   const [windowDialogs, setWindowDialogsState] = useState<WindowDialogs>({});
@@ -532,13 +538,11 @@ export function FileWorkspace({
   }, [mode, persistMode]);
 
   useLayoutEffect(() => {
-    if (mode !== "desktop") return;
     const desktop = desktopRef.current;
-    if (!desktop) return;
     function measure() {
       const next = {
-        width: Math.max(1, desktop?.clientWidth || window.innerWidth),
-        height: Math.max(1, desktop?.clientHeight || window.innerHeight - 44),
+        width: Math.max(1, mode === "desktop" && desktop?.clientWidth || window.innerWidth),
+        height: Math.max(1, mode === "desktop" && desktop?.clientHeight || window.innerHeight - 44),
       };
       if (next.width === desktopBoundsRef.current.width && next.height === desktopBoundsRef.current.height) return;
       desktopBoundsRef.current = next;
@@ -546,6 +550,11 @@ export function FileWorkspace({
       commitWindowState((current) => reconcileWindowBounds(current, next));
     }
     measure();
+    if (mode === "compact") {
+      window.addEventListener("resize", measure);
+      return () => window.removeEventListener("resize", measure);
+    }
+    if (!desktop) return;
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(measure);
     observer.observe(desktop);
@@ -627,6 +636,8 @@ export function FileWorkspace({
       const pageDialogOpen = Boolean(document.querySelector("[role='dialog']:not([aria-modal='false']):not(.window-dialog-panel)"));
       const activeFileWindowId = activeFileWindowIdRef.current;
       const activeWindowId = windowStateRef.current.activeWindowId;
+      const activeRecord = windowStateRef.current.windows.find((window) => window.id === activeWindowId);
+      if (activeRecord?.kind === "details" && activeRecord.status !== "minimized") return;
       const cloudController = activeWindowId ? cloudControllers.current.get(activeWindowId) : undefined;
       const activeWindowDialogOpen = Boolean((activeWindowId && windowDialogsRef.current[activeWindowId]) || (activeFileWindowId && windowDialogsRef.current[activeFileWindowId]));
       if (cloudController?.blocked) return;
@@ -675,6 +686,11 @@ export function FileWorkspace({
   });
 
   const taskbarWindows = windowState.windows.reduce<TaskbarWindow[]>((items, window) => {
+    if (window.kind === "details") {
+      const target = detailTargets[window.id];
+      if (target) items.push({ id: window.id, kind: "details", title: `${labels.details.title} - ${detailsTitle(target, labels.details)}`, status: window.status });
+      return items;
+    }
     if (window.kind === "cloudPreview") {
       const preview = cloudPreviews[window.id];
       const entry = preview?.entries.find((item) => item.id === preview.entryId);
@@ -770,6 +786,7 @@ export function FileWorkspace({
           languageControl={<LanguageSelect value={languageMode} onChange={onLanguageModeChange} labels={labels} />}
         >
           {mode === "compact" ? renderCompactWorkspace() : renderDesktopWorkspace()}
+          {mode === "compact" ? <div className="compact-details-windows">{windowState.windows.filter((window) => window.kind === "details" && window.status !== "minimized").map(renderDesktopWindow)}</div> : null}
         </WorkspaceShell>
         <DragOverlay dropAnimation={null}>
           {dragSource ? <FileDragOverlay source={dragSource} feedback={dropFeedback} labels={labels} /> : null}
@@ -857,7 +874,12 @@ export function FileWorkspace({
     const right = sessions[compactBindings.right];
     if (!left || !right) return null;
     return (
-      <div className="compact-workspace-layout">
+      <div className="compact-workspace-layout" onPointerDownCapture={() => {
+        const state = windowStateRef.current;
+        if (state.windows.some((window) => window.id === state.activeWindowId && window.kind === "details")) {
+          commitWindowState((current) => ({ ...current, activeWindowId: null }));
+        }
+      }}>
         <SelectionActionToolbar
           selectionStore={sessions[compactBindings[activeCompactPane]].selectionStore}
           actionsForSelection={(selectedCount) => compactToolbarActions(activeCompactPane, selectedCount)}
@@ -930,9 +952,14 @@ export function FileWorkspace({
       onClose: () => closeDesktopWindow(window.id),
     };
 
+    if (window.kind === "details") {
+      const target = detailTargets[window.id];
+      return target ? <WindowFrame key={window.id} {...frameProps} title={`${labels.details.title} - ${detailsTitle(target, labels.details)}`} icon={<Info />}><FileDetails target={target} labels={labels} /></WindowFrame> : null;
+    }
+
     if (window.kind === "cloud115") {
       return <WindowFrame key={window.id} {...frameProps} title="115网盘" icon={<Cloud aria-hidden="true" />} childDialog={renderWindowDialog(window)}><Cloud115Window windowId={window.id} layer={window.zOrder} onJobCreated={(id) => handleJobCreated(id, window.id)} initialTrail={window.trail} onOpenNewWindow={openCloud115DesktopWindow} onPowerRename={openCloudPowerRename} onSuperRename={openCloudSuperRename} onPreview={openCloudPreview} labels={labels}
-        onRegister={registerCloudController} dropFeedback={dropFeedback} operationOpen={Boolean(windowDialogs[window.id])}
+        onDetails={openFileDetails} onRegister={registerCloudController} dropFeedback={dropFeedback} operationOpen={Boolean(windowDialogs[window.id])}
         onPaste={(target) => pasteClipboard(target, window.id)}
         onOperation={(request) => openDialogForWindow({ dialogId: nextDialogId(), windowId: window.id, kind: "operation", request })} /></WindowFrame>;
     }
@@ -1452,6 +1479,14 @@ export function FileWorkspace({
         : [];
     const targetPath = toolbar ? (selectedCount === 1 ? session?.selectionStore.getOrderedPaths()[0] : null) : contextTargetsRef.current[sessionId] ?? null;
     const targetEntry = session?.entries.find((entry) => entry.relativePath === targetPath);
+    const detailAction: FileContextAction = { kind: "command", id: "details", label: labels.details.title, icon: Info, separatorBefore: true, disabled: !locationReady, run: () => {
+      if (session?.location.kind !== "directory") return;
+      const location = session.location;
+      const selection = toolbar || targetEntry ? session.selectionStore.getOrderedPaths() : [];
+      const paths = selection.length ? selection : [location.path];
+      const names = paths.map((path) => session.entries.find((entry) => entry.relativePath === path)?.name ?? (path === "." ? roots.find((root) => root.id === location.rootId)?.name || "/" : path.split("/").pop() || path));
+      openFileDetails({ rootId: location.rootId, paths, names });
+    } };
     const pasteTarget = resolveContextPasteTarget(session, toolbar ? undefined : targetEntry);
     const linkTarget = session?.location.kind === "directory"
       ? resolveLinkTarget({
@@ -1500,12 +1535,14 @@ export function FileWorkspace({
         ...compactClipboardActions,
         ...linkActions,
         ...ordinaryActions,
+        detailAction,
       ];
     }
     return [
       ...clipboardActions,
       ...linkActions,
       ...baseActions.map((action, index) => index === 0 ? { ...action, separatorBefore: true } : action),
+      detailAction,
     ];
   }
 
@@ -2049,6 +2086,12 @@ export function FileWorkspace({
     openWindowForSession(createSession({ kind: "virtual-root" }));
   }
 
+  function openFileDetails(target: DetailsTarget) {
+    const id = `details-${++detailsCounter.current}`;
+    setDetailTargets((current) => ({ ...current, [id]: target }));
+    commitWindowState((current) => openDetailsWindow(current, id, desktopBoundsRef.current));
+  }
+
   function openDirectoryWindow(rootId: string, path: string) {
     openWindowForSession(createSession({ kind: "directory", rootId, path }));
   }
@@ -2069,6 +2112,11 @@ export function FileWorkspace({
   function closeDesktopWindow(id: string) {
     const target = windowStateRef.current.windows.find((window) => window.id === id);
     if (!target) return;
+    if (target.kind === "details") {
+      commitWindowState((current) => closeWindow(current, id));
+      setDetailTargets((current) => withoutKey(current, id));
+      return;
+    }
     if (target.kind === "cloudPreview") {
       commitWindowState((current) => closeWindow(current, id));
       setCloudPreviews((current) => withoutKey(current, id));

@@ -20,7 +20,9 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { FileCode2, FileImage, FileVideo, Files, ScanText, WandSparkles } from "lucide-react";
+import { Cloud, FileCode2, FileImage, FileVideo, Files, ScanText, WandSparkles } from "lucide-react";
+import { Cloud115Window } from "./Cloud115Window";
+import { cloudCall, type CloudDrag } from "../cloud115";
 import { toast } from "sonner";
 import { buildClipboardRequest, createAppClipboard, isEditableShortcutTarget, type AppClipboard } from "../appClipboard";
 import { api } from "../api/client";
@@ -87,6 +89,7 @@ import {
   isTextEditorWindow,
   minimizeWindow,
   openFileWindow,
+  openCloud115Window,
   openMediaPreviewWindow,
   openPowerRenameWindow,
   openSuperRenameWindow,
@@ -318,6 +321,8 @@ export function FileWorkspace({
   const [dragSource, setDragSource] = useState<FileDragSource | null>(null);
   const [dropFeedback, setDropFeedback] = useState<FileDropFeedback | null>(null);
   const dragSourceRef = useRef<FileDragSource | null>(null);
+  const cloudDragRef = useRef<CloudDrag | null>(null);
+  const [cloudDrag, setCloudDrag] = useState<CloudDrag | null>(null);
   const refreshStateRef = useRef({ running: false, pending: false });
   const contextJobEvents = useOptionalJobEventsStore();
   const [fallbackJobEvents] = useState(() => new JobEventsStore());
@@ -592,7 +597,7 @@ export function FileWorkspace({
       const isCommandShortcut = (event.ctrlKey || event.metaKey) && !event.altKey;
       if (!isPlainBackspace && !isCommandShortcut) return;
       if (isEditableShortcutTarget(event.target)) return;
-      const pageDialogOpen = Boolean(document.querySelector("[role='dialog']:not(.window-dialog-panel)"));
+      const pageDialogOpen = Boolean(document.querySelector("[role='dialog']:not([aria-modal='false']):not(.window-dialog-panel)"));
       const activeFileWindowId = activeFileWindowIdRef.current;
       const activeWindowDialogOpen = Boolean(activeFileWindowId && windowDialogsRef.current[activeFileWindowId]);
       if (isPlainBackspace) {
@@ -637,6 +642,10 @@ export function FileWorkspace({
   });
 
   const taskbarWindows = windowState.windows.reduce<TaskbarWindow[]>((items, window) => {
+    if (window.kind === "cloud115") {
+      items.push({ id: window.id, kind: window.kind, title: "115网盘", status: window.status });
+      return items;
+    }
     if (isFileWindow(window)) {
       items.push({
         id: window.id,
@@ -725,6 +734,7 @@ export function FileWorkspace({
         </WorkspaceShell>
         <DragOverlay dropAnimation={null}>
           {dragSource ? <FileDragOverlay source={dragSource} feedback={dropFeedback} labels={labels} /> : null}
+          {cloudDrag ? <div className="file-drag-overlay">下载 {cloudDrag.entries.length} 项到本地</div> : null}
         </DragOverlay>
       </DndContext>
       {previewState ? (
@@ -849,15 +859,20 @@ export function FileWorkspace({
   function renderDesktopWorkspace() {
     return (
       <section ref={desktopRef} className="desktop-workspace" data-testid="desktop-workspace" data-file-drag-active={dragSource ? "true" : "false"}>
+        <div className="desktop-apps">
         <button type="button" className="desktop-app-icon" aria-label={labels.openFileManager} onClick={openVirtualRootWindow}>
           <span><Files aria-hidden="true" /></span>
           <strong>{labels.fileManager}</strong>
         </button>
+        <button type="button" className="desktop-app-icon" aria-label="打开115网盘" onClick={() => commitWindowState((current) => openCloud115Window(current, `cloud115-${crypto.randomUUID()}`, desktopBounds))}>
+          <span><Cloud aria-hidden="true" /></span><strong>115网盘</strong>
+        </button>
+        </div>
         {rootsError ? <div className="desktop-root-error">{rootsError}</div> : null}
         {rootsLoaded && roots.length === 0 && !rootsError ? (
           <div className="desktop-empty-roots">{labels.noMappedRoots}</div>
         ) : null}
-        {windowState.windows.filter((window) => window.status !== "minimized").map(renderDesktopWindow)}
+        {windowState.windows.filter((window) => window.status !== "minimized" || window.kind === "cloud115").map(renderDesktopWindow)}
       </section>
     );
   }
@@ -875,6 +890,10 @@ export function FileWorkspace({
       onToggleMaximize: () => commitWindowState((current) => toggleMaximizeWindow(current, window.id)),
       onClose: () => closeDesktopWindow(window.id),
     };
+
+    if (window.kind === "cloud115") {
+      return <WindowFrame key={window.id} {...frameProps} title="115网盘" icon={<Cloud aria-hidden="true" />}><Cloud115Window windowId={window.id} layer={window.zOrder} onJobCreated={handleJobCreated} /></WindowFrame>;
+    }
 
     if (isFileWindow(window)) {
       const session = sessions[window.sessionId];
@@ -1745,6 +1764,7 @@ export function FileWorkspace({
 
   function handleFileDragStart(event: DragStartEvent) {
     const data = event.active.data.current;
+    if (data?.kind === "cloud115-entry") { cloudDragRef.current = data as CloudDrag; setCloudDrag(data as CloudDrag); return; }
     if (!isFileDragData(data)) return;
     const source = resolveFileDragSource(data);
     dragSourceRef.current = source;
@@ -1765,8 +1785,17 @@ export function FileWorkspace({
 
   function handleFileDragEnd(event: DragEndEvent) {
     const source = dragSourceRef.current;
+    const cloudSource = cloudDragRef.current;
     const target = event.over?.data.current;
     clearFileDrag();
+    if (cloudSource && isFileDropData(target) && target.rootId !== "@115") {
+      void cloudCall<{ id: string }>("download", { ids: cloudSource.entries.map((entry) => entry.id), rootId: target.rootId, path: target.path }).then((job) => handleJobCreated(job.id)).catch((error) => toast.error(String(error)));
+      return;
+    }
+    if (source && target?.provider === "cloud115") {
+      void cloudCall<{ id: string }>("upload", { paths: source.entries.map((entry) => entry.relativePath), rootId: source.rootId, destId: target.path }).then((job) => handleJobCreated(job.id)).catch((error) => toast.error(String(error)));
+      return;
+    }
     if (!source || !isFileDropData(target)) return;
     const feedback = buildFileDropFeedback(source, target);
     if (!feedback.valid) {
@@ -1787,6 +1816,8 @@ export function FileWorkspace({
   }
 
   function clearFileDrag() {
+    cloudDragRef.current = null;
+    setCloudDrag(null);
     dragSourceRef.current = null;
     setDragSource(null);
     setDropFeedback(null);
@@ -1995,6 +2026,10 @@ export function FileWorkspace({
       if (instance?.manager.getSnapshot().submitting) return;
       commitWindowState((current) => closeWindow(current, id));
       removeSuperRenameInstance(target.instanceId);
+      return;
+    }
+    if (target.kind === "cloud115") {
+      commitWindowState((current) => closeWindow(current, id));
       return;
     }
     if (!isFileWindow(target)) {

@@ -112,6 +112,8 @@ export class JobEventsStore {
   }
 
   openProgress(jobID: string) {
+    const job = this.jobsByID.get(jobID);
+    if (job && ["completed", "canceled"].includes(job.status)) return;
     if (this.state.progressJobIDs.includes(jobID)) return;
     this.state = { ...this.state, progressJobIDs: [...this.state.progressJobIDs, jobID] };
     this.emit();
@@ -199,6 +201,10 @@ export class JobEventsStore {
     const jobs = [...this.jobsByID.values()].sort(compareNewestJobs);
     this.state = {
       ...this.state,
+      progressJobIDs: this.state.progressJobIDs.filter((id) => {
+        const job = this.jobsByID.get(id);
+        return !job || !["completed", "canceled"].includes(job.status);
+      }),
       jobs,
       activeCount: jobs.filter((job) => activeJobStatuses.has(job.status)).length,
     };

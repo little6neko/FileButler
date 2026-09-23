@@ -10,7 +10,7 @@ export type WorkspaceMode = "compact" | "desktop";
 
 export type TaskbarWindow = {
   id: string;
-  kind: "file" | "powerRename" | "mediaPreview" | "textEditor" | "superRename";
+  kind: "file" | "powerRename" | "mediaPreview" | "textEditor" | "superRename" | "cloud115";
   mediaKind?: MediaKind;
   title: string;
   status: WindowStatus;

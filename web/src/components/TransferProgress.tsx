@@ -21,11 +21,11 @@ export function TransferDetails({ job, labels }: { job: Job; labels: UIStrings }
   const phases: Record<string, string> = zh
     ? { copy: "复制", scan: "扫描", hash: "校验秒传", upload: "上传", download: "下载", extract: "在线解压", waiting: "等待服务端" }
     : { copy: "Copying", scan: "Scanning", hash: "Checking instant upload", upload: "Uploading", download: "Downloading", extract: "Extracting", waiting: "Waiting for server" };
-  const percent = transfer.bytesTotal > 0 ? Math.min(100, transfer.bytesDone / transfer.bytesTotal * 100) : null;
+  const percent = transfer.percent ?? (transfer.bytesTotal > 0 ? Math.min(100, transfer.bytesDone / transfer.bytesTotal * 100) : null);
   return <div className="grid gap-1 text-xs">
     <span className="truncate" title={transfer.file}>{phases[transfer.phase] ?? transfer.phase} · {transfer.file}</span>
     <Progress aria-label={zh ? "阶段进度" : "Phase progress"} value={percent} />
-    <span>{bytes(transfer.bytesDone)} / {transfer.bytesTotal > 0 ? bytes(transfer.bytesTotal) : "—"}</span>
+    <span>{transfer.percent !== undefined ? `${transfer.percent}%` : `${bytes(transfer.bytesDone)} / ${transfer.bytesTotal > 0 ? bytes(transfer.bytesTotal) : "—"}`}</span>
     <span>{transfer.bytesPerSecond > 0 ? `${bytes(transfer.bytesPerSecond)}/s` : "—"} · {zh ? "本阶段剩余" : "Phase remaining"} {transfer.remainingSeconds === undefined ? "—" : `${transfer.remainingSeconds}s`}</span>
   </div>;
 }
@@ -48,9 +48,10 @@ function TransferWindow({ job, store, labels }: { job: Job; store: JobEventsStor
     try { await api.cancelJob(job.id); }
     catch { setCanceling(false); setError(labels.cancelJobFailed); }
   }
-  return <section role="dialog" aria-modal="false" aria-label={`${labels.operationType(job.type)} ${zh ? "进度" : "progress"}`} className="pointer-events-auto grid w-[min(400px,calc(100vw-32px))] gap-3 rounded-lg border bg-background p-4 text-foreground shadow-xl">
+  return <section data-no-file-drop role="dialog" aria-modal="false" aria-label={`${labels.operationType(job.type)} ${zh ? "进度" : "progress"}`} className="pointer-events-auto grid w-[min(400px,calc(100vw-32px))] gap-3 rounded-lg border bg-background p-4 text-foreground shadow-xl">
     <header className="flex items-center justify-between gap-3"><strong>{labels.operationType(job.type)} · {labels.jobStatus(job.status)}</strong><button type="button" aria-label={labels.closeWindow} onClick={() => store.closeProgress(job.id)}>×</button></header>
     <span className="text-xs">{job.progressDone}/{job.progressTotal}</span>
+    <span className="truncate text-xs text-muted-foreground">{job.sourceRootId === "@115" ? "115" : job.sourceRootId}{job.destRootId ? ` → ${job.destRootId === "@115" ? "115" : job.destRootId}` : ""}</span>
     <TransferDetails job={job} labels={labels} />
     {job.errorMessage || error ? <p role="alert" className="text-sm text-destructive">{error || job.errorMessage}</p> : null}
     {active && job.transfer?.cancelable === false ? <p className="text-xs">{zh ? "当前服务端阶段不可取消" : "This server phase cannot be canceled"}</p> : null}

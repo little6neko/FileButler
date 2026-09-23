@@ -514,6 +514,9 @@ export const strings: Record<Language, UIStrings> = {
     operationType: (type) =>
       ({
         rename: "Rename",
+        upload: "Upload",
+        download: "Download",
+        extract: "Extract archive",
         power_rename: "PowerRename",
         super_rename: "SuperRename",
       })[type] ?? type,
@@ -809,6 +812,9 @@ export const strings: Record<Language, UIStrings> = {
         delete: "删除",
         mkdir: "新建文件夹",
         rename: "重命名",
+        upload: "上传",
+        download: "下载",
+        extract: "在线解压",
         power_rename: "PowerRename",
         super_rename: "SuperRename",
       })[type] ?? type,

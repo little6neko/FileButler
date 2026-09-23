@@ -8,6 +8,7 @@ import (
 	"github.com/little6neko/filebutler/internal/browser"
 	"github.com/little6neko/filebutler/internal/cloud115"
 	"github.com/little6neko/filebutler/internal/config"
+	"github.com/little6neko/filebutler/internal/details"
 	"github.com/little6neko/filebutler/internal/jobs"
 	"github.com/little6neko/filebutler/internal/links"
 	"github.com/little6neko/filebutler/internal/ops"
@@ -66,6 +67,7 @@ func NewRouter(deps Deps) http.Handler {
 		}
 		protected.Get("/api/roots", rootsHandler(deps.Roots))
 		protected.Get("/api/browse", browseHandler(deps.Browser))
+		protected.Post("/api/details/{section}", detailsHandler(details.Service{Roots: deps.Roots, DB: deps.Database}))
 		protected.Get("/api/media", mediaHandler(deps.Roots))
 		protected.Get("/api/text", textReadHandler(textService))
 		protected.Put("/api/text", textSaveHandler(textService))

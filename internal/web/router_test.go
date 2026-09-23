@@ -57,7 +57,7 @@ func TestProtectedRoutesRequireLogin(t *testing.T) {
 
 func TestSuperRenameRoutesRequireLogin(t *testing.T) {
 	router := testRouter(t)
-	for _, path := range []string{"/api/super-rename/preview", "/api/super-rename/group-preview", "/api/super-rename/jobs"} {
+	for _, path := range []string{"/api/super-rename/preview", "/api/super-rename/group-preview", "/api/super-rename/jobs", "/api/details/basic", "/api/details/stats", "/api/details/hash", "/api/details/media"} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(`{}`))
 		request.Header.Set("Content-Type", "application/json")

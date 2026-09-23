@@ -226,5 +226,13 @@ test("multiple progress windows can be dragged and closed independently in compa
   expect((await second.boundingBox())!.x).toBe(other.x);
   await first.getByRole("button", { name: "Run in background" }).click();
   await expect(first).toHaveCount(0); await expect(second).toBeVisible();
+  const close = second.getByRole("button", { name: "Close window" });
+  await close.hover();
+  await expect(close).toHaveCSS("background-color", "rgb(220, 38, 38)");
+  await expect(close).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(close).toHaveCSS("width", "38px");
+  await expect(close).toHaveCSS("height", "34px");
+  await close.click();
+  await expect(second).toHaveCount(0);
   expect(cancelRequests).toEqual([]);
 });

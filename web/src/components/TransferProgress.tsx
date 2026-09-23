@@ -83,7 +83,12 @@ function TransferWindow({ job, store, labels, viewport, order, onFocus }: { job:
   }
   return <section ref={measure} data-no-file-drop data-progress-job={job.id} role="dialog" aria-modal="false" aria-label={`${labels.operationType(job.type)} ${zh ? "进度" : "progress"}`} className="fixed overflow-auto rounded-lg border bg-background text-foreground shadow-xl"
     style={{ left: position.x, top: position.y, width: position.width, maxHeight: `calc(100dvh - ${position.y + 8}px)`, zIndex: position.order }} onPointerDown={onFocus}>
-    <div className="desktop-window-titlebar sticky top-0 cursor-move" onPointerDown={beginMove}><ListChecks /><strong>{labels.operationType(job.type)} · {labels.jobStatus(job.status)}</strong><Button size="icon-sm" variant="ghost" aria-label={labels.closeWindow} onClick={() => store.closeProgress(job.id)}><X /></Button></div>
+    <div className="desktop-window-titlebar sticky top-0 cursor-move" onPointerDown={beginMove}>
+      <ListChecks /><strong>{labels.operationType(job.type)} · {labels.jobStatus(job.status)}</strong>
+      <div className="desktop-window-controls">
+        <Button size="icon-sm" variant="ghost" aria-label={labels.closeWindow} title={labels.closeWindow} onClick={() => store.closeProgress(job.id)}><X /></Button>
+      </div>
+    </div>
     <div className="grid gap-3 p-4">
     <span className="text-xs">{job.progressDone}/{job.progressTotal}</span>
     <span className="truncate text-xs text-muted-foreground">{job.sourceRootId === "@115" ? "115" : job.sourceRootId}{job.destRootId ? ` → ${job.destRootId === "@115" ? "115" : job.destRootId}` : ""}</span>

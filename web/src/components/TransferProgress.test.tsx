@@ -18,6 +18,18 @@ function setup() {
 }
 
 describe("transfer windows", () => {
+  it("uses shared window controls and the X only hides progress", () => {
+    const store = setup();
+    const close = screen.getByRole("button", { name: strings["zh-CN"].closeWindow });
+    expect(close.parentElement).toHaveClass("desktop-window-controls");
+    expect(close).toHaveAttribute("title", strings["zh-CN"].closeWindow);
+    fireEvent.click(close);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(api.cancelJob).not.toHaveBeenCalled();
+    expect(store.getSnapshot().jobs[0].status).toBe("running");
+    act(() => store.openProgress("a"));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
   it("shows independent windows, raises the focused one and closes only that window", () => {
     const store = setup();
     act(() => {

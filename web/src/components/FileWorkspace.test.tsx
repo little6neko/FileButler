@@ -1437,7 +1437,7 @@ it("orders full-mode toolbar and context-menu actions", async () => {
 
   const toolbar = within(window).getByRole("navigation", { name: "File actions" });
   expect(within(toolbar).getAllByRole("button").map((button) => button.dataset.actionId)).toEqual([
-    "rename", "powerRename", "superRename", "mkdir", "delete",
+    "rename", "powerRename", "superRename", "mkdir", "more", "delete",
   ]);
 
   fireEvent.contextMenu(await within(window).findByText("a.txt"), { clientX: 100, clientY: 100 });

@@ -144,7 +144,7 @@ it("takes measurement labels out of layout and pointer interaction", () => {
 });
 
 it("keeps deep hidden-folder menus within the available viewport", () => {
-  expect(rule('[data-slot="menu-popup"]')).toContain("max-height: min(320px, var(--available-height));");
+  expect(rule('[data-slot="menu-popup"]')).toContain("max-height: min(calc(100dvh - 16px), var(--available-height));");
   expect(rule('[data-slot="menu-popup"]')).toContain("overflow-y: auto;");
 });
 

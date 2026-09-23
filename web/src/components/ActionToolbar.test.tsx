@@ -3,7 +3,21 @@ import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { strings } from "../i18n";
 import { ActionToolbar } from "./ActionToolbar";
-import { createFileActions, type FileActionCommands } from "./fileActions";
+import { createFileActions, createClipboardActions, type FileActionCommands } from "./fileActions";
+
+it("places More before Delete and exposes only hidden actions", async () => {
+  const onCopy = vi.fn();
+  const shown = actions(1, commandMocks());
+  const hidden = createClipboardActions({ selectedCount: 1, canPaste: false, canOpenInNewWindow: false, labels: strings.en, commands: { onCopy, onCut: vi.fn(), onPaste: vi.fn(), onOpenInNewWindow: vi.fn() } });
+  render(<ActionToolbar actions={shown} moreActions={[...hidden, ...shown]} selectedCount={1} labels={strings.en} />);
+  const buttons = screen.getAllByRole("button");
+  expect(buttons.indexOf(screen.getByRole("button", { name: "More" }))).toBe(buttons.indexOf(screen.getByRole("button", { name: strings.en.delete })) - 1);
+  await userEvent.click(screen.getByRole("button", { name: "More" }));
+  expect(screen.queryByRole("menuitem", { name: strings.en.rename })).not.toBeInTheDocument();
+  expect(await screen.findByRole("menuitem", { name: "Paste" })).toHaveAttribute("aria-disabled", "true");
+  await userEvent.click(screen.getByRole("menuitem", { name: /^Copy$/ }));
+  expect(onCopy).toHaveBeenCalledOnce();
+});
 
 it("labels transfer actions with the opposite pane", async () => {
   const commands = commandMocks();

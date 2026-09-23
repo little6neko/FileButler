@@ -190,6 +190,7 @@ export type UIStrings = {
   matchAll: string;
   matchAllOccurrences: string;
   modifyFileProperties: string;
+  moreActions: string;
   readFilePropertiesHint: string;
   cloudFilePropertiesUnavailable: string;
   target: string;
@@ -468,6 +469,7 @@ export const strings: Record<Language, UIStrings> = {
     matchAll: "Match all",
     matchAllOccurrences: "Match all occurrences",
     modifyFileProperties: "Modify file properties",
+    moreActions: "More",
     readFilePropertiesHint: "Read properties for filename templates only; file property contents are not modified",
     cloudFilePropertiesUnavailable: "Reading file properties is not supported on 115",
     target: "Target",
@@ -763,6 +765,7 @@ export const strings: Record<Language, UIStrings> = {
     matchAll: "全部匹配",
     matchAllOccurrences: "匹配所有出现项",
     modifyFileProperties: "修改文件属性",
+    moreActions: "更多",
     readFilePropertiesHint: "仅读取属性用于生成文件名，不修改文件内部属性",
     cloudFilePropertiesUnavailable: "115暂不支持读取文件属性",
     target: "目标",

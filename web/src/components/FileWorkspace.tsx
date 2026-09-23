@@ -129,6 +129,7 @@ import {
   createLinkSourceActions,
   createWindowFileActions,
   type FileAction,
+  type FileContextAction,
   type FileActionCommands,
 } from "./fileActions";
 import { createFileDragAnnouncements } from "./fileDragAnnouncements";
@@ -823,6 +824,7 @@ export function FileWorkspace({
         <SelectionActionToolbar
           selectionStore={sessions[compactBindings[activeCompactPane]].selectionStore}
           actionsForSelection={(selectedCount) => compactToolbarActions(activeCompactPane, selectedCount)}
+          moreActionsForSelection={(selectedCount) => contextActions(compactBindings[activeCompactPane], selectedCount, activeCompactPane, undefined, true)}
           labels={labels}
         />
         <section
@@ -1022,6 +1024,7 @@ export function FileWorkspace({
         <SelectionActionToolbar
           selectionStore={session.selectionStore}
           actionsForSelection={(selectedCount) => windowToolbarActions(window.id, session.id, selectedCount, locationReady)}
+          moreActionsForSelection={(selectedCount) => contextActions(session.id, selectedCount, undefined, window.id, true)}
           labels={labels}
         />
         {session.location.kind === "virtual-root" ? (
@@ -1390,7 +1393,7 @@ export function FileWorkspace({
     });
   }
 
-  function contextActions(sessionId: string, selectedCount: number, compactPane?: CompactPane, windowId?: string) {
+  function contextActions(sessionId: string, selectedCount: number, compactPane?: CompactPane, windowId?: string, toolbar = false) {
     const session = sessionsRef.current[sessionId];
     const locationReady = session?.location.kind === "directory" && Boolean(session.location.rootId);
     const baseActions = compactPane
@@ -1398,15 +1401,15 @@ export function FileWorkspace({
       : windowId
         ? windowToolbarActions(windowId, sessionId, selectedCount, locationReady)
         : [];
-    const targetPath = contextTargetsRef.current[sessionId] ?? null;
+    const targetPath = toolbar ? (selectedCount === 1 ? session?.selectionStore.getOrderedPaths()[0] : null) : contextTargetsRef.current[sessionId] ?? null;
     const targetEntry = session?.entries.find((entry) => entry.relativePath === targetPath);
-    const pasteTarget = resolveContextPasteTarget(session, targetEntry);
+    const pasteTarget = resolveContextPasteTarget(session, toolbar ? undefined : targetEntry);
     const linkTarget = session?.location.kind === "directory"
       ? resolveLinkTarget({
         kind: "directory",
         rootId: session.location.rootId,
         path: session.location.path,
-        entry: targetEntry,
+        entry: toolbar ? undefined : targetEntry,
       })
       : null;
     const clipboardActions = createClipboardActions({
@@ -2731,10 +2734,12 @@ const fileCollisionDetection: CollisionDetection = (args) => {
 function SelectionActionToolbar({
   selectionStore,
   actionsForSelection,
+  moreActionsForSelection,
   labels,
 }: {
   selectionStore: FileSelectionStore;
   actionsForSelection(selectedCount: number): FileAction[];
+  moreActionsForSelection?(selectedCount: number): FileContextAction[];
   labels: UIStrings;
 }) {
   const summary = useSyncExternalStore(
@@ -2742,7 +2747,7 @@ function SelectionActionToolbar({
     selectionStore.getSummary,
     selectionStore.getSummary,
   );
-  return <ActionToolbar actions={actionsForSelection(summary.selectedCount)} selectedCount={summary.selectedCount} labels={labels} />;
+  return <ActionToolbar actions={actionsForSelection(summary.selectedCount)} moreActions={moreActionsForSelection?.(summary.selectedCount)} selectedCount={summary.selectedCount} labels={labels} />;
 }
 
 function createBrowserSession(id: string, location: BrowserLocation): BrowserSession {

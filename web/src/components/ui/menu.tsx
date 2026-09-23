@@ -26,4 +26,7 @@ function MenuItem({ className, ...props }: ComponentProps<typeof MenuPrimitive.I
   return <MenuPrimitive.Item data-slot="menu-item" className={cn(className)} {...props} />;
 }
 
-export { MenuItem, MenuPopup, MenuPortal, MenuPositioner, MenuRoot, MenuTrigger };
+const MenuSeparator = MenuPrimitive.Separator;
+const MenuSubmenuRoot = MenuPrimitive.SubmenuRoot;
+const MenuSubmenuTrigger = MenuPrimitive.SubmenuTrigger;
+export { MenuItem, MenuPopup, MenuPortal, MenuPositioner, MenuRoot, MenuTrigger, MenuSeparator, MenuSubmenuRoot, MenuSubmenuTrigger };

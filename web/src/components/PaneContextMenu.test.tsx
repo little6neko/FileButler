@@ -121,7 +121,9 @@ it("executes the highlighted submenu leaf with Enter", async () => {
   const trigger = within(await screen.findByRole("menu", { name: "File actions" }))
     .getByRole("menuitem", { name: "Create as" });
   trigger.focus();
-  await user.keyboard("{ArrowRight}{Enter}");
+  await user.keyboard("{ArrowRight}");
+  await waitFor(() => expect(screen.getByRole("menuitem", { name: "Hard link" })).toHaveFocus());
+  await user.keyboard("{Enter}");
   expect(onHardlink).toHaveBeenCalledOnce();
 });
 

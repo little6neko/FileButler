@@ -1356,7 +1356,7 @@ body {
   z-index: 20;
   min-width: 132px;
   max-width: min(280px, calc(100vw - 24px));
-  max-height: min(320px, var(--available-height));
+  max-height: min(calc(100dvh - 16px), var(--available-height));
   padding: 4px;
   border: 1px solid var(--border);
   border-radius: 6px;

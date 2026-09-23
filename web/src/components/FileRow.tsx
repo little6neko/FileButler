@@ -19,6 +19,8 @@ import {
 import { FileIcon } from "./FileIcon";
 
 type Props = {
+  provider?: "cloud115";
+  dragData?: Record<string, unknown>;
   paneKey: PaneKey;
   dropLayer?: number;
   dropWindowId?: string;
@@ -37,6 +39,8 @@ type Props = {
 };
 
 export const FileRow = memo(function FileRow({
+  provider,
+  dragData: providedDragData,
   paneKey,
   dropLayer = 0,
   dropWindowId,
@@ -78,11 +82,12 @@ export const FileRow = memo(function FileRow({
     setNodeRef: setDragNodeRef,
   } = useDraggable({
     id: fileDragId(paneKey, entry.relativePath),
-    data: dragData,
+    data: providedDragData ?? dragData,
     attributes: { role: "button", tabIndex: -1 },
     disabled: dropDisabled,
   });
   const directoryTarget = useMemo<FileDropData>(() => ({
+    provider,
     id: directoryDropId(paneKey, entry.relativePath),
     kind: "directory",
     pane: paneKey,
@@ -91,7 +96,7 @@ export const FileRow = memo(function FileRow({
     label: entry.name,
     layer: dropLayer,
     windowId: dropWindowId,
-  }), [dropLayer, dropWindowId, entry.name, entry.relativePath, paneKey, rootId]);
+  }), [provider, dropLayer, dropWindowId, entry.name, entry.relativePath, paneKey, rootId]);
   const drop = useDroppable({
     id: directoryTarget.id,
     data: directoryTarget,

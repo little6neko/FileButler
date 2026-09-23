@@ -32,6 +32,10 @@ import { PaneContextMenu } from "./PaneContextMenu";
 import { PaneStatusBar } from "./PaneStatusBar";
 
 type FilePaneProps = {
+  provider?: "cloud115";
+  directoryId?: string;
+  dragData?(entry: Entry): Record<string, unknown>;
+  onOpenDirectory?(entry: Entry): void;
   paneKey?: PaneKey;
   dropLayer?: number;
   dropWindowId?: string;
@@ -82,6 +86,10 @@ type FilePaneNavigation = {
 };
 
 export function FilePane({
+  provider,
+  directoryId,
+  dragData,
+  onOpenDirectory,
   paneKey = "left",
   dropLayer = 0,
   dropWindowId,
@@ -145,7 +153,7 @@ export function FilePane({
   const pathSegmentsMeasureRef = useRef<HTMLDivElement>(null);
   const columnsResizedRef = useRef(initialViewState?.columnsResized ?? false);
   const onViewStateChangeRef = useRef(onViewStateChange);
-  const rowCallbacksRef = useRef({ onToggleSelection, onSelectEntry, onSelectAll, onPathChange, onOpenFile });
+  const rowCallbacksRef = useRef({ onToggleSelection, onSelectEntry, onSelectAll, onPathChange, onOpenFile, onOpenDirectory });
   const visibleOrderCallbackRef = useRef(onVisibleOrderChange);
   const visibleEntries = useMemo(() => sortEntries(entries, sortState, labels), [entries, labels, sortState]);
   const contextActions = actionsForSelection?.(selection.getSummary().selectedCount) ?? actions;
@@ -153,7 +161,7 @@ export function FilePane({
     () =>
       entries
         .filter((entry) => entry.type === "directory")
-        .filter((entry) => entry.relativePath.toLowerCase().startsWith(normalizeInput(pathDraft).toLowerCase()))
+        .filter((entry) => (entry.navigationPath ?? entry.relativePath).toLowerCase().startsWith(normalizeInput(pathDraft).toLowerCase()))
         .slice(0, 8),
     [entries, pathDraft],
   );
@@ -168,11 +176,12 @@ export function FilePane({
   }, [currentPath, onOpenRootCatalog, pathRootLabel, rootCatalogLabel]);
   const singleRoot = roots.length <= 1;
   const paneTarget: FileDropData = {
+    provider,
     id: paneDropId(paneKey),
     kind: "current-directory",
     pane: paneKey,
     rootId: selectedRootId,
-    path: currentPath,
+    path: directoryId ?? currentPath,
     label: labels.currentDirectory,
     layer: dropLayer,
     windowId: dropWindowId,
@@ -191,10 +200,10 @@ export function FilePane({
   const paneDropState = paneFeedback ? (paneFeedback.valid ? "valid" : "invalid") : undefined;
 
   useLayoutEffect(() => {
-    rowCallbacksRef.current = { onToggleSelection, onSelectEntry, onSelectAll, onPathChange, onOpenFile };
+    rowCallbacksRef.current = { onToggleSelection, onSelectEntry, onSelectAll, onPathChange, onOpenFile, onOpenDirectory };
     visibleOrderCallbackRef.current = onVisibleOrderChange;
     onViewStateChangeRef.current = onViewStateChange;
-  }, [onOpenFile, onPathChange, onSelectAll, onSelectEntry, onToggleSelection, onViewStateChange, onVisibleOrderChange]);
+  }, [onOpenDirectory, onOpenFile, onPathChange, onSelectAll, onSelectEntry, onToggleSelection, onViewStateChange, onVisibleOrderChange]);
 
   useEffect(() => {
     onViewStateChangeRef.current?.({ sortState, columnWidths, columnsResized: columnsResizedRef.current });
@@ -215,7 +224,10 @@ export function FilePane({
     rowCallbacksRef.current.onSelectAll(checked);
   }, []);
   const handleRowOpen = useCallback((entry: Entry) => {
-    if (entry.type === "directory") rowCallbacksRef.current.onPathChange(entry.relativePath);
+    if (entry.type === "directory") {
+      if (rowCallbacksRef.current.onOpenDirectory) rowCallbacksRef.current.onOpenDirectory(entry);
+      else rowCallbacksRef.current.onPathChange(entry.relativePath);
+    }
     else rowCallbacksRef.current.onOpenFile?.(entry);
   }, []);
 
@@ -408,10 +420,11 @@ export function FilePane({
                   aria-selected={index === highlightedSuggestion}
                   onMouseDown={(event) => {
                     event.preventDefault();
-                    onPathChange(entry.relativePath);
+                    if (onOpenDirectory) onOpenDirectory(entry);
+                    else onPathChange(entry.relativePath);
                   }}
                 >
-                  {entry.relativePath}
+                  {entry.navigationPath ?? entry.relativePath}
                 </button>
               ))}
             </div>
@@ -539,10 +552,12 @@ export function FilePane({
             {visibleEntries.map((entry) => (
               <FileRow
                 key={entry.relativePath}
+                provider={provider}
+                dragData={dragData?.(entry)}
                 paneKey={paneKey}
                 dropLayer={dropLayer}
                 dropWindowId={dropWindowId}
-                dropDisabled={dropDisabled}
+                dropDisabled={dropDisabled || loading || Boolean(error)}
                 rootId={selectedRootId}
                 parentPath={currentPath}
                 entry={entry}
@@ -783,7 +798,8 @@ export function FilePane({
     if (event.key === "Enter") {
       event.preventDefault();
       const selectedSuggestion = highlightedSuggestion >= 0 ? suggestions[highlightedSuggestion] : undefined;
-      onPathChange(selectedSuggestion?.relativePath ?? normalizeInput(pathDraft));
+      if (selectedSuggestion && onOpenDirectory) onOpenDirectory(selectedSuggestion);
+      else onPathChange(selectedSuggestion?.relativePath ?? normalizeInput(pathDraft));
     }
   }
 }

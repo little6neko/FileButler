@@ -61,7 +61,7 @@ class CloudOperations:
         entries = []
         for raw in result["data"]:
             item = normalize_attr_web(raw)
-            entries.append({"id": str(item["id"]), "parentId": str(item["parent_id"]), "name": item["name"], "isDirectory": item["is_dir"], "size": item["size"]})
+            entries.append({"id": str(item["id"]), "parentId": str(item["parent_id"]), "name": item["name"], "isDirectory": item["is_dir"], "size": item["size"], "modifiedUnix": int(item.get("mtime") or 0)})
         return {"entries": entries, "total": int(result["count"]), "offset": offset}
 
     def children(self, parent):
@@ -97,6 +97,30 @@ class CloudOperations:
         dest = params.get("destId", "0")
         if method == "browse":
             return self.browse(parent, params.get("offset", 0))
+        if method == "profile":
+            name = "115网盘"
+            try:
+                data = self.checked(client.user_info2(timeout=15)).get("data", {})
+                value = data.get("user_name") or data.get("user_nick_name") or data.get("nick_name")
+                if isinstance(value, str) and value.strip():
+                    name = value[:200]
+            except Exception:
+                pass  # Profile display is optional, never block file access.
+            return {"accountId": str(client.user_id), "name": name}
+        if method == "resolve":
+            trail = [{"id": "0", "name": "115网盘"}]
+            for part in params.get("path", "").replace("\\", "/").split("/"):
+                if part in ("", "."):
+                    continue
+                if part == "..":
+                    if len(trail) > 1:
+                        trail.pop()
+                    continue
+                matches = [entry for entry in self.children(trail[-1]["id"]) if entry["isDirectory"] and entry["name"] == part]
+                if len(matches) != 1:
+                    raise ProviderError("目录不存在或存在同名目录，请通过目录列表逐级打开")
+                trail.append({"id": matches[0]["id"], "name": part})
+            return {"trail": trail}
         if method == "offline.add":
             if str(dest) != "0" and not self.info(dest)["is_dir"]:
                 raise ProviderError("目标不是文件夹")

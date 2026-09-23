@@ -7,12 +7,13 @@ import { JobEventsContext } from "../jobEventsContext";
 import { JobEventsStore } from "../jobEvents";
 import type { Job } from "../api/types";
 
-vi.mock("../cloud115", () => ({ cloudCall: vi.fn() }));
+vi.mock("../cloud115", async (original) => ({ ...await original<typeof import("../cloud115")>(), cloudCall: vi.fn(), cloudDirectory: async (id: string) => (await cloudCall<{ entries: typeof entry[] }>("browse", { parentId: id, offset: 0 })).entries }));
 const entry = { id: "1", parentId: "0", name: "sample.txt", isDirectory: false, size: 10 };
 beforeEach(() => {
   vi.mocked(cloudCall).mockReset();
   vi.mocked(cloudCall).mockImplementation(async (method) => {
     if (method === "status") return { loggedIn: true };
+    if (method === "profile") return { accountId: "1", name: "测试115账号" };
     if (method === "browse") return { entries: [entry], offset: 0, total: 1 };
     return { id: "job" };
   });
@@ -41,10 +42,12 @@ it("loads directory and creates a rename task without refreshing early", async (
 });
 
 it("shows a login QR and checks login explicitly", async () => {
+  let loggedIn = false;
   vi.mocked(cloudCall).mockImplementation(async (method) => {
-    if (method === "status") return { loggedIn: false };
+    if (method === "status") return { loggedIn };
     if (method === "login.start") return { image: "data:image/svg+xml;base64,PHN2Zy8+" };
-    if (method === "login.check") return { loggedIn: true, status: 2 };
+    if (method === "login.check") { loggedIn = true; return { loggedIn: true, status: 2 }; }
+    if (method === "profile") return { accountId: "1", name: "测试115账号" };
     return { entries: [entry], offset: 0, total: 1 };
   });
   setup();
@@ -75,7 +78,7 @@ it.each(["folder", "file", "blank"])("targets the correct directory from the %s 
   });
   setup();
   await screen.findByText("子文件夹");
-  fireEvent.contextMenu(kind === "blank" ? screen.getByLabelText("115文件列表") : screen.getByText(kind === "folder" ? "子文件夹" : "sample.txt"));
+  fireEvent.contextMenu(kind === "blank" ? screen.getByTestId("file-list-cloud") : screen.getByText(kind === "folder" ? "子文件夹" : "sample.txt"));
   fireEvent.click(await screen.findByRole("menuitem", { name: "离线下载" }));
   fireEvent.change(screen.getByRole("textbox", { name: "下载链接" }), { target: { value: "ed2k://|file|test|1|hash|/" } });
   fireEvent.click(screen.getByRole("button", { name: /^提交$/ }));
@@ -98,4 +101,22 @@ it("keeps only failed links for explicit retry", async () => {
   await screen.findByText(/提交失败：.*链接无效/);
   expect(screen.getByRole("textbox", { name: "下载链接" })).toHaveValue("bad-link");
   expect(screen.getByText("已提交到115")).toBeInTheDocument();
+});
+
+it("reuses the file table and local dialogs, hides links and disables extraction for non-archives", async () => {
+  setup();
+  await screen.findByText("sample.txt");
+  expect(screen.getAllByText("测试115账号").length).toBeGreaterThan(0);
+  expect(screen.getByRole("columnheader", { name: /名称/ })).toBeInTheDocument();
+  expect(screen.queryByText("选择已加载项")).not.toBeInTheDocument();
+  expect(screen.queryByText(/与本地文件窗口拖放/)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("checkbox", { name: "选择 sample.txt" }));
+  expect(screen.getByRole("button", { name: "在线解压" })).toBeDisabled();
+  fireEvent.contextMenu(screen.getByText("sample.txt"));
+  await screen.findByRole("menuitem", { name: "在线解压" });
+  expect(screen.queryByRole("menuitem", { name: /连接/ })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("menuitem", { name: "离线下载" }));
+  expect(screen.getByRole("dialog", { name: "离线下载" }).closest("[data-window-local-dialog]")).not.toBeNull();
+  expect(screen.getByRole("textbox", { name: "下载链接" })).toHaveAttribute("placeholder", "支持磁力、ed2k、HTTP/HTTPS、FTP，每行一条");
+  expect(screen.queryByText(/不代表下载完成/)).not.toBeInTheDocument();
 });

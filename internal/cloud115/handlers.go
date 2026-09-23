@@ -46,7 +46,7 @@ type Request struct {
 }
 
 var numericID = regexp.MustCompile(`^(0|[1-9][0-9]{0,19})$`)
-var queries = map[string]bool{"status": true, "login.start": true, "login.check": true, "logout": true, "browse": true, "offline.add": true}
+var queries = map[string]bool{"status": true, "login.start": true, "login.check": true, "logout": true, "browse": true, "profile": true, "resolve": true, "offline.add": true}
 var mutations = map[string]bool{"mkdir": true, "rename": true, "copy": true, "move": true, "delete": true, "upload": true, "download": true, "extract": true}
 
 func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
@@ -80,7 +80,7 @@ func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	params := map[string]any{"id": req.ID, "parentId": req.ParentID, "destId": req.DestID, "name": req.Name, "password": req.Password, "offset": req.Offset}
+	params := map[string]any{"id": req.ID, "parentId": req.ParentID, "destId": req.DestID, "name": req.Name, "password": req.Password, "offset": req.Offset, "path": req.Path}
 	if method == "offline.add" {
 		link := strings.TrimSpace(req.URL)
 		parsed, err := url.Parse(link)

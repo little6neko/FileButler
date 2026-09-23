@@ -45,7 +45,7 @@ export type SuperRenameWindowRecord = BaseWindowRecord & {
   instanceId: string;
 };
 
-export type Cloud115WindowRecord = BaseWindowRecord & { kind: "cloud115"; instanceId: string };
+export type Cloud115WindowRecord = BaseWindowRecord & { kind: "cloud115"; instanceId: string; trail?: { id: string; name: string }[] };
 export type DesktopWindowRecord = FileWindowRecord | PowerRenameWindowRecord | MediaPreviewWindowRecord | TextEditorWindowRecord | SuperRenameWindowRecord | Cloud115WindowRecord;
 
 export type WindowManagerState = {
@@ -69,8 +69,8 @@ export function createWindowManagerState(): WindowManagerState {
   return { windows: [], activeWindowId: null, nextOrder: 1, cascadeIndex: 0 };
 }
 
-export function openCloud115Window(state: WindowManagerState, id: string, bounds: DesktopBounds): WindowManagerState {
-  return openWindow(state, id, { kind: "cloud115", instanceId: id }, bounds);
+export function openCloud115Window(state: WindowManagerState, id: string, bounds: DesktopBounds, trail?: { id: string; name: string }[]): WindowManagerState {
+  return openWindow(state, id, { kind: "cloud115", instanceId: id, trail }, bounds);
 }
 
 export function openFileWindow(
@@ -127,7 +127,7 @@ function openWindow(
     | Pick<MediaPreviewWindowRecord, "kind" | "instanceId">
     | Pick<TextEditorWindowRecord, "kind" | "instanceId">
     | Pick<SuperRenameWindowRecord, "kind" | "instanceId">
-    | Pick<Cloud115WindowRecord, "kind" | "instanceId">,
+    | Pick<Cloud115WindowRecord, "kind" | "instanceId" | "trail">,
   bounds: DesktopBounds,
 ): WindowManagerState {
   const rect = cascadeRect(bounds, state.cascadeIndex, windowMinimum(identity));

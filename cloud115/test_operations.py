@@ -51,6 +51,19 @@ class FakeOperations(CloudOperations):
 
 
 class OperationsTests(unittest.TestCase):
+    def test_resolve_uses_exact_names_and_rejects_ambiguous_paths(self):
+        operations = FakeOperations()
+        with patch.object(operations, "children", return_value=iter([{"id": "12", "name": "林幼一(唐宁宁)", "isDirectory": True}])):
+            result = operations.operation("resolve", {"path": "/林幼一(唐宁宁)"}, None)
+        self.assertEqual(result["trail"][-1]["id"], "12")
+        with patch.object(operations, "children", return_value=iter([{"id": "12", "name": "same", "isDirectory": True}, {"id": "13", "name": "same", "isDirectory": True}])), self.assertRaises(ProviderError):
+            operations.operation("resolve", {"path": "same"}, None)
+
+    def test_profile_exposes_only_account_identity_and_display_name(self):
+        client = Mock(user_id=123)
+        client.user_info2.return_value = {"state": True, "data": {"user_name": "测试用户", "cookie": "do not expose"}}
+        self.assertEqual(FakeOperations(client).operation("profile", {}, None), {"accountId": "123", "name": "测试用户"})
+
     def test_offline_submission_uses_selected_directory(self):
         client = Mock()
         client.clouddownload_task_add_url.return_value = {"state": True}

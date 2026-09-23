@@ -8,6 +8,7 @@ export type SymlinkResolution = {
 };
 
 export type Entry = {
+  navigationPath?: string;
   name: string;
   relativePath: string;
   type: "file" | "directory" | "symlink" | "other";

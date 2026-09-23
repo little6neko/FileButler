@@ -866,7 +866,7 @@ export function FileWorkspace({
           <span><Files aria-hidden="true" /></span>
           <strong>{labels.fileManager}</strong>
         </button>
-        <button type="button" className="desktop-app-icon" aria-label="打开115网盘" onClick={openCloud115DesktopWindow}>
+        <button type="button" className="desktop-app-icon" aria-label="打开115网盘" onClick={() => openCloud115DesktopWindow()}>
           <span><Cloud aria-hidden="true" /></span><strong>115网盘</strong>
         </button>
         </div>
@@ -894,7 +894,7 @@ export function FileWorkspace({
     };
 
     if (window.kind === "cloud115") {
-      return <WindowFrame key={window.id} {...frameProps} title="115网盘" icon={<Cloud aria-hidden="true" />}><Cloud115Window windowId={window.id} layer={window.zOrder} onJobCreated={handleJobCreated} /></WindowFrame>;
+      return <WindowFrame key={window.id} {...frameProps} title="115网盘" icon={<Cloud aria-hidden="true" />}><Cloud115Window windowId={window.id} layer={window.zOrder} onJobCreated={handleJobCreated} initialTrail={window.trail} onOpenNewWindow={openCloud115DesktopWindow} labels={labels} /></WindowFrame>;
     }
 
     if (isFileWindow(window)) {
@@ -1767,7 +1767,7 @@ export function FileWorkspace({
 
   function handleFileDragStart(event: DragStartEvent) {
     const data = event.active.data.current;
-    if (data?.kind === "cloud115-entry") { cloudDragRef.current = data as CloudDrag; setCloudDrag(data as CloudDrag); return; }
+    if (data?.kind === "cloud115-entry") { const source: CloudDrag = { kind: "cloud115-entry", entries: [...data.entries] }; cloudDragRef.current = source; setCloudDrag(source); return; }
     if (!isFileDragData(data)) return;
     const source = resolveFileDragSource(data);
     dragSourceRef.current = source;
@@ -1902,9 +1902,9 @@ export function FileWorkspace({
     return id;
   }
 
-  function openCloud115DesktopWindow() {
+  function openCloud115DesktopWindow(trail?: { id: string; name: string }[]) {
     const id = `window-${++windowCounterRef.current}`;
-    commitWindowState((current) => openCloud115Window(current, id, desktopBoundsRef.current));
+    commitWindowState((current) => openCloud115Window(current, id, desktopBoundsRef.current, trail));
   }
 
   function openPowerRenameForSession(sessionId: string) {

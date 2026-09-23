@@ -39,6 +39,7 @@ test("desktop icons are vertical and local/cloud drag creates background transfe
     else if (path === "/api/roots") data = [{ id: "test", name: "Data" }];
     else if (path === "/api/browse") data = [{ name: "local.txt", relativePath: "local.txt", type: "file", size: 4, mode: "0644", modifiedUnix: 0, isSymlink: false }];
     else if (path === "/api/cloud115/status") data = { loggedIn: true };
+    else if (path === "/api/cloud115/profile") data = { accountId: "1", name: "Cloud user" };
     else if (path === "/api/cloud115/browse") data = { entries: [{ id: "123", parentId: "0", name: "cloud.txt", isDirectory: false, size: 4 }], total: 1, offset: 0 };
     else if (["/api/cloud115/upload", "/api/cloud115/download"].includes(path)) {
       transfers.push({ method: path.split("/").at(-1)!, params: route.request().postDataJSON() });

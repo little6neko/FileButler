@@ -20,6 +20,7 @@ export type FileDragSource = {
 };
 
 export type FileDropData = {
+  provider?: "cloud115";
   id: string;
   kind: "directory" | "current-directory";
   pane: PaneKey;

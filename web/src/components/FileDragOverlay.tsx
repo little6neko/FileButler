@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import type { FileDragSource, FileDropFeedback } from "../fileDrag";
-import type { UIStrings } from "../i18n";
+import { strings, type UIStrings } from "../i18n";
 import { FileIcon } from "./FileIcon";
 
 export function FileDragOverlay({
@@ -23,7 +23,7 @@ export function FileDragOverlay({
       <FileIcon name={first.name} type={first.type} />
       <span className="min-w-0">
         <strong>{labels.dragSummary(first.name, source.entries.length)}</strong>
-        {feedback ? <small>{labels.dragDestination(feedback.operation, feedback.target.label)}</small> : null}
+        {feedback ? <small>{feedback.transfer ? `${labels === strings["zh-CN"] ? (feedback.transfer === "download" ? "下载到" : "上传到") : (feedback.transfer === "download" ? "Download to" : "Upload to")} ${feedback.target.label}` : labels.dragDestination(feedback.operation, feedback.target.label)}</small> : null}
       </span>
       {source.entries.length > 1 ? (
         <Badge aria-label={labels.selectionSummary(source.entries.length)}>{source.entries.length}</Badge>

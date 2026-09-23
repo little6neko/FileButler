@@ -1,8 +1,10 @@
+import { useSyncExternalStore } from "react";
 import type { Entry, OpsRequest } from "./api/types";
 
 export type AppClipboardOperation = "copy" | "move";
 
 export type AppClipboard = {
+  accountId?: string;
   operation: AppClipboardOperation;
   sourceRootId: string;
   sourceParentPath: string;
@@ -12,6 +14,7 @@ export type AppClipboard = {
 };
 
 export type ClipboardTarget = {
+  accountId?: string;
   rootId: string;
   path: string;
 };
@@ -37,11 +40,26 @@ export function createAppClipboard(
 export function buildClipboardRequest(clipboard: AppClipboard, target: ClipboardTarget): OpsRequest {
   return {
     type: clipboard.operation,
+    ...(clipboard.accountId || target.accountId ? { accountId: clipboard.accountId ?? target.accountId } : {}),
     sourceRoot: clipboard.sourceRootId,
     sources: clipboard.paths,
     destRoot: target.rootId,
     destPath: target.path,
   };
+}
+
+let clipboard: AppClipboard | null = null;
+const listeners = new Set<() => void>();
+export function getAppClipboard() { return clipboard; }
+export function setAppClipboard(value: AppClipboard | null) {
+  clipboard = value;
+  for (const listener of listeners) listener();
+}
+export function clearAppClipboard(expected: AppClipboard | null) {
+  if (clipboard === expected) setAppClipboard(null);
+}
+export function useAppClipboard() {
+  return useSyncExternalStore((listener) => { listeners.add(listener); return () => { listeners.delete(listener); }; }, getAppClipboard, getAppClipboard);
 }
 
 export function isEditableShortcutTarget(target: EventTarget | null) {

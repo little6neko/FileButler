@@ -87,6 +87,7 @@ it("submits unique links to the current directory without creating a completed d
 it.each(["folder", "file", "blank"])("targets the correct directory from the %s context menu", async (kind) => {
   vi.mocked(cloudCall).mockImplementation(async (method) => {
     if (method === "status") return { loggedIn: true };
+    if (method === "profile") return { accountId: "1", name: "测试115账号" };
     if (method === "browse") return { entries: [entry, { ...entry, id: "123", name: "子文件夹", isDirectory: true }], offset: 0, total: 2 };
     return { submitted: true };
   });
@@ -103,6 +104,7 @@ it.each(["folder", "file", "blank"])("targets the correct directory from the %s 
 it("keeps only failed links for explicit retry", async () => {
   vi.mocked(cloudCall).mockImplementation(async (method, params) => {
     if (method === "status") return { loggedIn: true };
+    if (method === "profile") return { accountId: "1", name: "测试115账号" };
     if (method === "browse") return { entries: [entry], offset: 0, total: 1 };
     if (params?.url === "bad-link") throw new Error("链接无效");
     return { submitted: true };

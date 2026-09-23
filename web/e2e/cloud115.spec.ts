@@ -94,6 +94,7 @@ test("opens distinct 115 windows without secure-context crypto APIs", async ({ p
 
 test("desktop icons are vertical and local/cloud drag creates background transfers", async ({ page }) => {
   const transfers: { method: string; params: Record<string, unknown> }[] = [];
+  const previews: Record<string, unknown>[] = [];
   await page.setViewportSize({ width: 2000, height: 1000 });
   await page.addInitScript(() => Object.defineProperty(navigator, "languages", { get: () => ["en-US"] }));
   await page.route("**/api/**", async (route) => {
@@ -106,7 +107,11 @@ test("desktop icons are vertical and local/cloud drag creates background transfe
     else if (path === "/api/cloud115/status") data = { loggedIn: true };
     else if (path === "/api/cloud115/profile") data = { accountId: "1", name: "Cloud user" };
     else if (path === "/api/cloud115/browse") data = { entries: [{ id: "123", parentId: "0", name: "cloud.txt", isDirectory: false, size: 4 }], total: 1, offset: 0 };
-    else if (["/api/cloud115/upload", "/api/cloud115/download"].includes(path)) {
+    else if (path === "/api/cloud115/ops.preview") {
+      const params = route.request().postDataJSON(); previews.push(params);
+      data = { items: [{ sourcePath: "selected.txt", destPath: "selected.txt", conflict: false }], hasConflict: false, previewToken: `plan-${previews.length}` };
+    }
+    else if (path === "/api/cloud115/ops.create") {
       transfers.push({ method: path.split("/").at(-1)!, params: route.request().postDataJSON() });
       data = { id: `transfer-${transfers.length}` };
     } else if (path === "/api/jobs/events") {
@@ -142,16 +147,28 @@ test("desktop icons are vertical and local/cloud drag creates background transfe
   await page.mouse.move(targetX, 480, { steps: 30 });
   await expect(page.locator(".file-drag-overlay")).toBeVisible();
   await page.mouse.up();
+  await expect(cloud.getByRole("dialog", { name: "copy preview" })).toBeVisible();
+  expect(transfers).toHaveLength(0);
+  expect(previews.at(-1)).toMatchObject({ type: "copy", sourceRoot: "test", sources: ["local.txt"], destRoot: "@115", destPath: "0", accountId: "1" });
+  await cloud.getByRole("radio", { name: "move", exact: true }).click();
+  await expect(cloud.getByText("上传成功后将删除本地源文件。")).toBeVisible();
+  await cloud.getByRole("button", { name: "Start move", exact: true }).click();
   await expect.poll(() => transfers.length).toBe(1);
-  expect(transfers[0]).toEqual({ method: "upload", params: { rootId: "test", paths: ["local.txt"], destId: "0" } });
+  expect(transfers[0]).toEqual({ method: "ops.create", params: { previewToken: "plan-2" } });
   // Focus uncovered content, not the title bar's maximize/minimize controls.
   await page.mouse.click(targetX, 430);
   const cloudRow = (await cloud.getByText("cloud.txt", { exact: true }).boundingBox())!;
   await page.mouse.move(cloudRow.x + 30, cloudRow.y + cloudRow.height / 2);
   await page.mouse.down();
   await page.mouse.move(row.x + 20, 480, { steps: 30 });
-  await expect(page.locator(".file-drag-overlay")).toContainText("下载");
+  await expect(page.locator(".file-drag-overlay")).toContainText("Download to");
   await page.mouse.up();
+  await expect(local.getByRole("dialog", { name: "copy preview" })).toBeVisible();
+  expect(transfers).toHaveLength(1);
+  expect(previews.at(-1)).toMatchObject({ type: "copy", sourceRoot: "@115", sources: ["123"], destRoot: "test", destPath: ".", accountId: "1" });
+  await local.getByRole("radio", { name: "move", exact: true }).click();
+  await expect(local.getByText("下载成功后将删除115上的源文件。")).toBeVisible();
+  await local.getByRole("button", { name: "Start move", exact: true }).click();
   await expect.poll(() => transfers.length).toBe(2);
-  expect(transfers[1]).toEqual({ method: "download", params: { rootId: "test", path: ".", ids: ["123"] } });
+  expect(transfers[1]).toEqual({ method: "ops.create", params: { previewToken: "plan-4" } });
 });

@@ -100,6 +100,7 @@ export type RenameOptions = {
 };
 
 export type OpsRequest = {
+  accountId?: string;
   type: "move" | "copy" | "delete" | "mkdir";
   sourceRoot: string;
   sources: string[];

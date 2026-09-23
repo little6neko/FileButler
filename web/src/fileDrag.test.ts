@@ -3,6 +3,7 @@ import type { Entry } from "./api/types";
 import {
   buildDragRequest,
   buildFileDragSource,
+  buildFileDropFeedback,
   defaultDragOperation,
   validateFileDrop,
   type FileDragData,
@@ -76,6 +77,18 @@ it("allows different roots and builds the existing OpsRequest shape", () => {
     destRoot: "root-b",
     destPath: "archive",
   });
+});
+
+it("uses cloud IDs and ancestors instead of treating IDs as local path prefixes", () => {
+  const source = { ...buildSource(entry("12", "directory")), rootId: "@115", parentPath: "0", accountId: "7" };
+  const target = { ...drop("right", "@115", "123", "directory"), accountId: "7", ancestorIds: ["0"] };
+  expect(validateFileDrop(source, target)).toEqual({ valid: true });
+  expect(validateFileDrop(source, { ...target, path: "0" })).toMatchObject({ valid: false, reason: "same-directory" });
+  expect(validateFileDrop(source, { ...target, ancestorIds: ["0", "12"] })).toMatchObject({ valid: false, reason: "inside-source" });
+  expect(validateFileDrop(source, { ...target, accountId: "8" })).toMatchObject({ valid: false });
+  expect(buildFileDropFeedback(source, drop("right", "local", ".", "current-directory"))).toMatchObject({ valid: true, operation: "copy", transfer: "download" });
+  expect(buildFileDropFeedback(buildSource(entry("a.txt")), target)).toMatchObject({ valid: true, operation: "copy", transfer: "upload" });
+  expect(buildDragRequest(source, target)).toMatchObject({ accountId: "7", sources: ["12"], destPath: "123", type: "move" });
 });
 
 function dragData(clicked: Entry): FileDragData {

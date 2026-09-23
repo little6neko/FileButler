@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { CloudDownload, FolderArchive, FolderPlus, LogOut, Pencil, ScanText, Trash2, WandSparkles } from "lucide-react";
 import { cloudCall, cloudDirectory, isCloudArchive, type CloudEntry, type CloudLocation, type CloudRequest } from "../cloud115";
-import { useCloudClipboard, setCloudClipboard, clearCloudClipboardIfUnchanged } from "../cloud115Clipboard";
+import { createAppClipboard, getAppClipboard, setAppClipboard, useAppClipboard, type ClipboardTarget } from "../appClipboard";
+import type { FileDropFeedback } from "../fileDrag";
+import type { OpsRequest } from "../api/types";
+import { toast } from "sonner";
 import { useCloud115Login } from "../useCloud115Login";
 import { createFileSelectionStore } from "../fileSelectionStore";
 import { fileSelectionMode } from "../fileSelection";
@@ -16,10 +19,16 @@ import { FilePane } from "./FilePane";
 import { ActionToolbar } from "./ActionToolbar";
 import { createClipboardActions, type FileAction } from "./fileActions";
 
-type Prompt = { method: "mkdir" | "rename" | "delete" | "extract"; name: string; password: string; ids: string[]; destId: string };
+type Prompt = { method: "mkdir" | "rename" | "extract"; name: string; password: string; ids: string[]; destId: string };
+export type CloudFileController = { copy(operation: "copy" | "move"): boolean; paste(): void; selectAll(): void; back(): void; blocked: boolean };
 const rootLocation: CloudLocation = [{ id: "0", name: "115网盘" }];
 
-export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = rootLocation, onOpenNewWindow, onPowerRename, onSuperRename, onPreview, labels = strings["zh-CN"] }: {
+export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = rootLocation, onOpenNewWindow, onPowerRename, onSuperRename, onPreview, onOperation, onPaste, onRegister, operationOpen = false, dropFeedback = null, labels = strings["zh-CN"] }: {
+  onOperation?(request: OpsRequest): void;
+  onPaste?(target: ClipboardTarget): void;
+  onRegister?(id: string, controller: CloudFileController | null): void;
+  operationOpen?: boolean;
+  dropFeedback?: FileDropFeedback | null;
   windowId: string; layer: number; onJobCreated(id: string): void;
   initialTrail?: CloudLocation; onOpenNewWindow?(trail: CloudLocation): void; labels?: UIStrings;
   onPowerRename?(parentId: string, ids: string[], sourceTitle: string): void;
@@ -32,7 +41,7 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
   const [image, setImage] = useState("");
   const [loginSession, setLoginSession] = useState("");
   const loginSucceeded = useCallback(() => {
-    setImage(""); setLoginSession(""); setCloudClipboard(null);
+    setImage(""); setLoginSession("");
     window.dispatchEvent(new Event("cloud115-account-changed"));
   }, []);
   const loginMessage = useCloud115Login(loginSession, loginSucceeded);
@@ -47,7 +56,7 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
   const trail = history.locations[history.index];
   const parent = trail[trail.length - 1];
   const currentPath = trail.slice(1).map((part) => part.name).join("/") || ".";
-  const clipboard = useCloudClipboard();
+  const clipboard = useAppClipboard();
   const [prompt, setPrompt] = useState<Prompt | null>(null);
   const [offlineTarget, setOfflineTarget] = useState<{ id: string; name: string } | null>(null);
   const [contextPath, setContextPath] = useState<string | null>(null);
@@ -97,6 +106,7 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
       } catch (error) { if (!disposed && current === checkGeneration) setError(String(error)); }
     }
     function accountChanged() {
+      if (getAppClipboard()?.sourceRootId === "@115") setAppClipboard(null);
       generation.current++; pathGeneration.current++; profileGeneration.current++;
       selection.clear(); setCloudEntries([]); setProfile({ accountId: "", name: "115网盘" });
       setLoggedIn(false); setPrompt(null); setOfflineTarget(null);
@@ -141,7 +151,7 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
       const result = await cloudCall<{ image?: string; loginSession?: string; loggedIn?: boolean }>(method);
       if (result.image && result.loginSession) { setImage(result.image); setLoginSession(result.loginSession); }
       if (result.loggedIn || method === "logout") {
-        setImage(""); setCloudClipboard(null);
+        setImage("");
         window.dispatchEvent(new Event("cloud115-account-changed"));
       }
     } catch (error) {
@@ -155,12 +165,10 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
   }
   async function submit(method: string, params: CloudRequest) {
     setBusy(true); setError("");
-    const submittedClipboard = clipboard;
     try {
       const result = await cloudCall<{ id: string }>(method, params);
       onJobCreated(result.id);
       setPrompt(null); selection.clear();
-      if (method === "move") clearCloudClipboardIfUnchanged(submittedClipboard);
     } catch (error) { setError(String(error)); }
     finally { setBusy(false); }
   }
@@ -169,7 +177,20 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
     setError("");
     setPrompt({ method, ids, destId: parent.id, name: method === "rename" ? cloudEntries.find((entry) => entry.id === ids[0])?.name ?? "" : "", password: "" });
   }
-  const ready = !busy && !loading && !listError;
+  const ready = !busy && !loading && !listError && Boolean(profile.accountId) && !operationOpen;
+  function copySelection(operation: "copy" | "move") {
+    if (!ready || prompt || offlineTarget) return false;
+    const selected = selection.getOrderedPaths().flatMap((id) => entries.filter((entry) => entry.relativePath === id));
+    const next = createAppClipboard(operation, "@115", parent.id, selected);
+    if (!next) return false;
+    setAppClipboard({ ...next, accountId: profile.accountId });
+    toast.success(operation === "copy" ? labels.clipboardCopied(selected.length) : labels.clipboardCut(selected.length));
+    return true;
+  }
+  useEffect(() => {
+    onRegister?.(windowId, { copy: copySelection, paste: () => onPaste?.({ rootId: "@115", path: parent.id, accountId: profile.accountId }), selectAll: () => selection.selectAll(true), back: () => { if (history.index > 0) moveHistory(history.index - 1); }, blocked: !loggedIn || !ready || Boolean(prompt || offlineTarget) });
+    return () => onRegister?.(windowId, null);
+  });
   function baseActions(): FileAction[] {
     const ids = selection.getOrderedPaths();
     return [
@@ -179,7 +200,7 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
       { kind: "command", id: "mkdir", label: labels.mkdir, icon: FolderPlus, disabled: !ready, run: () => openPrompt("mkdir") },
       { kind: "command", id: "offline", label: "离线下载", icon: CloudDownload, separatorBefore: true, disabled: !ready, run: () => setOfflineTarget({ id: parent.id, name: profile.name + (currentPath === "." ? "" : " / " + currentPath) }) },
       { kind: "command", id: "extract", label: "在线解压", icon: FolderArchive, disabled: !ready || ids.length !== 1 || !isCloudArchive(cloudEntries.find((entry) => entry.id === ids[0])), run: () => openPrompt("extract") },
-      { kind: "command", id: "delete", label: labels.delete, icon: Trash2, separatorBefore: true, destructive: true, disabled: !ready || !ids.length, run: () => openPrompt("delete") },
+      { kind: "command", id: "delete", label: labels.delete, icon: Trash2, separatorBefore: true, destructive: true, disabled: !ready || !ids.length, run: () => onOperation?.({ type: "delete", sourceRoot: "@115", sources: ids, accountId: profile.accountId }) },
     ];
   }
   function menuActions(context = false): FileAction[] {
@@ -187,12 +208,12 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
     const entry = cloudEntries.find((entry) => entry.id === (context ? contextPath : ids.length === 1 ? ids[0] : null));
     const dest = context && entry?.isDirectory ? entry : parent;
     const clipboardActions = createClipboardActions({
-      selectedCount: ready ? ids.length : 0, canPaste: ready && Boolean(clipboard && clipboard.accountId === profile.accountId),
+      selectedCount: ready ? ids.length : 0, canPaste: ready && Boolean(clipboard && (!clipboard.accountId || clipboard.accountId === profile.accountId)),
       canOpenInNewWindow: ready && Boolean(entry?.isDirectory && onOpenNewWindow), labels,
       commands: {
-        onCopy: () => setCloudClipboard({ accountId: profile.accountId, method: "copy", ids }),
-        onCut: () => setCloudClipboard({ accountId: profile.accountId, method: "move", ids }),
-        onPaste: () => { if (clipboard) void submit(clipboard.method, { ids: clipboard.ids, destId: dest.id }); },
+        onCopy: () => { copySelection("copy"); },
+        onCut: () => { copySelection("move"); },
+        onPaste: () => onPaste?.({ rootId: "@115", path: dest.id, accountId: profile.accountId }),
         onOpenInNewWindow: () => { if (entry?.isDirectory) onOpenNewWindow?.([...trail, { id: entry.id, name: entry.name }]); },
       },
     });
@@ -211,12 +232,14 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
     <Button variant="ghost" disabled={busy} onClick={() => void login("logout")}>清除失效登录</Button>
   </div>;
 
-  return <div className="file-window-layout relative" data-no-file-drop={prompt || offlineTarget ? "" : undefined}>
+  return <div className="file-window-layout relative" data-no-file-drop={prompt || offlineTarget || operationOpen ? "" : undefined}>
     <ActionToolbar actions={[...baseActions(), { kind: "command", id: "logout", label: "退出登录", icon: LogOut, separatorBefore: true, disabled: busy, run: () => void login("logout") }]} moreActions={menuActions()} selectedCount={summary.selectedCount} labels={labels} />
     <div className="relative min-h-0 [&>.file-pane]:h-full" aria-label="115文件列表">
       <FilePane paneKey={windowId} provider="cloud115" directoryId={parent.id} title="115网盘" roots={[]} selectedRootId="@115" currentPath={currentPath}
+        accountId={profile.accountId} ancestorIds={trail.map((part) => part.id)} dropFeedback={dropFeedback}
+        cutPaths={clipboard?.operation === "move" && clipboard.sourceRootId === "@115" && clipboard.accountId === profile.accountId && clipboard.sourceParentPath === parent.id ? new Set(clipboard.paths) : undefined}
         entries={entries} selectionStore={selection} showRootSelector={false} pathRootLabel={profile.name} labels={labels}
-        loading={loading} error={listError} isActive dropLayer={layer} dropWindowId={windowId} dropDisabled={Boolean(prompt || offlineTarget)}
+        loading={loading} error={listError} isActive dropLayer={layer} dropWindowId={windowId} dropDisabled={!ready || Boolean(prompt || offlineTarget)}
         onRootChange={() => {}} onPathChange={(path) => void navigatePath(path)} onOpenDirectory={(entry) => navigate([...trail, { id: entry.relativePath, name: entry.name }])}
         onOpenFile={(entry) => {
           if (!ready || prompt || offlineTarget) return;
@@ -235,7 +258,7 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
         onRefresh={() => { void refresh(); void refreshProfile(); }}
         onActivate={() => {}} onContextTarget={(path) => { selection.selectContextTarget(path); setContextPath(path); }}
         actionsForSelection={() => menuActions(true)}
-        dragData={(entry) => ({ kind: "cloud115-entry", get entries() { const ids = selection.isSelected(entry.relativePath) ? selection.getOrderedPaths() : [entry.relativePath]; return cloudEntries.filter((item) => ids.includes(item.id)); } })}
+        dragData={(entry) => ({ kind: "file-entry", pane: windowId, rootId: "@115", parentPath: parent.id, accountId: profile.accountId, entry, get entries() { const ids = selection.isSelected(entry.relativePath) ? selection.getOrderedPaths() : [entry.relativePath]; return ids.flatMap((id) => entries.filter((item) => item.relativePath === id)); } })}
         navigation={{
           backTarget: history.index > 0 ? history.locations[history.index - 1].at(-1)!.name : null,
           forwardTarget: history.index < history.locations.length - 1 ? history.locations[history.index + 1].at(-1)!.name : null,
@@ -247,7 +270,7 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
     {prompt ? <WindowDialogLayer labelledBy={promptId} onClose={() => { if (!busy) setPrompt(null); }}>
       <form className="grid gap-3" onSubmit={(event) => { event.preventDefault(); void submit(prompt.method, { ids: prompt.ids, parentId: prompt.destId, destId: prompt.destId, name: prompt.name, password: prompt.password }); }}>
         <h2 id={promptId} className="font-semibold">{prompt.method === "mkdir" ? labels.mkdir : prompt.method === "rename" ? labels.rename : prompt.method === "extract" ? "在线解压" : labels.delete}</h2>
-        {prompt.method === "delete" ? <p>确认删除选中的 {prompt.ids.length} 项？</p> : prompt.method === "extract" ? <><p>解压到以压缩包命名的新文件夹，不覆盖已有目录</p><input className="rounded border bg-background p-2" type="password" autoComplete="off" placeholder="解压密码（可选）" aria-label="解压密码" value={prompt.password} onChange={(event) => setPrompt({ ...prompt, password: event.target.value })} /></> : <input className="rounded border bg-background p-2" autoFocus required aria-label="名称" value={prompt.name} onChange={(event) => setPrompt({ ...prompt, name: event.target.value })} />}
+        {prompt.method === "extract" ? <><p>解压到以压缩包命名的新文件夹，不覆盖已有目录</p><input className="rounded border bg-background p-2" type="password" autoComplete="off" placeholder="解压密码（可选）" aria-label="解压密码" value={prompt.password} onChange={(event) => setPrompt({ ...prompt, password: event.target.value })} /></> : <input className="rounded border bg-background p-2" autoFocus required aria-label="名称" value={prompt.name} onChange={(event) => setPrompt({ ...prompt, name: event.target.value })} />}
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
         <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={busy} onClick={() => setPrompt(null)}>{labels.cancel}</Button><Button type="submit" disabled={busy}>确认</Button></div>
       </form>

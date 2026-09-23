@@ -5,6 +5,8 @@ export type DragOperation = Extract<OpsRequest["type"], "move" | "copy">;
 export type InvalidDropReason = "same-directory" | "inside-source";
 
 export type FileDragData = {
+  accountId?: string;
+  entries?: Entry[];
   kind: "file-entry";
   pane: PaneKey;
   rootId: string;
@@ -13,6 +15,7 @@ export type FileDragData = {
 };
 
 export type FileDragSource = {
+  accountId?: string;
   pane: PaneKey;
   rootId: string;
   parentPath: string;
@@ -20,6 +23,8 @@ export type FileDragSource = {
 };
 
 export type FileDropData = {
+  accountId?: string;
+  ancestorIds?: string[];
   provider?: "cloud115";
   id: string;
   kind: "directory" | "current-directory";
@@ -32,6 +37,7 @@ export type FileDropData = {
 };
 
 export type FileDropFeedback = {
+  transfer?: "upload" | "download";
   target: FileDropData;
   operation: DragOperation;
   valid: boolean;
@@ -58,7 +64,7 @@ export function buildFileDragSource(
   const entries = selectedPaths.has(data.entry.relativePath)
     ? visibleEntries.filter((entry) => selectedPaths.has(entry.relativePath))
     : [data.entry];
-  return { pane: data.pane, rootId: data.rootId, parentPath: data.parentPath, entries };
+  return { pane: data.pane, rootId: data.rootId, parentPath: data.parentPath, entries, ...(data.accountId ? { accountId: data.accountId } : {}) };
 }
 
 export function defaultDragOperation(source: FileDragSource, target: FileDropData): DragOperation {
@@ -70,6 +76,13 @@ export function validateFileDrop(
   target: FileDropData,
 ): { valid: true } | { valid: false; reason: InvalidDropReason } {
   if (source.rootId !== target.rootId) return { valid: true };
+
+  if (source.rootId === "@115") {
+    if (source.accountId !== target.accountId) return { valid: false, reason: "inside-source" };
+    if (source.parentPath === target.path) return { valid: false, reason: "same-directory" };
+    const inside = source.entries.some((entry) => entry.type === "directory" && (entry.relativePath === target.path || target.ancestorIds?.includes(entry.relativePath)));
+    return inside ? { valid: false, reason: "inside-source" } : { valid: true };
+  }
 
   if (normalizeRelativePath(source.parentPath) === normalizeRelativePath(target.path)) {
     return { valid: false, reason: "same-directory" };
@@ -89,12 +102,14 @@ export function buildFileDropFeedback(source: FileDragSource, target: FileDropDa
     operation: defaultDragOperation(source, target),
     valid: validation.valid,
     reason: validation.valid ? undefined : validation.reason,
+    ...(source.rootId === "@115" && target.rootId !== "@115" ? { transfer: "download" as const } : source.rootId !== "@115" && target.rootId === "@115" ? { transfer: "upload" as const } : {}),
   };
 }
 
 export function buildDragRequest(source: FileDragSource, target: FileDropData): OpsRequest {
   return {
     type: defaultDragOperation(source, target),
+    ...(source.accountId || target.accountId ? { accountId: source.accountId ?? target.accountId } : {}),
     sourceRoot: source.rootId,
     sources: source.entries.map((entry) => entry.relativePath),
     destRoot: target.rootId,

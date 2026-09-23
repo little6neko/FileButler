@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { api } from "../api/client";
+import { operationClient, transferWarning } from "../operationClient";
 import type { OpsRequest, PlanItem } from "../api/types";
 import type { DragOperation } from "../fileDrag";
 import { strings } from "../i18n";
@@ -16,7 +16,7 @@ import { ErrorBanner } from "./ErrorBanner";
 type Props = {
   request: OpsRequest;
   operationChoices?: readonly DragOperation[];
-  onJobCreated(id: string): void;
+  onJobCreated(id: string, request: OpsRequest): void;
   onClose(): void;
   labels?: UIStrings;
 };
@@ -26,12 +26,13 @@ type ContentProps = {
   operationChoices?: readonly DragOperation[];
   titleId: string;
   descriptionId?: string;
-  onSubmit(request: OpsRequest): Promise<void>;
+  onSubmit(request: OpsRequest, previewToken?: string): Promise<void>;
   onClose(): void;
   labels?: UIStrings;
 };
 
 type PreviewResult = {
+  previewToken?: string;
   request: OpsRequest;
   items: PlanItem[];
   hasConflict: boolean;
@@ -42,9 +43,9 @@ export function OperationPreview({ request, operationChoices, onJobCreated, onCl
   const titleId = useId();
   const descriptionId = useId();
 
-  async function submit(activeRequest: OpsRequest) {
-    const job = await api.opsCreateJob(activeRequest);
-    onJobCreated(job.id);
+  async function submit(activeRequest: OpsRequest, previewToken?: string) {
+    const job = await operationClient.create(activeRequest, previewToken);
+    onJobCreated(job.id, activeRequest);
   }
 
   return (
@@ -94,12 +95,13 @@ export function OperationPreviewContent({
 
   useEffect(() => {
     let active = true;
-    api
-      .opsDryRun(activeRequest)
+    operationClient
+      .preview(activeRequest)
       .then((plan) => {
         if (!active) return;
         setPreviewResult({
           request: activeRequest,
+          previewToken: plan.previewToken,
           items: plan.items,
           hasConflict: plan.hasConflict,
           error: null,
@@ -124,7 +126,7 @@ export function OperationPreviewContent({
     setSubmitting(true);
     setJobError(null);
     try {
-      await onSubmit(activeRequest);
+      await onSubmit(activeRequest, previewResult?.previewToken);
     } catch (err) {
       setJobError(err instanceof Error ? err.message : labels.jobCreationFailed);
     } finally {
@@ -179,6 +181,7 @@ export function OperationPreviewContent({
         </div>
       ) : null}
       <ErrorBanner message={error} />
+      {transferWarning(activeRequest) ? <Alert variant="destructive" className="shrink-0"><TriangleAlert /><AlertDescription>{transferWarning(activeRequest)}</AlertDescription></Alert> : null}
       {destructive ? (
         <Alert variant="destructive" className="shrink-0">
           <TriangleAlert />

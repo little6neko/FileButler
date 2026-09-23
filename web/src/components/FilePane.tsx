@@ -32,6 +32,8 @@ import { PaneContextMenu } from "./PaneContextMenu";
 import { PaneStatusBar } from "./PaneStatusBar";
 
 type FilePaneProps = {
+  accountId?: string;
+  ancestorIds?: string[];
   provider?: "cloud115";
   directoryId?: string;
   dragData?(entry: Entry): Record<string, unknown>;
@@ -86,6 +88,8 @@ type FilePaneNavigation = {
 };
 
 export function FilePane({
+  accountId,
+  ancestorIds,
   provider,
   directoryId,
   dragData,
@@ -176,6 +180,8 @@ export function FilePane({
   }, [currentPath, onOpenRootCatalog, pathRootLabel, rootCatalogLabel]);
   const singleRoot = roots.length <= 1;
   const paneTarget: FileDropData = {
+    accountId,
+    ancestorIds,
     provider,
     id: paneDropId(paneKey),
     kind: "current-directory",
@@ -554,6 +560,8 @@ export function FilePane({
               <FileRow
                 key={entry.relativePath}
                 provider={provider}
+                accountId={accountId}
+                ancestorIds={ancestorIds}
                 dragData={dragData?.(entry)}
                 paneKey={paneKey}
                 dropLayer={dropLayer}

@@ -3,12 +3,12 @@ import { cloudCall } from "./cloud115";
 import { cloudPowerRenameClient, cloudSuperRenameClient } from "./cloud115Rename";
 import { defaultRenameOptions } from "./components/powerRenameOptions";
 import type { SuperRenameInventoryGroup } from "./api/types";
-import { clearCloudClipboardIfUnchanged, setCloudClipboard, useCloudClipboard } from "./cloud115Clipboard";
+import { clearAppClipboard, setAppClipboard, useAppClipboard } from "./appClipboard";
 import { renderHook, act } from "@testing-library/react";
 
 vi.mock("./cloud115", () => ({ cloudCall: vi.fn() }));
 const call = vi.mocked(cloudCall);
-beforeEach(() => { vi.clearAllMocks(); setCloudClipboard(null); });
+beforeEach(() => { vi.clearAllMocks(); setAppClipboard(null); });
 
 describe("cloud batch adapters", () => {
   it("submits the exact preview token, not regenerated names; disables metadata", async () => {
@@ -47,13 +47,13 @@ describe("cloud batch adapters", () => {
   });
 
   it("a pending cut cannot clear newer clipboard contents from another window", () => {
-    const old = { accountId: "7", method: "move" as const, ids: ["1"] };
-    const next = { ...old, ids: ["2"] };
-    setCloudClipboard(old);
-    const hook = renderHook(useCloudClipboard);
-    act(() => { setCloudClipboard(next); clearCloudClipboardIfUnchanged(old); });
+    const old = { accountId: "7", operation: "move" as const, paths: ["1"], sourceRootId: "@115", sourceParentPath: "0", entries: [], createdAt: 1 };
+    const next = { ...old, paths: ["2"] };
+    setAppClipboard(old);
+    const hook = renderHook(useAppClipboard);
+    act(() => { setAppClipboard(next); clearAppClipboard(old); });
     expect(hook.result.current).toBe(next);
-    act(() => clearCloudClipboardIfUnchanged(next));
+    act(() => clearAppClipboard(next));
     expect(hook.result.current).toBeNull();
   });
 });

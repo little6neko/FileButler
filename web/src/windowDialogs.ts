@@ -1,5 +1,6 @@
 import type { Entry, LinkRequest, OpsRequest } from "./api/types";
 import type { DragOperation } from "./fileDrag";
+import type { AppClipboard } from "./appClipboard";
 
 type WindowDialogBase = {
   dialogId: string;
@@ -25,6 +26,7 @@ export type OperationWindowDialog = WindowDialogBase & {
   request: OpsRequest;
   operationChoices?: readonly DragOperation[];
   clearMoveClipboard?: boolean;
+  clipboardSnapshot?: AppClipboard;
 };
 
 export type LinkWindowDialog = WindowDialogBase & {

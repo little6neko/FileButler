@@ -22,8 +22,8 @@ export function TransferDetails({ job, labels }: { job: Job; labels: UIStrings }
   if (!transfer) return null;
   const zh = labels === strings["zh-CN"];
   const phases: Record<string, string> = zh
-    ? { copy: "复制", scan: "扫描", hash: "校验秒传", upload: "上传", download: "下载", extract: "在线解压", waiting: "等待服务端" }
-    : { copy: "Copying", scan: "Scanning", hash: "Checking instant upload", upload: "Uploading", download: "Downloading", extract: "Extracting", waiting: "Waiting for server" };
+    ? { copy: "复制", scan: "扫描", hash: "校验秒传", upload: "上传", download: "下载", extract: "在线解压", waiting: "等待服务端", "delete-source": "删除源文件" }
+    : { copy: "Copying", scan: "Scanning", hash: "Checking instant upload", upload: "Uploading", download: "Downloading", extract: "Extracting", waiting: "Waiting for server", "delete-source": "Deleting source" };
   const percent = transfer.percent ?? (transfer.bytesTotal > 0 ? Math.min(100, transfer.bytesDone / transfer.bytesTotal * 100) : null);
   return <div className="grid gap-1 text-xs">
     <span className="truncate" title={transfer.file}>{phases[transfer.phase] ?? transfer.phase} · {transfer.file}</span>

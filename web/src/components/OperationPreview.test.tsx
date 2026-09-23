@@ -35,7 +35,7 @@ it("renders reusable operation content and delegates the active request", async 
   await waitFor(() => expect(screen.getByRole("button", { name: "Start copy" })).toBeEnabled());
   await userEvent.click(screen.getByRole("button", { name: "Start copy" }));
 
-  expect(onSubmit).toHaveBeenCalledWith(request());
+  expect(onSubmit).toHaveBeenCalledWith(request(), undefined);
 });
 
 it("shows conflicts in operation preview and disables confirmation", async () => {
@@ -62,7 +62,7 @@ it("creates a job from a conflict-free operation plan", async () => {
 
   await waitFor(() => expect(screen.getByRole("button", { name: "Start copy" })).not.toBeDisabled());
   await userEvent.click(screen.getByRole("button", { name: "Start copy" }));
-  expect(onJobCreated).toHaveBeenCalledWith("job_1");
+  expect(onJobCreated).toHaveBeenCalledWith("job_1", request());
 });
 
 it("renders operation preview labels in Chinese", async () => {
@@ -195,7 +195,7 @@ it("prevents duplicate submission while a job is being created", async () => {
   expect(api.opsCreateJob).toHaveBeenCalledTimes(1);
 
   resolveJob({ id: "job_1" });
-  await waitFor(() => expect(onJobCreated).toHaveBeenCalledWith("job_1"));
+  await waitFor(() => expect(onJobCreated).toHaveBeenCalledWith("job_1", request()));
 });
 
 it("keeps confirmation disabled when the operation preview fails", async () => {
@@ -232,7 +232,7 @@ it("switches a drag preview from move to copy and submits the selected request",
   await userEvent.click(confirm);
 
   expect(api.opsCreateJob).toHaveBeenCalledWith({ ...moveRequest, type: "copy" });
-  expect(onJobCreated).toHaveBeenCalledWith("job-copy");
+  expect(onJobCreated).toHaveBeenCalledWith("job-copy", { ...moveRequest, type: "copy" });
 });
 
 it("does not let an older dry run re-enable the wrong operation", async () => {
@@ -282,7 +282,7 @@ it("focuses the popup and creates a job with Enter when the preview is ready", a
   await userEvent.keyboard("{Enter}");
 
   expect(api.opsCreateJob).toHaveBeenCalledWith(request());
-  expect(onJobCreated).toHaveBeenCalledWith("job-enter");
+  expect(onJobCreated).toHaveBeenCalledWith("job-enter", request());
 });
 
 it("ignores Enter while the operation preview has conflicts", async () => {

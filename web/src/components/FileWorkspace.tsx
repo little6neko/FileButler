@@ -21,14 +21,14 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { Cloud, FileCode2, FileImage, FileVideo, Files, ScanText, WandSparkles } from "lucide-react";
-import { Cloud115Window } from "./Cloud115Window";
+import { Cloud115Window, type CloudFileController } from "./Cloud115Window";
 import { Cloud115Preview, type CloudPreviewInstance } from "./Cloud115Preview";
 import { mediaKindForPath } from "../media";
 import type { CloudEntry } from "../cloud115";
-import { cloudCall, type CloudDrag } from "../cloud115";
+import { operationClient, isCloudOperation } from "../operationClient";
 import { cloudPowerRenameClient, cloudSuperRenameClient, type PowerRenameClient } from "../cloud115Rename";
 import { toast } from "sonner";
-import { buildClipboardRequest, createAppClipboard, isEditableShortcutTarget, type AppClipboard } from "../appClipboard";
+import { buildClipboardRequest, createAppClipboard, isEditableShortcutTarget, useAppClipboard, setAppClipboard, clearAppClipboard, getAppClipboard, type ClipboardTarget, type AppClipboard } from "../appClipboard";
 import { api } from "../api/client";
 import type { Entry, LinkRequest, LinkType, OpsRequest, RenameOptions, Root } from "../api/types";
 import {
@@ -186,6 +186,7 @@ type MediaPreviewInstance = MediaGallerySnapshot & {
 };
 
 type PreviewState = {
+  clipboardSnapshot?: AppClipboard;
   request: OpsRequest;
   operationChoices?: readonly DragOperation[];
   clearMoveClipboard?: boolean;
@@ -305,7 +306,9 @@ export function FileWorkspace({
   const [compactTextEditorUnsaved, setCompactTextEditorUnsaved] = useState<CompactTextEditorUnsavedPrompt | null>(null);
   const [jobsOpen, setJobsOpen] = useState(false);
   const [leftPanePercent, setLeftPanePercent] = useState(50);
-  const [clipboard, setClipboard] = useState<AppClipboard | null>(null);
+  const clipboard = useAppClipboard();
+  const setClipboard = setAppClipboard;
+  useEffect(() => () => setAppClipboard(null), []);
   const clipboardRef = useRef(clipboard);
   const [linkSource, setLinkSourceState] = useState<LinkSource | null>(null);
   const linkSourceRef = useRef(linkSource);
@@ -328,8 +331,11 @@ export function FileWorkspace({
   const [dragSource, setDragSource] = useState<FileDragSource | null>(null);
   const [dropFeedback, setDropFeedback] = useState<FileDropFeedback | null>(null);
   const dragSourceRef = useRef<FileDragSource | null>(null);
-  const cloudDragRef = useRef<CloudDrag | null>(null);
-  const [cloudDrag, setCloudDrag] = useState<CloudDrag | null>(null);
+  const cloudControllers = useRef(new Map<string, CloudFileController>());
+  const registerCloudController = useCallback((id: string, controller: CloudFileController | null) => {
+    if (controller) cloudControllers.current.set(id, controller);
+    else cloudControllers.current.delete(id);
+  }, []);
   const [cloudPreviews, setCloudPreviews] = useState<Record<string, CloudPreviewInstance>>({});
   const refreshStateRef = useRef({ running: false, pending: false });
   const contextJobEvents = useOptionalJobEventsStore();
@@ -577,6 +583,7 @@ export function FileWorkspace({
   useEffect(() => jobEvents.subscribeTerminal(handleTerminalJob), [handleTerminalJob, jobEvents]);
 
   const resolveFileDragSource = useCallback((data: FileDragData) => {
+    if (data.entries) return { pane: data.pane, rootId: data.rootId, parentPath: data.parentPath, entries: data.entries, accountId: data.accountId };
     const session = sessionsRef.current[data.pane];
     if (!session) return buildFileDragSource(data, new Set(), [data.entry]);
     const entriesByPath = new Map(session.entries.map((entry) => [entry.relativePath, entry]));
@@ -587,6 +594,16 @@ export function FileWorkspace({
     const visibleEntries = orderedEntries.length === session.entries.length ? orderedEntries : session.entries;
     return buildFileDragSource(data, session.selectionStore.getSelected(), visibleEntries);
   }, []);
+  useEffect(() => {
+    function accountChanged() {
+      if (getAppClipboard()?.sourceRootId === "@115") setAppClipboard(null);
+      commitWindowDialogs((current) => Object.fromEntries(Object.entries(current).filter(([, dialog]) => dialog?.kind !== "operation" || !isCloudOperation(dialog.request))));
+      setPreviewState((current) => current && isCloudOperation(current.request) ? null : current);
+      dragSourceRef.current = null; setDragSource(null); setDropFeedback(null);
+    }
+    window.addEventListener("cloud115-account-changed", accountChanged);
+    return () => window.removeEventListener("cloud115-account-changed", accountChanged);
+  }, [commitWindowDialogs]);
   const dragAnnouncements = useMemo(
     () => createFileDragAnnouncements(labels, resolveFileDragSource),
     [labels, resolveFileDragSource],
@@ -607,7 +624,10 @@ export function FileWorkspace({
       if (isEditableShortcutTarget(event.target)) return;
       const pageDialogOpen = Boolean(document.querySelector("[role='dialog']:not([aria-modal='false']):not(.window-dialog-panel)"));
       const activeFileWindowId = activeFileWindowIdRef.current;
-      const activeWindowDialogOpen = Boolean(activeFileWindowId && windowDialogsRef.current[activeFileWindowId]);
+      const activeWindowId = windowStateRef.current.activeWindowId;
+      const cloudController = activeWindowId ? cloudControllers.current.get(activeWindowId) : undefined;
+      const activeWindowDialogOpen = Boolean((activeWindowId && windowDialogsRef.current[activeWindowId]) || (activeFileWindowId && windowDialogsRef.current[activeFileWindowId]));
+      if (cloudController?.blocked) return;
       if (isPlainBackspace) {
         if (
           pageDialogOpen
@@ -615,6 +635,7 @@ export function FileWorkspace({
           || document.querySelector("[role='alertdialog'], [role='menu'], [role='listbox']")
         ) return;
         const activeSessionId = activeSessionIdRef.current;
+        if (cloudController) { event.preventDefault(); cloudController.back(); return; }
         if (!activeSessionId) return;
         event.preventDefault();
         navigateSessionHistory(activeSessionId, "back");
@@ -629,19 +650,21 @@ export function FileWorkspace({
           || document.querySelector("[role='alertdialog'], [role='menu'], [role='listbox']")
         ) return;
         const activeSessionId = activeSessionIdRef.current;
-        if (activeSessionId) sessionsRef.current[activeSessionId]?.selectionStore.selectAll(true);
+        if (cloudController) cloudController.selectAll();
+        else if (activeSessionId) sessionsRef.current[activeSessionId]?.selectionStore.selectAll(true);
         return;
       }
       if (pageDialogOpen || activeWindowDialogOpen) return;
       if ((key === "c" || key === "x") && !window.getSelection()?.toString()) {
-        if (!copySessionSelection(activeSessionIdRef.current, key === "c" ? "copy" : "move")) {
+        if (!(cloudController ? cloudController.copy(key === "c" ? "copy" : "move") : copySessionSelection(activeSessionIdRef.current, key === "c" ? "copy" : "move"))) {
           toast.error(labels.clipboardSelectionRequired);
         }
         event.preventDefault();
         return;
       }
       if (key === "v") {
-        pasteClipboardIntoActiveSession();
+        if (cloudController) cloudController.paste();
+        else pasteClipboardIntoActiveSession();
         event.preventDefault();
       }
     }
@@ -748,7 +771,6 @@ export function FileWorkspace({
         </WorkspaceShell>
         <DragOverlay dropAnimation={null}>
           {dragSource ? <FileDragOverlay source={dragSource} feedback={dropFeedback} labels={labels} /> : null}
-          {cloudDrag ? <div className="file-drag-overlay">下载 {cloudDrag.entries.length} 项到本地</div> : null}
         </DragOverlay>
       </DndContext>
       {previewState ? (
@@ -757,10 +779,10 @@ export function FileWorkspace({
           operationChoices={previewState.operationChoices}
           labels={labels}
           onClose={() => setPreviewState(null)}
-          onJobCreated={(id) => {
+          onJobCreated={(id, request) => {
             const clearMoveClipboard = previewState.clearMoveClipboard;
             setPreviewState(null);
-            if (clearMoveClipboard) setClipboard(null);
+            if (clearMoveClipboard && request.type === "move") clearAppClipboard(previewState.clipboardSnapshot ?? null);
             handleJobCreated(id);
           }}
         />
@@ -907,7 +929,10 @@ export function FileWorkspace({
     };
 
     if (window.kind === "cloud115") {
-      return <WindowFrame key={window.id} {...frameProps} title="115网盘" icon={<Cloud aria-hidden="true" />}><Cloud115Window windowId={window.id} layer={window.zOrder} onJobCreated={handleJobCreated} initialTrail={window.trail} onOpenNewWindow={openCloud115DesktopWindow} onPowerRename={openCloudPowerRename} onSuperRename={openCloudSuperRename} onPreview={openCloudPreview} labels={labels} /></WindowFrame>;
+      return <WindowFrame key={window.id} {...frameProps} title="115网盘" icon={<Cloud aria-hidden="true" />} childDialog={renderWindowDialog(window)}><Cloud115Window windowId={window.id} layer={window.zOrder} onJobCreated={handleJobCreated} initialTrail={window.trail} onOpenNewWindow={openCloud115DesktopWindow} onPowerRename={openCloudPowerRename} onSuperRename={openCloudSuperRename} onPreview={openCloudPreview} labels={labels}
+        onRegister={registerCloudController} dropFeedback={dropFeedback} operationOpen={Boolean(windowDialogs[window.id])}
+        onPaste={(target) => pasteClipboard(target, window.id)}
+        onOperation={(request) => openDialogForWindow({ dialogId: nextDialogId(), windowId: window.id, kind: "operation", request })} /></WindowFrame>;
     }
 
     if (window.kind === "cloudPreview") {
@@ -1175,7 +1200,7 @@ export function FileWorkspace({
     );
   }
 
-  function renderWindowDialog(window: FileWindowRecord) {
+  function renderWindowDialog(window: { id: string }) {
     const dialog = windowDialogs[window.id];
     if (!dialog) return null;
     const titleId = `window-dialog-title-${dialog.dialogId}`;
@@ -1254,9 +1279,9 @@ export function FileWorkspace({
           descriptionId={descriptionId}
           labels={labels}
           onClose={close}
-          onSubmit={(request) => submitWindowDialogJob(
-            dialog,
-            () => api.opsCreateJob(request),
+          onSubmit={(request, previewToken) => submitWindowDialogJob(
+            { ...dialog, clearMoveClipboard: dialog.clearMoveClipboard && request.type === "move" },
+            () => operationClient.create(request, previewToken),
             labels.jobCreationFailed,
           )}
         />
@@ -1650,8 +1675,8 @@ export function FileWorkspace({
       const job = await createJob();
       dismissWindowDialog(dialog);
       if (dialog.kind === "operation" && dialog.clearMoveClipboard) {
-        clipboardRef.current = null;
-        setClipboard(null);
+        clearAppClipboard(dialog.clipboardSnapshot ?? null);
+        clipboardRef.current = getAppClipboard();
       }
       if (dialog.kind === "link" && dialog.consumeLinkSource) {
         consumeLinkSource(dialog.sourceCreatedAt);
@@ -1748,16 +1773,18 @@ export function FileWorkspace({
     );
   }
 
-  function pasteClipboard(target: { rootId: string; path: string }, windowId?: string) {
-    const currentClipboard = clipboardRef.current;
+  function pasteClipboard(target: ClipboardTarget, windowId?: string) {
+    const currentClipboard = getAppClipboard();
     if (!currentClipboard) return false;
     const source: FileDragSource = {
+      accountId: currentClipboard.accountId,
       pane: "clipboard",
       rootId: currentClipboard.sourceRootId,
       parentPath: currentClipboard.sourceParentPath,
       entries: currentClipboard.entries,
     };
     const dropTarget: FileDropData = {
+      accountId: target.accountId,
       id: "clipboard-target",
       kind: "current-directory",
       pane: "clipboard-target",
@@ -1773,6 +1800,8 @@ export function FileWorkspace({
     const preview = {
       request: buildClipboardRequest(currentClipboard, target),
       clearMoveClipboard: currentClipboard.operation === "move",
+      clipboardSnapshot: currentClipboard,
+      operationChoices: ["copy", "move"] as const,
     };
     if (mode === "desktop" && windowId) {
       openDialogForWindow({
@@ -1789,13 +1818,13 @@ export function FileWorkspace({
 
   function handleFileDragStart(event: DragStartEvent) {
     const data = event.active.data.current;
-    if (data?.kind === "cloud115-entry") { const source: CloudDrag = { kind: "cloud115-entry", entries: [...data.entries] }; cloudDragRef.current = source; setCloudDrag(source); return; }
     if (!isFileDragData(data)) return;
     const source = resolveFileDragSource(data);
     dragSourceRef.current = source;
     setDragSource(source);
     setDropFeedback(null);
     activateSession(data.pane);
+    if (data.rootId === "@115") focusDesktopWindow(data.pane);
     const selection = sessionsRef.current[data.pane]?.selectionStore;
     if (selection && !selection.isSelected(data.entry.relativePath)) {
       selection.replace(source.entries.map((entry) => entry.relativePath), data.entry.relativePath);
@@ -1810,17 +1839,8 @@ export function FileWorkspace({
 
   function handleFileDragEnd(event: DragEndEvent) {
     const source = dragSourceRef.current;
-    const cloudSource = cloudDragRef.current;
     const target = event.over?.data.current;
     clearFileDrag();
-    if (cloudSource && isFileDropData(target) && target.rootId !== "@115") {
-      void cloudCall<{ id: string }>("download", { ids: cloudSource.entries.map((entry) => entry.id), rootId: target.rootId, path: target.path }).then((job) => handleJobCreated(job.id)).catch((error) => toast.error(String(error)));
-      return;
-    }
-    if (source && target?.provider === "cloud115") {
-      void cloudCall<{ id: string }>("upload", { paths: source.entries.map((entry) => entry.relativePath), rootId: source.rootId, destId: target.path }).then((job) => handleJobCreated(job.id)).catch((error) => toast.error(String(error)));
-      return;
-    }
     if (!source || !isFileDropData(target)) return;
     const feedback = buildFileDropFeedback(source, target);
     if (!feedback.valid) {
@@ -1841,8 +1861,6 @@ export function FileWorkspace({
   }
 
   function clearFileDrag() {
-    cloudDragRef.current = null;
-    setCloudDrag(null);
     dragSourceRef.current = null;
     setDragSource(null);
     setDropFeedback(null);

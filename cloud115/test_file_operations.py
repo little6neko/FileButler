@@ -30,6 +30,35 @@ class FakeShared(CloudOperations):
 
 
 class SharedOperationsTests(unittest.TestCase):
+    def test_preview_shows_full_paths_and_saved_account_name(self):
+        ops = FakeShared()
+        ops.nodes["2"] = {"id": "2", "name": "source", "parent_id": "0", "is_dir": True}
+        ops.nodes["1"]["parent_id"] = "2"
+        ops.storage = Mock()
+        ops.storage.call.return_value = [{"accountId": "7", "name": "测试账号"}]
+        plan = ops.operation_plan({"type": "move", "accountId": "7", "sourceCloud": True, "targetCloud": True, "sources": [{"id": "1"}], "destId": "9"})
+        item = plan["items"][0]
+        self.assertFalse(plan["hasConflict"])
+        self.assertEqual(item["sourcePath"], "/source/a.txt")
+        self.assertEqual(item["destPath"], "/dest/a.txt")
+        self.assertEqual(item["sourceRoot"], "115网盘-测试账号")
+        self.assertEqual(item["destRoot"], "115网盘-测试账号")
+        ops.storage.call.assert_called_once_with("credential.list")
+
+    def test_upload_and_download_preserve_local_relative_directories(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder, "source"); source.mkdir()
+            (source / "a.txt").write_text("data")
+            ops = FakeShared()
+            upload = ops.operation_plan({"type": "copy", "accountId": "7", "sourceCloud": False, "targetCloud": True, "sourceRoot": "local", "sources": [{"localPath": str(source / "a.txt"), "displayPath": "source/a.txt"}], "destId": "9"})["items"][0]
+            self.assertEqual(upload["sourcePath"], "source/a.txt")
+            self.assertEqual(upload["sourceRoot"], "local")
+            self.assertEqual(upload["destPath"], "/dest/a.txt")
+            download = ops.operation_plan({"type": "copy", "accountId": "7", "sourceCloud": True, "targetCloud": False, "destRoot": "local", "sources": [{"id": "1"}], "localDest": folder, "localDestPath": "downloads"})["items"][0]
+            self.assertEqual(download["sourcePath"], "/a.txt")
+            self.assertEqual(download["destPath"], "/downloads/a.txt")
+            self.assertEqual(download["destRoot"], "local")
+
     def test_cloud_previews_never_visit_source_descendants(self):
         for operation in ("copy", "move", "delete"):
             with self.subTest(operation=operation):

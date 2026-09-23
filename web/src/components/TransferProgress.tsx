@@ -88,7 +88,7 @@ function TransferWindow({ job, store, labels, viewport, order, onFocus }: { job:
     <span className="text-xs">{job.progressDone}/{job.progressTotal}</span>
     <span className="truncate text-xs text-muted-foreground">{job.sourceRootId === "@115" ? "115" : job.sourceRootId}{job.destRootId ? ` → ${job.destRootId === "@115" ? "115" : job.destRootId}` : ""}</span>
     <TransferDetails job={job} labels={labels} />
-    {job.errorMessage || error ? <p role="alert" className="text-sm text-destructive">{error || job.errorMessage}</p> : null}
+    {job.errorMessage || error ? <p role="alert" className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-destructive">{error || job.errorMessage}</p> : null}
     {active && job.transfer?.cancelable === false ? <p className="text-xs">{zh ? "当前服务端阶段不可取消" : "This server phase cannot be canceled"}</p> : null}
     <footer className="flex justify-end gap-2">
       <Button variant="outline" disabled={!active || canceling || job.status === "cancel_requested" || job.transfer?.cancelable === false} onClick={() => void cancel()}>{canceling || job.status === "cancel_requested" ? (zh ? "正在取消" : "Canceling") : (zh ? "取消" : "Cancel")}</Button>

@@ -268,7 +268,7 @@ function Cloud115Files({ accountId, onSwitch, onAdd, onTitle, windowId, layer, o
           upTarget: trail.length > 1 ? trail[trail.length - 2].name : null,
           onBack: () => moveHistory(history.index - 1), onForward: () => moveHistory(history.index + 1), onUp: () => navigate(trail.slice(0, -1)),
         }} />
-      {error && !prompt ? <p role="alert" className="absolute bottom-8 left-2 right-2 rounded border bg-background p-2 text-sm text-destructive">{error}</p> : null}
+      {error && !prompt ? <p role="alert" className="absolute bottom-8 left-2 right-2 whitespace-pre-wrap break-words [overflow-wrap:anywhere] rounded border bg-background p-2 text-sm text-destructive">{error}</p> : null}
     </div>
     {prompt ? <WindowDialogLayer labelledBy={promptId} onClose={() => { if (!busy) setPrompt(null); }}>
       {prompt.method === "mkdir" ? <MkdirContent
@@ -286,7 +286,7 @@ function Cloud115Files({ accountId, onSwitch, onAdd, onTitle, windowId, layer, o
           <p>解压到以压缩包命名的新文件夹，不覆盖已有目录</p>
           <Input type="password" autoFocus disabled={busy} autoComplete="off" placeholder="解压密码（可选）" aria-label="解压密码" value={prompt.password} onChange={(event) => setPrompt({ ...prompt, password: event.target.value })} />
         </div>
-        {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+        {error ? <p role="alert" className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-destructive">{error}</p> : null}
         <DialogFooter><Button type="button" variant="outline" disabled={busy} onClick={() => setPrompt(null)}>{labels.cancel}</Button><Button type="submit" disabled={busy}>{labels.confirm}</Button></DialogFooter>
       </form>}
     </WindowDialogLayer> : null}

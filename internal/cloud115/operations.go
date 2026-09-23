@@ -52,7 +52,7 @@ func (s *Service) operationParams(req operationRequest) (map[string]any, error) 
 	if req.Type == "delete" && !sourceCloud {
 		return nil, fmt.Errorf("无效删除来源")
 	}
-	params := map[string]any{"type": req.Type, "sourceCloud": sourceCloud, "targetCloud": targetCloud, "accountId": req.AccountID}
+	params := map[string]any{"type": req.Type, "sourceCloud": sourceCloud, "targetCloud": targetCloud, "accountId": req.AccountID, "sourceRoot": req.SourceRoot, "destRoot": req.DestRoot}
 	entries := []map[string]any{}
 	seen := map[string]bool{}
 	for _, source := range req.Sources {
@@ -73,7 +73,7 @@ func (s *Service) operationParams(req operationRequest) (map[string]any, error) 
 			if err != nil {
 				return nil, err
 			}
-			entries = append(entries, map[string]any{"localPath": resolved.Actual.Abs})
+			entries = append(entries, map[string]any{"localPath": resolved.Actual.Abs, "displayPath": source})
 		}
 	}
 	params["sources"] = entries
@@ -93,6 +93,7 @@ func (s *Service) operationParams(req operationRequest) (map[string]any, error) 
 				return nil, fmt.Errorf("目标不是目录")
 			}
 			params["localDest"] = resolved.Actual.Abs
+			params["localDestPath"] = req.DestPath
 		}
 	}
 	return params, nil

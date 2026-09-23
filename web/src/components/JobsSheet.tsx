@@ -118,7 +118,7 @@ export function JobsSheet({
                           <span>{job.progressDone}/{job.progressTotal}</span>
                           <span>{percent}%</span>
                         </span>
-                        {summaryError ? <p className="mt-1 text-[11px] text-destructive">{summaryError}</p> : null}
+                        {summaryError ? <p className="mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[11px] text-destructive">{summaryError}</p> : null}
                         <TransferDetails job={job} labels={labels} />
                         {hasTransferProgress(job) && !["completed", "canceled"].includes(job.status) ? <Button size="sm" variant="ghost" onClick={() => { jobEvents.openProgress(job.id); onOpenChange(false); }}>{labels === strings["zh-CN"] ? "查看进度" : "View progress"}</Button> : null}
                       </article>

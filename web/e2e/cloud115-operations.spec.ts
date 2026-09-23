@@ -71,6 +71,30 @@ test("shared keyboard clipboard downloads with a warning and preserves cut state
   expect(legacy).toEqual([]);
 });
 
+test("cloud move shows account paths and renders a two-line diagnostic without clipping", async ({ page }) => {
+  const { cloud, creates } = await setup(page);
+  await page.route("**/api/cloud115/ops.preview", route => route.fulfill({ json: { data: { items: [{ sourceRoot: "115网盘-Cloud user", destRoot: "115网盘-Cloud user", sourcePath: "/cloud.txt", destPath: "/Folder/cloud.txt", conflict: false }], hasConflict: false, previewToken: "path-preview" } } }));
+  await cloud.getByRole("button", { name: "cloud.txt", exact: true }).click();
+  await page.keyboard.press("Control+x");
+  await cloud.getByRole("button", { name: "Folder", exact: true }).dblclick();
+  await expect(cloud.getByRole("button", { name: "mkdir", exact: true })).toBeEnabled();
+  await page.keyboard.press("Control+v");
+  const dialog = cloud.getByRole("dialog", { name: "move preview" });
+  await expect(dialog.getByText("115网盘-Cloud user:/cloud.txt", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("115网盘-Cloud user:/Folder/cloud.txt", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  const message = "GET https://webapi.115.com/files/get_info\nHTTP 405 Method Not Allowed";
+  await page.route("**/api/cloud115/ops.preview", route => route.fulfill({ status: 502, json: { error: { code: "cloud115_error", message } } }));
+  await page.keyboard.press("Control+v");
+  const description = dialog.locator('[data-slot="alert-description"]');
+  await expect(description).toHaveText(message);
+  const layout = await description.evaluate(element => ({ whiteSpace: getComputedStyle(element).whiteSpace, height: element.getBoundingClientRect().height, lineHeight: parseFloat(getComputedStyle(element).lineHeight), clipped: element.scrollHeight > element.clientHeight }));
+  expect(layout.whiteSpace).toBe("pre-wrap");
+  expect(layout.height).toBeGreaterThanOrEqual(layout.lineHeight * 2);
+  expect(layout.clipped).toBe(false);
+  expect(creates).toHaveLength(0);
+});
+
 test("canceling a pending same-account folder move aborts preview and leaves browsing usable", async ({ page }) => {
   const { cloud, creates } = await setup(page);
   let browseCalls = 0;

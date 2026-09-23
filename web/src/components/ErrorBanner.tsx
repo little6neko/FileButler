@@ -6,7 +6,7 @@ export function ErrorBanner({ message }: { message: string | null }) {
   return (
     <Alert variant="destructive" role="alert">
       <CircleAlert />
-      <AlertDescription>{message}</AlertDescription>
+      <AlertDescription className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{message}</AlertDescription>
     </Alert>
   );
 }

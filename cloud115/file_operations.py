@@ -4,7 +4,7 @@ import json
 import os
 import stat
 
-from errors import Canceled, ProviderError
+from errors import Canceled, ProviderError, describe_error
 
 
 def local_revision(info):
@@ -157,6 +157,13 @@ class SharedFileOperations:
         occupied = set()
         ancestors = set()
         info_cache = {}
+        account_name = params["accountId"]
+        if self.storage is not None:
+            for account in self.storage.call("credential.list"):
+                if account["accountId"] == params["accountId"]:
+                    account_name = account.get("name") or account_name
+                    break
+        cloud_root = "115网盘-" + account_name
         def info(file_id):
             checkpoint()
             key = str(file_id)
@@ -178,6 +185,12 @@ class SharedFileOperations:
                     raise ProviderError("目标不是文件夹")
                 file_id = str(attr["parent_id"])
 
+        def directory_path(file_id):
+            return "/" + "/".join(reversed([info(parent)["name"] for parent in parents(str(file_id))]))
+
+        def join_path(parent, name):
+            return "/" + "/".join(part for part in (parent.strip("/"), name) if part and part != ".")
+
         if operation != "delete":
             if target_cloud:
                 ancestors = set(parents(str(dest)))
@@ -197,7 +210,8 @@ class SharedFileOperations:
             try:
                 root = cloud_item(info(source["id"])) if source_cloud else local_item(source["localPath"])
                 name = safe_name(root["name"] if source_cloud else os.path.basename(source["localPath"]))
-                item["sourcePath"] = name
+                item["sourceRoot"] = cloud_root if source_cloud else params.get("sourceRoot", "")
+                item["sourcePath"] = join_path(directory_path(root["parent"]), name) if source_cloud else source.get("displayPath", source["localPath"])
                 if source_cloud:
                     if str(source["id"]) in selected_nodes or (len(selected_ids) > 1 and any(parent in selected_ids for parent in parents(root["parent"]))):
                         raise ProviderError("选择包含重复或嵌套的源文件")
@@ -208,7 +222,8 @@ class SharedFileOperations:
                         raise ProviderError("选择包含嵌套的源目录")
                     selected_nodes.add(path)
                 if operation != "delete":
-                    item["destPath"] = name
+                    item["destRoot"] = cloud_root if target_cloud else params.get("destRoot", "")
+                    item["destPath"] = join_path(directory_path(dest), name) if target_cloud else join_path(params.get("localDestPath", params["localDest"]), name)
                     if source_cloud and target_cloud:
                         if root["parent"] == str(dest):
                             raise ProviderError("目标仍在当前文件夹")
@@ -222,7 +237,7 @@ class SharedFileOperations:
                 entry.update(sourceItem=root, targetRevision=target_revision)
                 entries.append(entry)
             except (ProviderError, OSError) as error:
-                item.update(conflict=True, errorText=str(error))
+                item.update(conflict=True, errorText=describe_error(error))
             items.append(item)
         checkpoint()
         revision = hashlib.sha256(json.dumps(entries, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
@@ -232,7 +247,7 @@ class SharedFileOperations:
         from operations import open_directory, progress_value
         self.check_operation_account(params)
         source_cloud, target_cloud = params["sourceCloud"], params["targetCloud"]
-        source = {"id": params["id"]} if source_cloud else {"localPath": params["localPath"]}
+        source = {"id": params["id"]} if source_cloud else {"localPath": params["localPath"], "displayPath": params.get("displayPath", params["localPath"])}
         name = params["sourceItem"]["name"] if source_cloud else os.path.basename(params["localPath"])
         def checkpoint():
             report(progress_value("scan", name))
@@ -296,5 +311,5 @@ class SharedFileOperations:
         except Canceled:
             raise
         except Exception as error:
-            raise ProviderError(f"传输成功，源文件删除失败：{error}") from error
+            raise ProviderError("传输成功，源文件删除失败：\n" + describe_error(error)) from error
         return {"ok": True}

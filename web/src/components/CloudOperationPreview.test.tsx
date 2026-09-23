@@ -9,6 +9,23 @@ vi.mock("../cloud115", () => ({ cloudCall: vi.fn() }));
 vi.mock("../api/client", () => ({ api: { opsDryRun: vi.fn(), opsCreateJob: vi.fn() } }));
 beforeEach(() => vi.clearAllMocks());
 
+it("displays distinct full cloud paths with the account name", async () => {
+  vi.mocked(cloudCall).mockResolvedValue({ items: [{ sourceRoot: "115网盘-测试账号", destRoot: "115网盘-测试账号", sourcePath: "/source/a.txt", destPath: "/dest/a.txt", conflict: false }], hasConflict: false, previewToken: "token" });
+  render(<OperationPreview request={{ type: "move", sourceRoot: "@115", sources: ["1"], destRoot: "@115", destPath: "9", accountId: "7" }} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+  expect(await screen.findByText("115网盘-测试账号:/source/a.txt")).toBeInTheDocument();
+  expect(screen.getByText("115网盘-测试账号:/dest/a.txt")).toBeInTheDocument();
+});
+
+it("preserves endpoint and error on separate wrapping lines", async () => {
+  const message = "GET https://webapi.115.com/files/get_info\nHTTP 405 Method Not Allowed";
+  vi.mocked(cloudCall).mockRejectedValue(new Error(message));
+  render(<OperationPreview request={{ type: "move", sourceRoot: "@115", sources: ["1"], destRoot: "@115", destPath: "9", accountId: "7" }} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+  const alert = await screen.findByRole("alert");
+  const description = alert.querySelector('[data-slot="alert-description"]')!;
+  expect(description.textContent).toBe(message);
+  expect(description).toHaveClass("whitespace-pre-wrap", "break-words");
+});
+
 it("aborts an unfinished cloud preview on mode change and unmount without submitting a job", async () => {
   const signals: AbortSignal[] = [];
   vi.mocked(cloudCall).mockImplementation((_method, _params, signal) => {

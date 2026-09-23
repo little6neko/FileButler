@@ -8,14 +8,13 @@ import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from errors import ProviderError
+from errors import ProviderError, install_request_diagnostics, response_error
 from operations import CloudOperations
 
 
 def checked(result):
     if not isinstance(result, dict) or result.get("state") is False:
-        code = result.get("errno", result.get("errNo", "unknown")) if isinstance(result, dict) else "invalid"
-        raise ProviderError(f"115接口失败（代码 {code}），请检查登录状态、权限或操作限制")
+        raise ProviderError(response_error(result) if isinstance(result, dict) else "115接口返回了非对象响应")
     return result
 
 
@@ -30,6 +29,7 @@ class AccountContext(CloudOperations):
         self.cookie = cookie
         self.lock = threading.RLock()
         self.client = P115Client(cookie, console_qrcode=False)
+        install_request_diagnostics(self.client, cookie)
         if str(self.client.user_id) != account:
             raise ProviderError("115登录凭证与账号不匹配")
 

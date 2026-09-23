@@ -8,7 +8,7 @@ import queue
 import sys
 import threading
 import time
-from errors import Canceled, ProviderError
+from errors import Canceled, ProviderError, describe_error
 from private_storage import PrivateStorage
 
 PROTOCOL_OUTPUT = sys.stdout
@@ -72,16 +72,8 @@ def serve(adapter, input_stream, storage=None):
             emit({"id": task_id, "data": result})
         except Canceled:
             emit({"id": task_id, "canceled": True})
-        except ProviderError as error:
-            emit({"id": task_id, "error": str(error)})
-        except ImportError:
-            emit({"id": task_id, "error": "115依赖不可用，请安装Python 3.12+及cloud115/requirements.txt"})
-        except FileExistsError:
-            emit({"id": task_id, "error": "目标文件或目录已存在（未覆盖）"})
-        except FileNotFoundError:
-            emit({"id": task_id, "error": "源文件或目标目录已不存在，请刷新后重试"})
-        except Exception:
-            emit({"id": task_id, "error": "115请求失败，请检查网络、登录状态及依赖版本；写入结果不确定时请刷新后确认"})
+        except Exception as error:
+            emit({"id": task_id, "error": describe_error(error)})
         finally:
             with state_lock:
                 acknowledgements.pop(task_id, None)

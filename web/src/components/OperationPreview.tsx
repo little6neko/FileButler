@@ -215,7 +215,7 @@ export function OperationPreviewContent({
                 <TableRow key={`${item.sourcePath}-${item.destPath ?? item.targetPath ?? ""}`}>
                   {showSourceColumn ? <TableCell>{displaySource(item, activeRequest)}</TableCell> : null}
                   {showDestinationColumn ? <TableCell>{displayDestination(item, activeRequest)}</TableCell> : null}
-                  <TableCell className={item.conflict ? "text-destructive" : "text-emerald-700"}>
+                  <TableCell className={`whitespace-pre-wrap break-words ${item.conflict ? "text-destructive" : "text-emerald-700"}`}>
                     {item.conflict ? item.errorText || item.errorCode : labels.ready}
                   </TableCell>
                 </TableRow>

@@ -14,6 +14,28 @@ class Input:
 
 
 class WorkerConcurrencyTests(unittest.TestCase):
+    def test_details_cancel_message_releases_pending_progress(self):
+        stream, results = Input(), queue.Queue()
+        class Adapter:
+            def call(self, method, params, progress):
+                progress({"phase": "details", "file": "", "cancelable": True, "bytesDone": 0, "bytesTotal": 0})
+                raise AssertionError("canceled details continued")
+        def emit(message):
+            if "progress" in message:
+                stream.send({"cancelId": message["id"]})
+            elif "id" in message:
+                results.put(message)
+        with patch("worker.emit", side_effect=emit):
+            thread = threading.Thread(target=serve, args=(Adapter(), stream))
+            thread.start()
+            try:
+                stream.send({"id": 1, "method": "details.stats", "params": {}})
+                self.assertTrue(results.get(timeout=2)["canceled"])
+            finally:
+                stream.lines.put(b"")
+                thread.join(timeout=3)
+            self.assertFalse(thread.is_alive())
+
     def test_all_requests_start_and_cancel_only_their_own_progress(self):
         stream = Input()
         started, results = queue.Queue(), queue.Queue()

@@ -119,17 +119,20 @@ def main():
 
 def serve(adapter, input_stream, storage=None):
     acknowledgements = {}
+    cancellations = {}
     threads = set()
     state_lock = threading.Lock()
     emit({"ready": 1})
 
-    def execute(message, ack):
+    def execute(message, ack, canceled):
         task_id = message["id"]
         last_key = None
         last_at = 0.0
 
         def progress(value):
             nonlocal last_key, last_at
+            if canceled.is_set():
+                raise Canceled()
             key = (value["phase"], value["file"], value["cancelable"])
             now = time.monotonic()
             complete = value.get("bytesTotal", 0) > 0 and value["bytesDone"] == value["bytesTotal"] or value.get("percent") == 100
@@ -137,10 +140,12 @@ def serve(adapter, input_stream, storage=None):
                 return
             last_key, last_at = key, now
             emit({"id": task_id, "progress": value})
-            if ack.get(timeout=60):
+            if ack.get(timeout=60) or canceled.is_set():
                 raise Canceled()
 
         try:
+            if canceled.is_set():
+                raise Canceled()
             result = adapter.call(message["method"], message.get("params") or {}, progress)
             emit({"id": task_id, "data": result})
         except Canceled:
@@ -158,6 +163,7 @@ def serve(adapter, input_stream, storage=None):
         finally:
             with state_lock:
                 acknowledgements.pop(task_id, None)
+                cancellations.pop(task_id, None)
                 threads.discard(threading.current_thread())
 
     try:
@@ -171,6 +177,16 @@ def serve(adapter, input_stream, storage=None):
             if "storageReply" in message:
                 if storage is not None: storage.receive(message)
                 continue
+            if "cancelId" in message:
+                with state_lock:
+                    canceled = cancellations.get(message["cancelId"])
+                    ack = acknowledgements.get(message["cancelId"])
+                if canceled is not None:
+                    canceled.set()
+                if ack is not None:
+                    with contextlib.suppress(queue.Full):
+                        ack.put_nowait(True)
+                continue
             if message.get("ack"):
                 with state_lock:
                     ack = acknowledgements.get(message["id"])
@@ -178,21 +194,26 @@ def serve(adapter, input_stream, storage=None):
                     ack.put(bool(message.get("cancel")))
             else:
                 ack = queue.Queue(maxsize=1)
-                thread = threading.Thread(target=execute, args=(message, ack))
+                canceled = threading.Event()
+                thread = threading.Thread(target=execute, args=(message, ack, canceled))
                 with state_lock:
                     acknowledgements[message["id"]] = ack
+                    cancellations[message["id"]] = canceled
                     threads.add(thread)
                 try:
                     thread.start()
                 except RuntimeError:
                     with state_lock:
                         acknowledgements.pop(message["id"], None)
+                        cancellations.pop(message["id"], None)
                         threads.discard(thread)
                     emit({"id": message["id"], "error": "系统资源不足，无法启动任务"})
     finally:
         if storage is not None: storage.close()
         with state_lock:
             pending = list(acknowledgements.values())
+            for canceled in cancellations.values():
+                canceled.set()
             running = list(threads)
         for ack in pending:
             with contextlib.suppress(queue.Full):

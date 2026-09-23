@@ -12,6 +12,7 @@ from errors import Canceled, ProviderError
 from batch import BatchOperations
 from file_operations import SharedFileOperations
 from hash_cache import HashCache
+from details import FileDetails
 
 
 def safe_name(name):
@@ -49,7 +50,7 @@ def progress_value(phase, name, done=0, total=0, cancelable=True, percent=None):
     return value
 
 
-class CloudOperations(BatchOperations, SharedFileOperations, HashCache):
+class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDetails):
     def info(self, file_id):
         from p115client.tool.attr import get_attr
         item = get_attr(self.load(), int(file_id), timeout=30)
@@ -108,6 +109,8 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache):
 
     def operation(self, method, params, report):
         client = self.load()
+        if method.startswith("details."):
+            return self.details(method, params, report)
         parent = params.get("parentId", "0")
         dest = params.get("destId", "0")
         if method == "ops.plan":

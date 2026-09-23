@@ -10,6 +10,7 @@ import (
 	"io"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -155,6 +156,12 @@ func (b *Bridge) Call(ctx context.Context, method string, params any, report job
 	for {
 		select {
 		case <-ctx.Done():
+			// Read-only details workers use progress checkpoints to stop canceled scans.
+			if strings.HasPrefix(method, "details.") {
+				b.mu.Lock()
+				_ = json.NewEncoder(p.in).Encode(map[string]any{"cancelId": id})
+				b.mu.Unlock()
+			}
 			return nil, ctx.Err()
 		case msg, ok := <-ch:
 			if !ok {

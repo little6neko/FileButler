@@ -52,6 +52,10 @@ var queries = map[string]bool{"status": true, "login.start": true, "login.check"
 var mutations = map[string]bool{"mkdir": true, "rename": true, "copy": true, "move": true, "delete": true, "upload": true, "download": true, "extract": true}
 
 func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
+	if strings.HasPrefix(chi.URLParam(r, "method"), "details.") {
+		s.detailsHandler(w, r)
+		return
+	}
 	s.accountMu.Lock()
 	defer s.accountMu.Unlock()
 	method := chi.URLParam(r, "method")

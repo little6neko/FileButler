@@ -24,7 +24,7 @@ LABEL org.opencontainers.image.version="${VERSION}"
 WORKDIR /app
 COPY cloud115/requirements.txt /app/cloud115/requirements.txt
 RUN pip install --no-cache-dir -r /app/cloud115/requirements.txt
-COPY cloud115/worker.py cloud115/operations.py cloud115/errors.py cloud115/batch.py cloud115/file_operations.py cloud115/private_storage.py cloud115/hash_cache.py /app/cloud115/
+COPY cloud115/worker.py cloud115/operations.py cloud115/errors.py cloud115/batch.py cloud115/file_operations.py cloud115/private_storage.py cloud115/hash_cache.py cloud115/details.py /app/cloud115/
 ENV PYTHONDONTWRITEBYTECODE=1
 COPY --from=backend /out/filebutler /usr/local/bin/filebutler
 COPY --from=frontend /src/web/dist /app/web/dist

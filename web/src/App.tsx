@@ -39,7 +39,7 @@ export default function App() {
 
   if (state === "ready") {
     return (
-      <JobEventsProvider>
+      <JobEventsProvider labels={t}>
         <FileWorkspace labels={t} languageMode={languageMode} onLanguageModeChange={setLanguageMode} />
       </JobEventsProvider>
     );

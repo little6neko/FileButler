@@ -13,21 +13,22 @@ const (
 )
 
 type Job struct {
-	ID              string `json:"id"`
-	Type            string `json:"type"`
-	Status          Status `json:"status"`
-	ActorID         int64  `json:"actorId"`
-	SourceRootID    string `json:"sourceRootId"`
-	DestRootID      string `json:"destRootId,omitempty"`
-	ProgressTotal   int    `json:"progressTotal"`
-	ProgressDone    int    `json:"progressDone"`
-	FailedCount     int    `json:"failedCount"`
-	CancelRequested bool   `json:"cancelRequested"`
-	ErrorMessage    string `json:"errorMessage"`
-	CreatedAtUnix   int64  `json:"createdAtUnix"`
-	UpdatedAtUnix   int64  `json:"updatedAtUnix"`
-	FinishedAtUnix  int64  `json:"finishedAtUnix,omitempty"`
-	EventVersion    int64  `json:"eventVersion"`
+	Transfer        *TransferProgress `json:"transfer,omitempty"`
+	ID              string            `json:"id"`
+	Type            string            `json:"type"`
+	Status          Status            `json:"status"`
+	ActorID         int64             `json:"actorId"`
+	SourceRootID    string            `json:"sourceRootId"`
+	DestRootID      string            `json:"destRootId,omitempty"`
+	ProgressTotal   int               `json:"progressTotal"`
+	ProgressDone    int               `json:"progressDone"`
+	FailedCount     int               `json:"failedCount"`
+	CancelRequested bool              `json:"cancelRequested"`
+	ErrorMessage    string            `json:"errorMessage"`
+	CreatedAtUnix   int64             `json:"createdAtUnix"`
+	UpdatedAtUnix   int64             `json:"updatedAtUnix"`
+	FinishedAtUnix  int64             `json:"finishedAtUnix,omitempty"`
+	EventVersion    int64             `json:"eventVersion"`
 }
 type Snapshot struct {
 	RuntimeID string `json:"runtimeId"`

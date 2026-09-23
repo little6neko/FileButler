@@ -3,6 +3,7 @@ import type { Job, JobEvent, JobSnapshot } from "./api/types";
 export type JobConnectionState = "connecting" | "connected" | "reconnecting";
 
 export type JobEventsState = {
+  progressJobIDs: string[];
   jobs: Job[];
   activeCount: number;
   connectionState: JobConnectionState;
@@ -42,6 +43,7 @@ export class JobEventsStore {
   private started = false;
   private hasBaseline = false;
   private state: JobEventsState = {
+    progressJobIDs: [],
     jobs: [],
     activeCount: 0,
     connectionState: "connecting",
@@ -102,10 +104,22 @@ export class JobEventsStore {
 
   registerCreatedJob(jobID: string) {
     this.createdJobIDs.add(jobID);
+    this.openProgress(jobID);
     const job = this.jobsByID.get(jobID);
     if (job && terminalJobStatuses.has(job.status)) {
       this.notifyTerminalJobs([job]);
     }
+  }
+
+  openProgress(jobID: string) {
+    if (this.state.progressJobIDs.includes(jobID)) return;
+    this.state = { ...this.state, progressJobIDs: [...this.state.progressJobIDs, jobID] };
+    this.emit();
+  }
+
+  closeProgress(jobID: string) {
+    this.state = { ...this.state, progressJobIDs: this.state.progressJobIDs.filter((id) => id !== jobID) };
+    this.emit();
   }
 
   handleSnapshot(snapshot: JobSnapshot | EventMessage) {
@@ -175,6 +189,7 @@ export class JobEventsStore {
 
   private mergeJob(job: Job) {
     const previous = this.jobsByID.get(job.id);
+    if (previous && terminalJobStatuses.has(previous.status)) return false;
     if (previous && job.eventVersion <= previous.eventVersion) return false;
     this.jobsByID.set(job.id, job);
     return true;

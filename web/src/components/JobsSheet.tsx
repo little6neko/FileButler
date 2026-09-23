@@ -9,6 +9,8 @@ import { strings } from "../i18n";
 import type { UIStrings } from "../i18n";
 import { activeJobStatuses, JobEventsStore } from "../jobEvents";
 import { useOptionalJobEventsStore } from "../jobEventsContext";
+import { TransferDetails } from "./TransferProgress";
+import { hasTransferProgress } from "../transferProgress";
 
 type Filter = "all" | "running" | "completed";
 
@@ -96,7 +98,7 @@ export function JobsSheet({
                 const percent = progressPercent(job);
                 const active = activeJobStatuses.has(job.status);
                 const canceling = cancelingJobIDs.has(job.id) && (job.status === "pending" || job.status === "running");
-                const cancelDisabled = canceling || job.status === "cancel_requested";
+                const cancelDisabled = canceling || job.status === "cancel_requested" || job.transfer?.cancelable === false;
                 const displayedStatus = canceling ? "cancel_requested" : job.status;
                 const cancelLabel = labels.cancelJob(labels.operationType(job.type));
                 const summaryError = failureSummary(job, labels);
@@ -117,6 +119,8 @@ export function JobsSheet({
                           <span>{percent}%</span>
                         </span>
                         {summaryError ? <p className="mt-1 text-[11px] text-destructive">{summaryError}</p> : null}
+                        <TransferDetails job={job} labels={labels} />
+                        {hasTransferProgress(job) && !["completed", "canceled"].includes(job.status) ? <Button size="sm" variant="ghost" onClick={() => { jobEvents.openProgress(job.id); onOpenChange(false); }}>{labels === strings["zh-CN"] ? "查看进度" : "View progress"}</Button> : null}
                       </article>
                       {active ? (
                         <button

@@ -23,6 +23,7 @@ type Runner struct {
 }
 
 func (r Runner) Run(ctx context.Context, jobID string, items []ExecutableItem) error {
+	ctx = WithReporter(ctx, func(progress TransferProgress) error { return r.Store.ReportTransfer(ctx, jobID, progress) })
 	if err := r.Store.MarkRunning(ctx, jobID); err != nil {
 		return err
 	}
@@ -54,6 +55,9 @@ func (r Runner) Run(ctx context.Context, jobID string, items []ExecutableItem) e
 			return r.Store.Finish(ctx, jobID, StatusCanceled, "")
 		}
 		execErr := r.Executor.ExecuteItem(ctx, item)
+		if errors.Is(execErr, context.Canceled) {
+			return r.Store.Finish(context.Background(), jobID, StatusCanceled, "")
+		}
 		if execErr != nil {
 			failures++
 		}

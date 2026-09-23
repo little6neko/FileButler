@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/little6neko/filebutler/internal/jobs"
 	"github.com/little6neko/filebutler/internal/roots"
 )
 
@@ -88,10 +89,14 @@ func copyPath(ctx context.Context, src, dest string) error {
 		}
 		return os.Symlink(target, dest)
 	}
-	return copyFile(src, dest, info.Mode().Perm())
+	return copyFileContext(ctx, src, dest, info.Mode().Perm())
 }
 
 func copyFile(src, dest string, mode os.FileMode) error {
+	return copyFileContext(context.Background(), src, dest, mode)
+}
+
+func copyFileContext(ctx context.Context, src, dest string, mode os.FileMode) error {
 	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 		return err
 	}
@@ -100,13 +105,51 @@ func copyFile(src, dest string, mode os.FileMode) error {
 		return err
 	}
 	defer in.Close()
+	info, err := in.Stat()
+	if err != nil {
+		return err
+	}
+	progress := jobs.TransferProgress{Phase: "copy", File: filepath.Base(src), BytesTotal: info.Size(), Cancelable: true}
+	if err := jobs.Report(ctx, progress); err != nil {
+		return err
+	}
 	out, err := os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-	if _, err := io.Copy(out, in); err != nil {
+	completed := false
+	defer func() {
+		_ = out.Close()
+		if !completed {
+			_ = os.Remove(dest)
+		}
+	}()
+	buffer := make([]byte, 256*1024)
+	for {
+		n, readErr := in.Read(buffer)
+		if n > 0 {
+			written, err := out.Write(buffer[:n])
+			if err != nil {
+				return err
+			}
+			if written != n {
+				return io.ErrShortWrite
+			}
+			progress.BytesDone += int64(n)
+			if err := jobs.Report(ctx, progress); err != nil {
+				return err
+			}
+		}
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
+	if err := out.Close(); err != nil {
 		return err
 	}
-	return out.Close()
+	completed = true
+	return nil
 }

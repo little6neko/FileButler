@@ -40,6 +40,9 @@ type storeState struct {
 }
 
 type jobRecord struct {
+	transferSampleAt    time.Time
+	transferSampleBytes int64
+	transferRate        float64
 	job                 Job
 	firstItemError      string
 	lastProgressEventAt time.Time
@@ -220,6 +223,9 @@ func (s Store) RequestCancel(ctx context.Context, id string) error {
 	if !exists || (record.job.Status != StatusPending && record.job.Status != StatusRunning) {
 		return nil
 	}
+	if record.job.Transfer != nil && !record.job.Transfer.Cancelable {
+		return errors.New("current task phase cannot be canceled")
+	}
 	record.job.CancelRequested = true
 	record.job.Status = StatusCancelRequested
 	record.job.UpdatedAtUnix = s.state.currentTime().Unix()
@@ -302,9 +308,9 @@ func (state *storeState) snapshotLocked(reset bool) Snapshot {
 
 func (state *storeState) currentTime() time.Time {
 	if state.now == nil {
-		return time.Now().UTC()
+		return time.Now()
 	}
-	return state.now().UTC()
+	return state.now()
 }
 
 func newRuntimeID() string {

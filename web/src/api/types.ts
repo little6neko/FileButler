@@ -134,6 +134,7 @@ export type PlanItem = {
 };
 
 export type Job = {
+  transfer?: { phase: string; file: string; bytesDone: number; bytesTotal: number; bytesPerSecond: number; remainingSeconds?: number; cancelable: boolean };
   id: string;
   type: string;
   status: string;

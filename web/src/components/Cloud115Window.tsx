@@ -16,6 +16,8 @@ import type { Entry } from "../api/types";
 import { strings, type UIStrings } from "../i18n";
 import { useOptionalJobEventsStore } from "../jobEventsContext";
 import { Button } from "./ui/button";
+import { DialogFooter } from "./ui/dialog";
+import { Input } from "./ui/input";
 import { Cloud115OfflineDialog } from "./Cloud115OfflineDialog";
 import { WindowDialogLayer } from "./WindowDialogLayer";
 import { MkdirContent } from "./MkdirDialog";
@@ -275,15 +277,17 @@ function Cloud115Files({ accountId, onSwitch, onAdd, onTitle, windowId, layer, o
       /> : prompt.method === "rename" ? <SingleRenameContent
         titleId={promptId} labels={labels} initialName={prompt.name} entryType={prompt.entryType}
         onClose={() => setPrompt(null)} onSubmit={(name) => submit("rename", { ids: prompt.ids, name })}
-      /> : <form className="grid gap-3" onSubmit={(event) => {
+      /> : <form className="contents" onSubmit={(event) => {
         event.preventDefault();
         void submit("extract", { ids: prompt.ids, destId: prompt.destId, password: prompt.password }).catch((error) => setError(String(error)));
       }}>
-        <h2 id={promptId} className="font-semibold">在线解压</h2>
-        <p>解压到以压缩包命名的新文件夹，不覆盖已有目录</p>
-        <input className="rounded border bg-background p-2" type="password" autoComplete="off" placeholder="解压密码（可选）" aria-label="解压密码" value={prompt.password} onChange={(event) => setPrompt({ ...prompt, password: event.target.value })} />
+        <h2 id={promptId} className="font-heading text-base leading-none font-medium">在线解压</h2>
+        <div className="grid min-w-0 gap-2">
+          <p>解压到以压缩包命名的新文件夹，不覆盖已有目录</p>
+          <Input type="password" autoFocus disabled={busy} autoComplete="off" placeholder="解压密码（可选）" aria-label="解压密码" value={prompt.password} onChange={(event) => setPrompt({ ...prompt, password: event.target.value })} />
+        </div>
         {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
-        <div className="flex justify-end gap-2"><Button type="button" variant="outline" disabled={busy} onClick={() => setPrompt(null)}>{labels.cancel}</Button><Button type="submit" disabled={busy}>确认</Button></div>
+        <DialogFooter><Button type="button" variant="outline" disabled={busy} onClick={() => setPrompt(null)}>{labels.cancel}</Button><Button type="submit" disabled={busy}>{labels.confirm}</Button></DialogFooter>
       </form>}
     </WindowDialogLayer> : null}
     {offlineTarget ? <Cloud115OfflineDialog target={{ ...offlineTarget, accountId }} onClose={() => setOfflineTarget(null)} /> : null}

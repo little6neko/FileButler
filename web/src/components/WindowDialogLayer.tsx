@@ -1,10 +1,12 @@
 import { useEffect, useRef } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { cn } from "@/lib/utils";
 
 type Props = {
   labelledBy: string;
   describedBy?: string;
   size?: "compact" | "operation";
+  panelClassName?: string;
   onClose(): void;
   children: ReactNode;
 };
@@ -13,6 +15,7 @@ export function WindowDialogLayer({
   labelledBy,
   describedBy,
   size = "compact",
+  panelClassName,
   onClose,
   children,
 }: Props) {
@@ -62,7 +65,7 @@ export function WindowDialogLayer({
         aria-labelledby={labelledBy}
         aria-describedby={describedBy}
         tabIndex={-1}
-        className="window-dialog-panel"
+        className={cn("window-dialog-panel", panelClassName)}
         data-window-dialog-size={size}
         onKeyDown={handleKeyDown}
       >

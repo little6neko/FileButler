@@ -147,6 +147,8 @@ it("submits unique links to the current directory without creating a completed d
   const { created } = setup();
   await screen.findByText("sample.txt");
   fireEvent.click(screen.getByRole("button", { name: "离线下载" }));
+  expect(screen.getByRole("button", { name: /^提交$/ }).closest('[data-slot="dialog-footer"]')).toHaveClass("bg-muted/50", "border-t");
+  expect(screen.getByRole("textbox", { name: "下载链接" })).toHaveAttribute("data-slot", "textarea");
   fireEvent.change(screen.getByRole("textbox", { name: "下载链接" }), { target: { value: " magnet:?xt=test\nhttps://example.com/file\nmagnet:?xt=test " } });
   fireEvent.click(screen.getByRole("button", { name: /^提交$/ }));
   await waitFor(() => expect(screen.getAllByText("已提交到115")).toHaveLength(2));
@@ -207,4 +209,25 @@ it("reuses the file table and local dialogs, hides links and disables extraction
   expect(screen.getByRole("dialog", { name: "离线下载" }).closest("[data-window-local-dialog]")).not.toBeNull();
   expect(screen.getByRole("textbox", { name: "下载链接" })).toHaveAttribute("placeholder", "支持磁力、ed2k、HTTP/HTTPS、FTP，每行一条");
   expect(screen.queryByText(/不代表下载完成/)).not.toBeInTheDocument();
+});
+
+it("uses the shared input and footer for extraction and preserves password after failure", async () => {
+  const original = vi.mocked(cloudCall).getMockImplementation()!;
+  vi.mocked(cloudCall).mockImplementation(async (method, ...args) => {
+    if (method === "browse") return { entries: [{ ...entry, name: "archive.zip" }], offset: 0, total: 1 };
+    if (method === "extract") throw new Error("密码错误");
+    return original(method, ...args);
+  });
+  setup();
+  fireEvent.doubleClick(await screen.findByRole("button", { name: "archive.zip" }));
+  const dialog = screen.getByRole("dialog", { name: "在线解压" });
+  const password = within(dialog).getByLabelText("解压密码");
+  expect(password).toHaveAttribute("data-slot", "input");
+  expect(password).toHaveClass("h-8", "rounded-lg");
+  expect(within(dialog).getByRole("button", { name: "确认" }).closest('[data-slot="dialog-footer"]')).toHaveClass("bg-muted/50", "border-t");
+  fireEvent.change(password, { target: { value: "wrong" } });
+  fireEvent.click(within(dialog).getByRole("button", { name: "确认" }));
+  expect(await within(dialog).findByRole("alert")).toHaveTextContent("密码错误");
+  expect(password).toHaveValue("wrong");
+  expect(cloudCall).toHaveBeenCalledWith("extract", { accountId: "1", ids: ["1"], destId: "0", password: "wrong" });
 });

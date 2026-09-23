@@ -151,7 +151,7 @@ test("cloud previews load bytes directly, text is read-only and archive double c
   await expect(dialog).toBeVisible();
   expect(calls.filter((call) => call.method === "extract")).toHaveLength(0);
   await dialog.locator('input[type="password"]').fill("archive-password");
-  await dialog.getByRole("button", { name: "确认", exact: true }).click();
+  await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
   await expect.poll(() => calls.some((call) => call.method === "extract")).toBe(true);
   expect(calls.find((call) => call.method === "extract")!.params).toMatchObject({ ids: ["6"], password: "archive-password" });
   expect(calls.some((call) => call.method === "download")).toBe(false);

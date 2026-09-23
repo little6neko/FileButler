@@ -10,6 +10,7 @@ from urllib.parse import urlsplit, parse_qs
 
 from errors import Canceled, ProviderError
 from batch import BatchOperations
+from file_operations import SharedFileOperations
 
 
 def safe_name(name):
@@ -47,7 +48,7 @@ def progress_value(phase, name, done=0, total=0, cancelable=True, percent=None):
     return value
 
 
-class CloudOperations(BatchOperations):
+class CloudOperations(BatchOperations, SharedFileOperations):
     def info(self, file_id):
         from p115client.tool.attr import get_attr
         return get_attr(self.load(), int(file_id), timeout=30)
@@ -105,6 +106,10 @@ class CloudOperations(BatchOperations):
         client = self.load()
         parent = params.get("parentId", "0")
         dest = params.get("destId", "0")
+        if method == "ops.plan":
+            return self.operation_plan(params)
+        if method == "ops.execute":
+            return self.operation_execute(params, report)
         if method == "batch.scan":
             return self.batch_scan(params)
         if method == "account":

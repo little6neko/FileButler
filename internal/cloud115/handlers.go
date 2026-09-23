@@ -20,16 +20,17 @@ import (
 )
 
 type Service struct {
-	accountMu sync.Mutex
-	Provider  Provider
-	Store     jobs.Store
-	Roots     roots.Resolver
-	queue     chan struct{}
-	previews  map[string]batchPreview
+	accountMu         sync.Mutex
+	Provider          Provider
+	Store             jobs.Store
+	Roots             roots.Resolver
+	queue             chan struct{}
+	previews          map[string]batchPreview
+	operationPreviews map[string]operationPreview
 }
 
 func NewService(provider Provider, store jobs.Store, resolver roots.Resolver) *Service {
-	return &Service{Provider: provider, Store: store, Roots: resolver, queue: make(chan struct{}, 1), previews: make(map[string]batchPreview)}
+	return &Service{Provider: provider, Store: store, Roots: resolver, queue: make(chan struct{}, 1), previews: make(map[string]batchPreview), operationPreviews: make(map[string]operationPreview)}
 }
 
 type Request struct {
@@ -55,6 +56,10 @@ func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
 	s.accountMu.Lock()
 	defer s.accountMu.Unlock()
 	method := chi.URLParam(r, "method")
+	if method == "ops.preview" || method == "ops.create" {
+		s.operationHandler(w, r, method)
+		return
+	}
 	if strings.HasPrefix(method, "power.") || strings.HasPrefix(method, "super.") {
 		s.batchHandler(w, r, method)
 		return

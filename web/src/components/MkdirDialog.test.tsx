@@ -2,13 +2,20 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect, it, vi } from "vitest";
 import { MkdirContent, MkdirDialog } from "./MkdirDialog";
+import { strings } from "../i18n";
+
+it("uses the create action as its title while keeping the directory name label", () => {
+  render(<MkdirDialog labels={strings["zh-CN"]} onClose={vi.fn()} onSubmit={vi.fn()} />);
+  expect(screen.getByRole("dialog", { name: "新建文件夹" })).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "文件夹名称" })).toBeInTheDocument();
+});
 
 it("renders reusable mkdir content without a page dialog portal", async () => {
   const onSubmit = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
   render(<MkdirContent titleId="local-mkdir-title" onClose={vi.fn()} onSubmit={onSubmit} />);
 
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Directory name" })).toHaveAttribute("id", "local-mkdir-title");
+  expect(screen.getByRole("heading", { name: "mkdir" })).toHaveAttribute("id", "local-mkdir-title");
   await userEvent.type(screen.getByRole("textbox", { name: "Directory name" }), "assets");
   await userEvent.click(screen.getByRole("button", { name: "Confirm" }));
 
@@ -23,7 +30,7 @@ it("submits a trimmed directory name once and disables the dialog while pending"
   }));
   render(<MkdirDialog onClose={onClose} onSubmit={onSubmit} />);
 
-  const dialog = screen.getByRole("dialog", { name: "Directory name" });
+  const dialog = screen.getByRole("dialog", { name: "mkdir" });
   const input = within(dialog).getByRole("textbox", { name: "Directory name" });
   const cancel = within(dialog).getByRole("button", { name: "Cancel" });
   const confirm = within(dialog).getByRole("button", { name: "Confirm" });
@@ -50,7 +57,7 @@ it("keeps the entered name and allows retry after submission fails", async () =>
     .mockResolvedValueOnce(undefined);
   render(<MkdirDialog onClose={vi.fn()} onSubmit={onSubmit} />);
 
-  const dialog = screen.getByRole("dialog", { name: "Directory name" });
+  const dialog = screen.getByRole("dialog", { name: "mkdir" });
   const input = within(dialog).getByRole("textbox", { name: "Directory name" });
   await userEvent.type(input, "assets");
   await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));

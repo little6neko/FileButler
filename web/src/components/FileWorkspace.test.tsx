@@ -502,11 +502,11 @@ it("keeps Backspace out of editable controls, dialogs, and menus", async () => {
   expect(backButton).toBeEnabled();
 
   await userEvent.click(screen.getByRole("button", { name: "mkdir" }));
-  const dialog = await screen.findByRole("dialog", { name: "Directory name" });
+  const dialog = await screen.findByRole("dialog", { name: "mkdir" });
   expect(dispatchBackShortcut({ target: dialog }).defaultPrevented).toBe(false);
   expect(backButton).toBeEnabled();
   fireEvent.keyDown(dialog, { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Directory name" })).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "mkdir" })).not.toBeInTheDocument());
 
   const menu = document.createElement("div");
   menu.setAttribute("role", "menu");
@@ -921,7 +921,7 @@ it("renders mkdir and delete inside the command's file window", async () => {
 
   const toolbar = within(sourceWindow).getByRole("navigation", { name: "File actions" });
   await userEvent.click(within(toolbar).getByRole("button", { name: "mkdir" }));
-  expect(within(sourceWindow).getByRole("dialog", { name: "Directory name" })).toBeInTheDocument();
+  expect(within(sourceWindow).getByRole("dialog", { name: "mkdir" })).toBeInTheDocument();
   expect(within(otherWindow).queryByRole("dialog")).not.toBeInTheDocument();
   await userEvent.click(within(sourceWindow).getByRole("button", { name: "Cancel" }));
 
@@ -972,7 +972,7 @@ it("keeps local dialogs for focus and maximize but discards them for minimize an
   await userEvent.click(within(secondWindow).getByRole("button", { name: "mkdir" }));
 
   expect(within(firstWindow).getByRole("dialog", { name: "Rename" })).toBeInTheDocument();
-  expect(within(secondWindow).getByRole("dialog", { name: "Directory name" })).toBeInTheDocument();
+  expect(within(secondWindow).getByRole("dialog", { name: "mkdir" })).toBeInTheDocument();
   await userEvent.click(within(firstWindow).getByRole("button", { name: "Maximize window" }));
   expect(within(firstWindow).getByRole("dialog", { name: "Rename" })).toBeInTheDocument();
 
@@ -982,7 +982,7 @@ it("keeps local dialogs for focus and maximize but discards them for minimize an
   windows = container.querySelectorAll<HTMLElement>(".desktop-window[data-window-kind='file']");
   const restoredFirst = Array.from(windows).find((window) => window.dataset.windowId === firstWindow.dataset.windowId)!;
   expect(within(restoredFirst).queryByRole("dialog")).not.toBeInTheDocument();
-  expect(within(secondWindow).getByRole("dialog", { name: "Directory name" })).toBeInTheDocument();
+  expect(within(secondWindow).getByRole("dialog", { name: "mkdir" })).toBeInTheDocument();
 
   await userEvent.click(screen.getByRole("button", { name: "Switch to compact mode" }));
   await userEvent.click(screen.getByRole("button", { name: "Switch to full mode" }));
@@ -1071,7 +1071,7 @@ it("keeps a submitted local request alive after its parent window closes", async
   const fileWindow = container.querySelector<HTMLElement>(".desktop-window[data-window-kind='file']")!;
   await userEvent.dblClick(within(fileWindow).getByRole("button", { name: /Source/ }));
   await userEvent.click(within(fileWindow).getByRole("button", { name: "mkdir" }));
-  const dialog = within(fileWindow).getByRole("dialog", { name: "Directory name" });
+  const dialog = within(fileWindow).getByRole("dialog", { name: "mkdir" });
   await userEvent.type(within(dialog).getByRole("textbox", { name: "Directory name" }), "pending-folder");
   await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
   await userEvent.click(within(fileWindow).getByRole("button", { name: "Close window" }));
@@ -1840,7 +1840,7 @@ it("blocks page select-all without selecting files while a dialog or menu is ope
   const folder = await within(leftPane).findByLabelText("Select folder");
   const file = within(leftPane).getByLabelText("Select a.txt");
   await userEvent.click(screen.getByRole("button", { name: "mkdir" }));
-  const dialog = await screen.findByRole("dialog", { name: "Directory name" });
+  const dialog = await screen.findByRole("dialog", { name: "mkdir" });
 
   const dialogEvent = dispatchSelectAllShortcut();
   expect(dialogEvent.defaultPrevented).toBe(true);
@@ -1848,7 +1848,7 @@ it("blocks page select-all without selecting files while a dialog or menu is ope
   expect(file).not.toBeChecked();
 
   fireEvent.keyDown(dialog, { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Directory name" })).not.toBeInTheDocument());
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "mkdir" })).not.toBeInTheDocument());
   fireEvent.contextMenu(within(leftPane).getByText("a.txt"), { clientX: 100, clientY: 100 });
   expect(await screen.findByRole("menu", { name: "File actions" })).toBeInTheDocument();
 

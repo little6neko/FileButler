@@ -74,7 +74,7 @@ export function MkdirContent({
   return (
     <div className="contents" onKeyDown={(event) => confirmDialogOnEnter(event, canSubmit, () => void submit())}>
       <header className="flex flex-col gap-2">
-        <h2 id={titleId} className="font-heading text-base leading-none font-medium">{labels.directoryNamePrompt}</h2>
+        <h2 id={titleId} className="font-heading text-base leading-none font-medium">{labels.mkdir}</h2>
       </header>
       <ErrorBanner message={error} />
       <div className="grid min-w-0 gap-2">

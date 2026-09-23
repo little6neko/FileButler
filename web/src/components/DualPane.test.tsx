@@ -97,7 +97,7 @@ it("creates a mkdir job from the name dialog without a second confirmation", asy
   await userEvent.click(screen.getByRole("button", { name: "mkdir" }));
 
   expect(prompt).not.toHaveBeenCalled();
-  const dialog = screen.getByRole("dialog", { name: "Directory name" });
+  const dialog = screen.getByRole("dialog", { name: "mkdir" });
   await userEvent.type(within(dialog).getByLabelText("Directory name"), "modal-folder");
   await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
 
@@ -115,7 +115,7 @@ it("creates a mkdir job from the name dialog without a second confirmation", asy
   );
   expect(api.opsDryRun).not.toHaveBeenCalled();
   expect(screen.queryByRole("dialog", { name: "mkdir preview" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("dialog", { name: "Directory name" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog", { name: "mkdir" })).not.toBeInTheDocument();
   expect(toast.success).toHaveBeenCalledWith("Background job created");
   prompt.mockRestore();
 });

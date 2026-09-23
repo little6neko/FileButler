@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 from urllib.parse import urlsplit
 
 from errors import Canceled, ProviderError
+from batch import BatchOperations
 
 
 def safe_name(name):
@@ -46,7 +47,7 @@ def progress_value(phase, name, done=0, total=0, cancelable=True, percent=None):
     return value
 
 
-class CloudOperations:
+class CloudOperations(BatchOperations):
     def info(self, file_id):
         from p115client.tool.attr import get_attr
         return get_attr(self.load(), int(file_id), timeout=30)
@@ -66,8 +67,17 @@ class CloudOperations:
 
     def children(self, parent):
         offset = 0
+        expected_total = None
+        seen = set()
         while True:
             page = self.browse(parent, offset)
+            if expected_total is not None and page["total"] != expected_total:
+                raise ProviderError("目录在读取时发生变化，请重新加载")
+            expected_total = page["total"]
+            for entry in page["entries"]:
+                if entry["id"] in seen:
+                    raise ProviderError("目录在读取时发生变化，请重新加载")
+                seen.add(entry["id"])
             yield from page["entries"]
             offset += len(page["entries"])
             if offset >= page["total"]:
@@ -95,6 +105,12 @@ class CloudOperations:
         client = self.load()
         parent = params.get("parentId", "0")
         dest = params.get("destId", "0")
+        if method == "batch.scan":
+            return self.batch_scan(params)
+        if method == "account":
+            return {"accountId": str(client.user_id)}
+        if method == "batch.execute":
+            return self.batch_execute(params, report)
         if method == "browse":
             return self.browse(parent, params.get("offset", 0))
         if method == "profile":

@@ -140,6 +140,9 @@ func powerRenameOptionsFromLegacy(opts Options) PowerRenameOptions {
 	}
 }
 
+// OptionsForPlan shares the existing rule conversion with non-filesystem providers.
+func OptionsForPlan(opts Options) PowerRenameOptions { return powerRenameOptionsFromLegacy(opts) }
+
 func hasPowerRenameOptions(opts Options) bool {
 	return opts.NameOnly ||
 		opts.ExtensionOnly ||

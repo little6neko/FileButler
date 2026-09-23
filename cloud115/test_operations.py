@@ -51,6 +51,16 @@ class FakeOperations(CloudOperations):
 
 
 class OperationsTests(unittest.TestCase):
+    def test_paginated_directory_changes_are_not_treated_as_complete(self):
+        operations = FakeOperations()
+        for second in (
+            {"entries": [{"id": "2"}], "total": 3},
+            {"entries": [{"id": "1"}], "total": 2},
+        ):
+            with patch.object(operations, "browse", side_effect=[{"entries": [{"id": "1"}], "total": 2}, second]):
+                with self.assertRaises(ProviderError):
+                    list(operations.children("0"))
+
     def test_resolve_uses_exact_names_and_rejects_ambiguous_paths(self):
         operations = FakeOperations()
         with patch.object(operations, "children", return_value=iter([{"id": "12", "name": "林幼一(唐宁宁)", "isDirectory": True}])):

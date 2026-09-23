@@ -5,6 +5,7 @@ import { useCloudClipboard, setCloudClipboard, clearCloudClipboardIfUnchanged } 
 import { useCloud115Login } from "../useCloud115Login";
 import { createFileSelectionStore } from "../fileSelectionStore";
 import { fileSelectionMode } from "../fileSelection";
+import { fileOpenKind } from "../fileOpenKind";
 import type { Entry } from "../api/types";
 import { strings, type UIStrings } from "../i18n";
 import { useOptionalJobEventsStore } from "../jobEventsContext";
@@ -222,8 +223,12 @@ export function Cloud115Window({ windowId, layer, onJobCreated, initialTrail = r
           const source = cloudEntries.find((item) => item.id === entry.relativePath);
           if (!source) return;
           if (isCloudArchive(source)) { setError(""); setPrompt({ method: "extract", ids: [source.id], destId: parent.id, name: "", password: "" }); }
-          else if (profile.accountId) onPreview?.(source, cloudEntries, profile.accountId);
-          else setError("正在读取账号信息，请稍后重试");
+          else {
+            const kind = fileOpenKind(entry).kind;
+            if (kind !== "media" && kind !== "text") return;
+            if (profile.accountId) onPreview?.(source, cloudEntries, profile.accountId);
+            else setError("正在读取账号信息，请稍后重试");
+          }
         }}
         onToggleSelection={selection.toggle} onSelectEntry={(id, modifiers) => selection.select(id, fileSelectionMode(modifiers))}
         onSelectAll={selection.selectAll} onSelectPaths={(paths) => selection.replace(paths)} onVisibleOrderChange={selection.setVisibleOrder}

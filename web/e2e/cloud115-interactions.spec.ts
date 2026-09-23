@@ -5,7 +5,7 @@ async function installCloud(page: Page, initiallyLoggedIn = true) {
   let checks = 0;
   const calls: { method: string; params: Record<string, unknown> }[] = [];
   const contentRequests: string[] = [];
-  const entries = ["photo.jpg", "photo2.jpg", "clip.mp4", "notes.txt", "blocked.txt", "archive.zip"].map((name, index) => ({ id: String(index + 1), parentId: "0", name, size: 42, isDirectory: false }));
+  const entries = ["photo.jpg", "photo2.jpg", "clip.mp4", "notes.txt", "blocked.txt", "archive.zip", "unsupported.avi", "large.txt"].map((name, index) => ({ id: String(index + 1), parentId: "0", name, size: index >= 6 ? 20 * 1024 * 1024 : 42, isDirectory: false }));
   await page.addInitScript(() => Object.defineProperty(navigator, "languages", { get: () => ["en-US"] }));
   await page.route("https://115-preview.example/**", async (route) => {
     const url = route.request().url(); contentRequests.push(url);
@@ -28,7 +28,10 @@ async function installCloud(page: Page, initiallyLoggedIn = true) {
       else if (method === "login.check") { checks++; loggedIn = checks >= 2; data = { status: loggedIn ? 2 : 1, loggedIn }; }
       else if (method === "profile") data = { accountId: "7", name: "Cloud tester" };
       else if (method === "browse") data = { entries, total: entries.length, offset: 0 };
-      else if (method === "preview.url") data = { url: `https://115-preview.example/${entries.find((item) => item.id === params.id)!.name}`, accountId: "7", size: 42 };
+      else if (method === "preview.url") {
+        const entry = entries.find((item) => item.id === params.id)!;
+        data = { url: `https://115-preview.example/${entry.name}`, accountId: "7", size: entry.size };
+      }
       else if (method === "extract") data = { id: "extract-job" };
     }
     return route.fulfill({ json: { data } });
@@ -52,6 +55,7 @@ test("QR login enters the cloud automatically after phone confirmation", async (
 test("cloud previews load bytes directly, text is read-only and archive double click prompts extraction", async ({ page }) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
   const { calls, contentRequests } = await installCloud(page);
+  await page.addInitScript(() => Object.defineProperty(navigator, "clipboard", { value: { writeText: async (text: string) => sessionStorage.setItem("test-copied-link", text) } }));
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
@@ -62,10 +66,20 @@ test("cloud previews load bytes directly, text is read-only and archive double c
   await expect(page.locator('.taskbar-window-button[data-window-kind="cloud115"] .lucide-cloud')).toBeVisible();
   await expect(cloud.getByRole("button", { name: "delete", exact: true })).toHaveAttribute("data-variant", "outline");
 
+  await cloud.getByRole("button", { name: "unsupported.avi", exact: true }).dblclick();
+  await expect(page.locator('[data-window-kind="cloudPreview"]')).toHaveCount(0);
+  expect(calls.some((call) => call.method === "preview.url")).toBe(false);
+
   await cloud.getByRole("button", { name: "photo.jpg", exact: true }).dblclick();
   let preview = page.locator('.desktop-window[data-window-kind="cloudPreview"]');
   await expect(preview.getByRole("img", { name: "photo.jpg" })).toHaveAttribute("src", "https://115-preview.example/photo.jpg");
   await expect.poll(() => contentRequests.includes("https://115-preview.example/photo.jpg")).toBe(true);
+  const toolbar = preview.getByRole("toolbar", { name: "直链操作" });
+  await expect(toolbar.getByRole("button")).toHaveCount(2);
+  await expect(toolbar).not.toContainText("photo.jpg");
+  await expect(toolbar.getByRole("link")).toHaveCount(0);
+  await toolbar.getByRole("button", { name: "复制直链" }).click();
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("test-copied-link"))).toBe("https://115-preview.example/photo.jpg");
   await preview.getByRole("button", { name: /Next/ }).click();
   await expect(preview.getByRole("img", { name: "photo2.jpg" })).toBeVisible();
   await preview.getByRole("button", { name: "Close window" }).click();
@@ -78,13 +92,21 @@ test("cloud previews load bytes directly, text is read-only and archive double c
   await page.evaluate(() => window.dispatchEvent(new Event("cloud115-account-changed")));
   await expect(preview.getByRole("alert")).toContainText("115账号已变化");
   await expect(preview.locator(".cm-content")).toHaveCount(0);
-  await expect(preview.getByRole("link", { name: "直接下载" })).toHaveCount(0);
+  await expect(preview.getByRole("button", { name: "复制直链" })).toBeDisabled();
   await preview.getByRole("button", { name: "Close window" }).click();
 
   await cloud.getByRole("button", { name: "blocked.txt", exact: true }).dblclick();
   preview = page.locator('.desktop-window[data-window-kind="cloudPreview"]');
-  await expect(preview.getByRole("alert")).toContainText("不会通过FB中转");
-  await expect(preview.getByRole("link", { name: "直接下载" })).toHaveAttribute("href", "https://115-preview.example/blocked.txt");
+  await expect(preview.getByRole("alert")).toBeVisible();
+  await expect(preview.getByRole("alert")).not.toContainText("不会通过FB中转");
+  await preview.getByRole("button", { name: "复制直链" }).click();
+  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("test-copied-link"))).toBe("https://115-preview.example/blocked.txt");
+  await preview.getByRole("button", { name: "Close window" }).click();
+
+  await cloud.getByRole("button", { name: "large.txt", exact: true }).dblclick();
+  preview = page.locator('.desktop-window[data-window-kind="cloudPreview"]');
+  await expect(preview.getByRole("alert")).toHaveText("文本超过10 MiB预览上限，请直接下载。");
+  expect(contentRequests.some((url) => url.endsWith("large.txt"))).toBe(false);
   await preview.getByRole("button", { name: "Close window" }).click();
 
   await cloud.getByRole("button", { name: "clip.mp4", exact: true }).dblclick();

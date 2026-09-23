@@ -19,11 +19,11 @@ beforeEach(() => {
   });
 });
 
-function setup() {
+function setup(onPreview = vi.fn()) {
   const store = new JobEventsStore();
   store.handleSnapshot({ runtimeId: "r", cursor: 0, reset: false, jobs: [] });
   const created = vi.fn();
-  render(<JobEventsContext.Provider value={store}><DndContext><Cloud115Window windowId="cloud" layer={1} onJobCreated={created} /></DndContext></JobEventsContext.Provider>);
+  render(<JobEventsContext.Provider value={store}><DndContext><Cloud115Window windowId="cloud" layer={1} onJobCreated={created} onPreview={onPreview} /></DndContext></JobEventsContext.Provider>);
   return { store, created };
 }
 
@@ -39,6 +39,20 @@ it("loads directory and creates a rename task without refreshing early", async (
   const job: Job = { id: "job", type: "rename", sourceRootId: "@115", destRootId: "@115", status: "completed", actorId: 1, progressTotal: 1, progressDone: 1, failedCount: 0, cancelRequested: false, errorMessage: "", createdAtUnix: 1, updatedAtUnix: 2, eventVersion: 1 };
   act(() => store.handleChanged({ runtimeId: "r", cursor: 1, job }));
   await waitFor(() => expect(vi.mocked(cloudCall).mock.calls.filter(([method]) => method === "browse")).toHaveLength(2));
+});
+
+it.each(["movie.avi", "MOVIE.AVI", "program.exe"])("does not open or request a preview for unsupported %s", async (name) => {
+  vi.mocked(cloudCall).mockImplementation(async (method) => {
+    if (method === "status") return { loggedIn: true };
+    if (method === "profile") return { accountId: "1", name: "测试115账号" };
+    return { entries: [{ ...entry, name, size: 20 * 1024 * 1024 }], offset: 0, total: 1 };
+  });
+  const preview = vi.fn();
+  setup(preview);
+  fireEvent.doubleClick(await screen.findByRole("button", { name }));
+  expect(preview).not.toHaveBeenCalled();
+  expect(vi.mocked(cloudCall).mock.calls.some(([method]) => method === "preview.url")).toBe(false);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
 
 it("automatically enters the file list after scan confirmation without a second button", async () => {

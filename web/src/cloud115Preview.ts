@@ -5,10 +5,10 @@ export type CloudPreviewLink = { url: string; name: string; size: number; accoun
 
 export async function readCloudText(url: string, signal: AbortSignal): Promise<TextDocument> {
   const response = await fetch(url, { signal, credentials: "omit", referrerPolicy: "no-referrer", cache: "no-store" });
-  if (!response.ok || !response.body) throw new Error("无法直接读取115文本，可尝试新标签页打开或下载");
+  if (!response.ok || !response.body) throw new Error("无法直接读取115文本，请重试或直接下载。");
   if (Number(response.headers.get("Content-Length")) > cloudTextLimit) {
     await response.body.cancel();
-    throw new Error("文本超过10 MiB预览上限，请直接下载");
+    throw new Error("文本超过10 MiB预览上限，请直接下载。");
   }
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -18,7 +18,7 @@ export async function readCloudText(url: string, signal: AbortSignal): Promise<T
       const { value, done } = await reader.read();
       if (done) break;
       size += value.byteLength;
-      if (size > cloudTextLimit) throw new Error("文本超过10 MiB预览上限，请直接下载");
+      if (size > cloudTextLimit) throw new Error("文本超过10 MiB预览上限，请直接下载。");
       chunks.push(value);
     }
   } finally { await reader.cancel(); reader.releaseLock(); }

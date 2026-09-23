@@ -34,6 +34,8 @@ test("account home, independent windows, account-bound requests and cross-accoun
   const windows = page.locator('.desktop-window[data-window-kind="cloud115"]');
   const first = windows.nth(0);
   await expect(first.getByTestId("cloud-accounts")).toBeVisible();
+  await expect(first.getByRole("button", { name: "离线下载", exact: true })).toBeDisabled();
+  await expect(first.getByRole("button", { name: "在线解压", exact: true })).toBeDisabled();
   for (const button of await first.getByRole("navigation", { name: "文件操作" }).getByRole("button").all()) await expect(button).toBeDisabled();
   const localSize = (await localCard.boundingBox())!;
   const cloudSize = (await first.getByRole("button", { name: /^账号1/ }).boundingBox())!;

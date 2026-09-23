@@ -30,6 +30,22 @@ it("shows capacity cards, places add last and opens only the selected account", 
   for (const button of within(screen.getByRole("navigation")).getAllByRole("button")) expect(button).toBeDisabled();
 });
 
+it("shows disabled offline download and extraction between mkdir and more on the account home", async () => {
+  render(<Cloud115Accounts onOpen={vi.fn()} />);
+  await screen.findByRole("button", { name: /账号1/ });
+  const toolbar = screen.getByRole("navigation");
+  expect(within(toolbar).getAllByRole("button").map((button) => button.getAttribute("data-action-id"))).toEqual([
+    "rename", "powerRename", "superRename", "mkdir", "offline", "extract", "more", "delete",
+  ]);
+  for (const name of ["离线下载", "在线解压"]) {
+    const button = within(toolbar).getByRole("button", { name });
+    expect(button).toBeDisabled();
+    fireEvent.click(button);
+  }
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(vi.mocked(cloudCall).mock.calls.some(([method]) => method === "offline.add" || method === "extract")).toBe(false);
+});
+
 it("does not block the account list on a slow account profile", async () => {
   vi.mocked(cloudCall).mockImplementation(async (method, params) => {
     if (method === "accounts") return accounts;

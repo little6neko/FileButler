@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Cloud, Plus, RefreshCw } from "lucide-react";
+import { Cloud, CloudDownload, FolderArchive, Plus, RefreshCw } from "lucide-react";
 import { cloudCall } from "../cloud115";
 import { Button } from "./ui/button";
 import { Cloud115LoginDialog } from "./Cloud115LoginDialog";
@@ -56,6 +56,10 @@ export function Cloud115Accounts({ onOpen, labels = strings["zh-CN"] }: { onOpen
   }, []);
   function open(account: Account) { if (account.invalid) setLogin({ accountId: account.accountId }); else onOpen(account.accountId); }
   const actions = createWindowFileActions({ selectedCount: 0, locationReady: false, labels, commands: { onOperation: noop, onLink: noop, onMkdir: noop, onRename: noop, onPowerRename: noop, onSuperRename: noop } });
+  actions.splice(actions.findIndex((action) => action.id === "delete"), 0,
+    { kind: "command", id: "offline", label: "离线下载", icon: CloudDownload, separatorBefore: true, disabled: true, run: noop },
+    { kind: "command", id: "extract", label: "在线解压", icon: FolderArchive, disabled: true, run: noop },
+  );
   const moreActions = createClipboardActions({ selectedCount: 0, canPaste: false, canOpenInNewWindow: false, labels, commands: { onCopy: noop, onCut: noop, onPaste: noop, onOpenInNewWindow: noop } });
   return <div className="file-window-layout relative" data-no-file-drop data-testid="cloud-accounts">
     <ActionToolbar actions={actions} moreActions={moreActions} labels={labels} selectedCount={0} disabled />

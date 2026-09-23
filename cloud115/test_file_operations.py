@@ -21,7 +21,8 @@ class FakeShared(CloudOperations):
 
     def load(self): return self.client
     def info(self, file_id): return copy.deepcopy(self.nodes[str(file_id)])
-    def children(self, parent):
+    def children(self, parent, checkpoint=lambda: None):
+        checkpoint()
         return [{"id": key, "name": node["name"], "isDirectory": node["is_dir"]} for key, node in self.nodes.items() if str(node["parent_id"]) == str(parent)]
     def delete(self, file_id, **kwargs):
         del self.nodes[str(file_id)]
@@ -29,6 +30,86 @@ class FakeShared(CloudOperations):
 
 
 class SharedOperationsTests(unittest.TestCase):
+    def test_cloud_previews_never_visit_source_descendants(self):
+        for operation in ("copy", "move", "delete"):
+            with self.subTest(operation=operation):
+                ops = FakeShared()
+                ops.nodes["2"] = {"id": "2", "name": "album", "parent_id": "0", "is_dir": True}
+                for index in range(300):
+                    ops.nodes[str(index + 100)] = {**ops.nodes["1"], "id": str(index + 100), "name": f"{index}.txt", "parent_id": "2"}
+                original = ops.children
+                def children(parent, checkpoint=lambda: None):
+                    self.assertNotEqual(str(parent), "2", "preview scanned the source folder")
+                    return original(parent)
+                with patch.object(ops, "children", side_effect=children), patch.object(ops, "cloud_snapshot", side_effect=AssertionError("recursive preview")):
+                    params = {"type": operation, "accountId": "7", "sourceCloud": True, "targetCloud": True, "sources": [{"id": "2"}], "destId": "9"}
+                    plan = ops.operation_plan(params)
+                    self.assertFalse(plan["hasConflict"])
+                    self.assertEqual(len(plan["items"]), 1)
+                    self.assertNotIn("snapshot", plan["entries"][0])
+                    ops.nodes["100"]["mtime"] = 99
+                    self.assertEqual(plan["revision"], ops.operation_plan(params)["revision"])
+                    with patch.object(ops, "operation", return_value={"ok": True}):
+                        ops.operation_execute(plan["entries"][0], lambda p: None)
+
+    def test_transfer_previews_do_not_take_recursive_snapshots(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder, "source"); source.mkdir()
+            (source / "child").write_text("data")
+            ops = FakeShared()
+            for source_cloud in (False, True):
+                params = {"type": "move", "accountId": "7", "sourceCloud": source_cloud, "targetCloud": not source_cloud,
+                          "sources": [{"id": "9"}] if source_cloud else [{"localPath": str(source)}], "destId": "9", "localDest": folder}
+                with patch("file_operations.local_snapshot", side_effect=AssertionError("recursive local preview")), patch.object(ops, "cloud_snapshot", side_effect=AssertionError("recursive cloud preview")):
+                    plan = ops.operation_plan(params)
+                self.assertFalse(plan["hasConflict"])
+                self.assertNotIn("snapshot", plan["entries"][0])
+
+    def test_nested_cloud_selection_is_rejected_in_either_order_without_descendant_scan(self):
+        for ids in (["9", "1"], ["1", "9"]):
+            ops = FakeShared(); ops.nodes["1"]["parent_id"] = "9"
+            with patch.object(ops, "children", side_effect=AssertionError("scanned descendants")):
+                plan = ops.operation_plan({"type": "delete", "accountId": "7", "sourceCloud": True, "targetCloud": True, "sources": [{"id": id} for id in ids]})
+            self.assertTrue(plan["hasConflict"])
+            self.assertTrue(any("嵌套" in item.get("errorText", "") for item in plan["items"]))
+
+    def test_canceled_preview_stops_before_next_network_read(self):
+        ops = FakeShared()
+        def canceled(): raise Canceled()
+        with patch.object(ops, "info") as info, self.assertRaises(Canceled):
+            ops.operation_plan({"type": "move", "accountId": "7", "sourceCloud": True, "targetCloud": True, "sources": [{"id": "1"}], "destId": "9"}, checkpoint=canceled)
+        info.assert_not_called()
+
+    def test_cloud_move_checks_the_selected_item_before_execution(self):
+        for change in ("name", "parent_id"):
+            ops = FakeShared()
+            plan = ops.operation_plan({"type": "move", "accountId": "7", "sourceCloud": True, "targetCloud": True, "sources": [{"id": "1"}], "destId": "9"})
+            ops.nodes["1"][change] = "changed" if change == "name" else "9"
+            with patch.object(ops, "operation") as execute, self.assertRaises(ProviderError):
+                ops.operation_execute(plan["entries"][0], lambda p: None)
+            execute.assert_not_called()
+
+    def test_move_still_rejects_destination_inside_source_without_scanning_source(self):
+        ops = FakeShared()
+        ops.nodes["2"] = {"id": "2", "name": "source", "parent_id": "0", "is_dir": True}
+        ops.nodes["9"]["parent_id"] = "2"
+        with patch.object(ops, "cloud_snapshot", side_effect=AssertionError("recursive preview")):
+            plan = ops.operation_plan({"type": "move", "accountId": "7", "sourceCloud": True, "targetCloud": True, "sources": [{"id": "2"}], "destId": "9"})
+        self.assertTrue(plan["hasConflict"])
+        self.assertIn("子目录", plan["items"][0]["errorText"])
+
+    def test_upload_subtree_validation_is_deferred_until_execution(self):
+        with tempfile.TemporaryDirectory() as folder:
+            source = Path(folder, "source"); source.mkdir()
+            (source / "link").symlink_to(Path(folder, "outside"))
+            ops = FakeShared()
+            plan = ops.operation_plan({"type": "move", "accountId": "7", "sourceCloud": False, "targetCloud": True, "sources": [{"localPath": str(source)}], "destId": "9"})
+            self.assertFalse(plan["hasConflict"])
+            with patch.object(ops, "operation") as transfer, self.assertRaisesRegex(ProviderError, "符号链接"):
+                ops.operation_execute(plan["entries"][0], lambda p: None)
+            transfer.assert_not_called()
+            self.assertTrue(source.exists())
+
     def test_preview_is_read_only_and_rejects_same_directory_and_conflicts(self):
         ops = FakeShared()
         params = {"type": "move", "accountId": "7", "sourceCloud": True, "targetCloud": True, "sources": [{"id": "1"}], "destId": "0"}

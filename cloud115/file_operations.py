@@ -11,10 +11,25 @@ def local_revision(info):
     return [info.st_dev, info.st_ino, info.st_mode, info.st_size, info.st_mtime_ns, info.st_ctime_ns]
 
 
-def local_snapshot(path):
+def local_item(path):
+    from operations import open_directory, safe_name
+    safe_name(os.path.basename(path))
+    with open_directory(os.path.dirname(path)) as parent:
+        info = os.stat(os.path.basename(path), dir_fd=parent, follow_symlinks=False)
+    if not stat.S_ISREG(info.st_mode) and not stat.S_ISDIR(info.st_mode):
+        raise ProviderError("115传输不支持符号链接或特殊文件")
+    return {"revision": local_revision(info), "directory": stat.S_ISDIR(info.st_mode)}
+
+
+def cloud_item(item):
+    return {"name": item["name"], "parent": str(item["parent_id"]), "directory": bool(item["is_dir"]), "size": int(item.get("size") or 0), "mtime": int(item.get("mtime") or 0), "sha1": item.get("sha1") or ""}
+
+
+def local_snapshot(path, checkpoint=lambda: None):
     from operations import open_directory, safe_name
     nodes = {}
     def scan(parent, name, relative):
+        checkpoint()
         safe_name(name)
         info = os.stat(name, dir_fd=parent, follow_symlinks=False)
         if len(nodes) >= 100000:
@@ -111,17 +126,18 @@ class SharedFileOperations:
         if len(cloud) != len(source):
             raise ProviderError("115目标目录不完整，保留本地源文件")
 
-    def cloud_snapshot(self, file_id):
+    def cloud_snapshot(self, file_id, checkpoint=lambda: None):
         from operations import safe_name
         nodes = {}
         def scan(file_id):
+            checkpoint()
             if str(file_id) in nodes or len(nodes) >= 100000:
                 raise ProviderError("目录层级异常或单项文件过多")
             item = self.info(file_id)
             safe_name(item["name"])
-            nodes[str(file_id)] = {"name": item["name"], "parent": str(item["parent_id"]), "directory": bool(item["is_dir"]), "size": int(item.get("size") or 0), "mtime": int(item.get("mtime") or 0), "sha1": item.get("sha1") or ""}
+            nodes[str(file_id)] = cloud_item(item)
             if item["is_dir"]:
-                for child in self.children(file_id):
+                for child in self.children(file_id, checkpoint=checkpoint):
                     scan(child["id"])
         scan(file_id)
         return nodes
@@ -130,8 +146,9 @@ class SharedFileOperations:
         if str(self.load().user_id) != params.get("accountId"):
             raise ProviderError("115账号已变化，请重新预览")
 
-    def operation_plan(self, params):
+    def operation_plan(self, params, checkpoint=lambda: None):
         from operations import open_directory, safe_name
+        checkpoint()
         self.check_operation_account(params)
         source_cloud, target_cloud = params["sourceCloud"], params["targetCloud"]
         operation = params["type"]
@@ -139,37 +156,52 @@ class SharedFileOperations:
         target_revision = None
         occupied = set()
         ancestors = set()
+        info_cache = {}
+        def info(file_id):
+            checkpoint()
+            key = str(file_id)
+            if key not in info_cache:
+                info_cache[key] = self.info(key)
+            checkpoint()
+            return info_cache[key]
+
+        def parents(file_id):
+            seen = set()
+            while file_id != "0":
+                checkpoint()
+                if file_id in seen:
+                    raise ProviderError("目录层级异常")
+                seen.add(file_id)
+                yield file_id
+                attr = info(file_id)
+                if not attr["is_dir"]:
+                    raise ProviderError("目标不是文件夹")
+                file_id = str(attr["parent_id"])
+
         if operation != "delete":
             if target_cloud:
-                current = str(dest)
-                while current != "0":
-                    if current in ancestors:
-                        raise ProviderError("目标目录层级异常")
-                    ancestors.add(current)
-                    attr = self.info(current)
-                    if not attr["is_dir"]:
-                        raise ProviderError("目标不是文件夹")
-                    current = str(attr["parent_id"])
-                occupied = {child["name"] for child in self.children(dest)}
+                ancestors = set(parents(str(dest)))
+                occupied = {child["name"] for child in self.children(dest, checkpoint=checkpoint)}
                 target_revision = sorted(ancestors)
             else:
                 with open_directory(params["localDest"]) as directory:
-                    info = os.fstat(directory)
-                    target_revision = [info.st_dev, info.st_ino]
+                    stat_info = os.fstat(directory)
+                    target_revision = [stat_info.st_dev, stat_info.st_ino]
                     occupied = set(os.listdir(directory))
         items, entries, selected_nodes = [], [], set()
+        selected_ids = {str(source["id"]) for source in params["sources"]} if source_cloud else set()
         for source in params["sources"]:
+            checkpoint()
             name = source.get("id") or os.path.basename(source["localPath"])
             item = {"operation": operation, "sourcePath": name, "conflict": False}
             try:
-                snapshot = self.cloud_snapshot(source["id"]) if source_cloud else local_snapshot(source["localPath"])
-                root = snapshot[str(source["id"])] if source_cloud else snapshot[""]
+                root = cloud_item(info(source["id"])) if source_cloud else local_item(source["localPath"])
                 name = safe_name(root["name"] if source_cloud else os.path.basename(source["localPath"]))
                 item["sourcePath"] = name
                 if source_cloud:
-                    if selected_nodes.intersection(snapshot):
+                    if str(source["id"]) in selected_nodes or (len(selected_ids) > 1 and any(parent in selected_ids for parent in parents(root["parent"]))):
                         raise ProviderError("选择包含重复或嵌套的源文件")
-                    selected_nodes.update(snapshot)
+                    selected_nodes.add(str(source["id"]))
                 else:
                     path = source["localPath"]
                     if any(os.path.commonpath([path, previous]) in (path, previous) for previous in selected_nodes):
@@ -187,11 +219,12 @@ class SharedFileOperations:
                     occupied.add(name)
                 entry = {key: value for key, value in params.items() if key != "sources"}
                 entry.update(source)
-                entry.update(snapshot=snapshot, targetRevision=target_revision)
+                entry.update(sourceItem=root, targetRevision=target_revision)
                 entries.append(entry)
             except (ProviderError, OSError) as error:
                 item.update(conflict=True, errorText=str(error))
             items.append(item)
+        checkpoint()
         revision = hashlib.sha256(json.dumps(entries, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         return {"items": items, "hasConflict": any(item["conflict"] for item in items), "entries": entries, "revision": revision}
 
@@ -200,13 +233,23 @@ class SharedFileOperations:
         self.check_operation_account(params)
         source_cloud, target_cloud = params["sourceCloud"], params["targetCloud"]
         source = {"id": params["id"]} if source_cloud else {"localPath": params["localPath"]}
-        fresh = self.operation_plan({**params, "sources": [source]})
-        if fresh["hasConflict"] or fresh["entries"][0]["snapshot"] != params["snapshot"] or fresh["entries"][0]["targetRevision"] != params["targetRevision"]:
+        name = params["sourceItem"]["name"] if source_cloud else os.path.basename(params["localPath"])
+        def checkpoint():
+            report(progress_value("scan", name))
+        fresh = self.operation_plan({**params, "sources": [source]}, checkpoint=checkpoint)
+        if fresh["hasConflict"] or fresh["entries"][0]["sourceItem"] != params["sourceItem"] or fresh["entries"][0]["targetRevision"] != params["targetRevision"]:
             raise ProviderError("源或目标已变化，请重新预览")
         operation = params["type"]
         report(progress_value("scan", fresh["items"][0]["sourcePath"]))
         if source_cloud and (target_cloud or operation == "delete"):
             return self.operation(operation, {"id": params["id"], "destId": params.get("destId", "0")}, report)
+        # Recursive safety inventories belong to execution, never the preview.
+        if operation == "move":
+            snapshot = self.cloud_snapshot(params["id"], checkpoint=checkpoint) if source_cloud else local_snapshot(params["localPath"], checkpoint=checkpoint)
+            root = snapshot[str(params["id"])] if source_cloud else snapshot[""]
+            if root != params["sourceItem"]:
+                raise ProviderError("源文件发生变化，请重新预览")
+            params = {**params, "snapshot": snapshot}
         if source_cloud:
             self.operation("download", {"id": params["id"], "localPath": params["localDest"]}, report)
         else:

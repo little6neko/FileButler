@@ -91,6 +91,9 @@ func (s *Service) handle(w http.ResponseWriter, r *http.Request) {
 	if method != "accounts" && !strings.HasPrefix(method, "login.") {
 		s.accountMu.Lock()
 		defer s.accountMu.Unlock()
+		if r.Context().Err() != nil {
+			return
+		}
 	}
 	if method == "ops.preview" || method == "ops.create" {
 		s.operationHandler(w, r, method)

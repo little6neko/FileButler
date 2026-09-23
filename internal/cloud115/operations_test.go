@@ -22,6 +22,65 @@ type operationProvider struct {
 	release  chan struct{}
 }
 
+type canceledPreviewProvider struct{ started chan struct{} }
+
+func (p *canceledPreviewProvider) Call(ctx context.Context, method string, _ any, _ jobs.Reporter) (json.RawMessage, error) {
+	if method == "ops.plan" {
+		close(p.started)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	return json.RawMessage(`{"entries":[],"total":0,"offset":0}`), nil
+}
+
+func TestCanceledPreviewReleasesAccountForBrowseWithoutCreatingJob(t *testing.T) {
+	p := &canceledPreviewProvider{started: make(chan struct{})}
+	store := jobs.NewStore()
+	s := NewService(p, store, roots.NewResolver(nil))
+	router := chi.NewRouter()
+	router.Post("/{method}", s.Handler)
+	ctx, cancel := context.WithCancel(auth.ContextWithUser(context.Background(), auth.User{ID: 1}))
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/ops.preview", strings.NewReader(`{"type":"move","sourceRoot":"@115","sources":["1"],"destRoot":"@115","destPath":"9","accountId":"7","sourceAccountId":"7","destAccountId":"7"}`)).WithContext(ctx))
+	}()
+	select {
+	case <-p.started:
+	case <-time.After(time.Second):
+		t.Fatal("preview not started")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("canceled preview still holds account")
+	}
+	browseDone := make(chan struct{})
+	out := httptest.NewRecorder()
+	go func() {
+		defer close(browseDone)
+		router.ServeHTTP(out, httptest.NewRequest("POST", "/browse", strings.NewReader(`{"parentId":"9","accountId":"7"}`)))
+	}()
+	select {
+	case <-browseDone:
+	case <-time.After(time.Second):
+		t.Fatal("browse blocked after cancellation")
+	}
+	if out.Code != 200 {
+		t.Fatal(out.Code, out.Body.String())
+	}
+	account, _ := s.accounts.Load("7")
+	if len(account.(*Service).operationPreviews) != 0 {
+		t.Fatal("canceled preview cached")
+	}
+	snapshot, _ := store.Snapshot(context.Background())
+	if len(snapshot.Jobs) != 0 {
+		t.Fatal("preview created a mutation job")
+	}
+}
+
 func (p *operationProvider) Call(ctx context.Context, method string, args any, report jobs.Reporter) (json.RawMessage, error) {
 	if method == "ops.execute" {
 		p.started <- ctx

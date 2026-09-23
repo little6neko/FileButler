@@ -17,6 +17,16 @@ beforeEach(() => {
   vi.mocked(api.opsCreateJob).mockReset();
 });
 
+it("aborts the local preview request when its window closes", () => {
+  vi.mocked(api.opsDryRun).mockImplementation(() => new Promise(() => {}));
+  const view = render(<OperationPreview request={request()} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+  const signal = vi.mocked(api.opsDryRun).mock.calls[0][1]!;
+  expect(signal.aborted).toBe(false);
+  view.unmount();
+  expect(signal.aborted).toBe(true);
+  expect(api.opsCreateJob).not.toHaveBeenCalled();
+});
+
 it("renders reusable operation content and delegates the active request", async () => {
   vi.mocked(api.opsDryRun).mockResolvedValue({ hasConflict: false, items: [] });
   const onSubmit = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
@@ -226,7 +236,7 @@ it("switches a drag preview from move to copy and submits the selected request",
 
   expect(await screen.findByRole("radio", { name: "move" })).toBeChecked();
   await userEvent.click(screen.getByRole("radio", { name: "copy" }));
-  await waitFor(() => expect(api.opsDryRun).toHaveBeenLastCalledWith({ ...moveRequest, type: "copy" }));
+  await waitFor(() => expect(api.opsDryRun).toHaveBeenLastCalledWith({ ...moveRequest, type: "copy" }, expect.any(AbortSignal)));
   const confirm = screen.getByRole("button", { name: "Start copy" });
   await waitFor(() => expect(confirm).toBeEnabled());
   await userEvent.click(confirm);

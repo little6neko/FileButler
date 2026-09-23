@@ -76,10 +76,11 @@ export const api = {
     ),
   textSave: (payload: TextSaveRequest) =>
     request<TextSaveResult>("/api/text", { method: "PUT", body: JSON.stringify(payload) }),
-  opsDryRun: (payload: OpsRequest) =>
+  opsDryRun: (payload: OpsRequest, signal?: AbortSignal) =>
     request<{ items: PlanItem[]; hasConflict: boolean }>("/api/ops/dry-run", {
       method: "POST",
       body: JSON.stringify(payload),
+      signal,
     }),
   opsCreateJob: (payload: OpsRequest) =>
     request<{ id: string }>("/api/ops/jobs", { method: "POST", body: JSON.stringify(payload) }),

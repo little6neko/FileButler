@@ -133,6 +133,9 @@ func (s *Service) operationHandler(w http.ResponseWriter, r *http.Request, metho
 			respond(w, 409, nil, "源文件、账号或目标已变化，请重新预览")
 			return
 		}
+		if ctx.Err() != nil {
+			return
+		}
 		id := jobs.NewID()
 		if err := s.Store.Create(r.Context(), jobs.Job{ID: id, AccountID: preview.Request.AccountID, Type: preview.Request.Type, ActorID: user.ID, SourceRootID: preview.Request.SourceRoot, DestRootID: preview.Request.DestRoot, ProgressTotal: len(fresh.Entries)}); err != nil {
 			respond(w, 500, nil, err.Error())
@@ -154,6 +157,9 @@ func (s *Service) operationHandler(w http.ResponseWriter, r *http.Request, metho
 		return
 	}
 	var plan operationPlan
+	if ctx.Err() != nil {
+		return
+	}
 	if err = json.Unmarshal(data, &plan); err != nil {
 		respond(w, 502, nil, "115预览响应无效")
 		return

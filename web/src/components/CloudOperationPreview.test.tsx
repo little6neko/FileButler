@@ -9,6 +9,25 @@ vi.mock("../cloud115", () => ({ cloudCall: vi.fn() }));
 vi.mock("../api/client", () => ({ api: { opsDryRun: vi.fn(), opsCreateJob: vi.fn() } }));
 beforeEach(() => vi.clearAllMocks());
 
+it("aborts an unfinished cloud preview on mode change and unmount without submitting a job", async () => {
+  const signals: AbortSignal[] = [];
+  vi.mocked(cloudCall).mockImplementation((_method, _params, signal) => {
+    signals.push(signal!);
+    return new Promise((_resolve, reject) => signal!.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true }));
+  });
+  const view = render(<OperationPreview request={{ type: "move", sourceRoot: "@115", sources: ["1"], destRoot: "@115", destPath: "9", accountId: "7" }} operationChoices={["copy", "move"]} onJobCreated={vi.fn()} onClose={vi.fn()} />);
+  expect(signals).toHaveLength(1);
+  expect(screen.getByRole("button", { name: "Start move" })).toBeDisabled();
+  await userEvent.click(screen.getByRole("radio", { name: "copy" }));
+  expect(signals).toHaveLength(2);
+  expect(signals[0].aborted).toBe(true);
+  expect(signals[1].aborted).toBe(false);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  view.unmount();
+  expect(signals[1].aborted).toBe(true);
+  expect(vi.mocked(cloudCall).mock.calls.map(([method]) => method)).toEqual(["ops.preview", "ops.preview"]);
+});
+
 it.each([true, false])("shares preview and copy/move choices, warns before deleting the source (download=%s)", async (download) => {
   vi.mocked(cloudCall).mockImplementation(async (method, params) => method === "ops.preview" ? { items: [{ sourcePath: "a.txt", destPath: "a.txt", conflict: false }], hasConflict: false, previewToken: params?.type } : { id: "job" });
   const created = vi.fn();

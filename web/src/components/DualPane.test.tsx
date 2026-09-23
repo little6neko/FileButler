@@ -82,6 +82,7 @@ it("uses the opposite pane path as operation destination", async () => {
   await waitFor(() =>
     expect(api.opsDryRun).toHaveBeenCalledWith(
       expect.objectContaining({ type: "copy", sourceRoot: "root", sources: ["source.txt"], destRoot: "root", destPath: "target" }),
+      expect.any(AbortSignal),
     ),
   );
 });

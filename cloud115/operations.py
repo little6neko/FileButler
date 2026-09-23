@@ -57,10 +57,12 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
         self.cloud_hash(item)
         return item
 
-    def browse(self, parent, offset=0):
+    def browse(self, parent, offset=0, checkpoint=lambda: None):
         from p115client.tool.attr import normalize_attr_web
+        checkpoint()
         if str(parent) != "0" and not self.info(parent)["is_dir"]:
             raise ProviderError("目标不是文件夹")
+        checkpoint()
         result = self.checked(self.load().fs_files({"cid": parent, "offset": offset, "limit": 200, "show_dir": 1, "cur": 1, "o": "file_name", "asc": 1}, timeout=30))
         if str(result.get("cid", parent)) != str(parent):
             raise ProviderError("115目录已不存在，请刷新")
@@ -71,12 +73,14 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
             entries.append({"id": str(item["id"]), "parentId": str(item["parent_id"]), "name": item["name"], "isDirectory": item["is_dir"], "size": item["size"], "modifiedUnix": int(item.get("mtime") or 0)})
         return {"entries": entries, "total": int(result["count"]), "offset": offset}
 
-    def children(self, parent):
+    def children(self, parent, checkpoint=lambda: None):
         offset = 0
         expected_total = None
         seen = set()
         while True:
-            page = self.browse(parent, offset)
+            checkpoint()
+            page = self.browse(parent, offset, checkpoint=checkpoint)
+            checkpoint()
             if expected_total is not None and page["total"] != expected_total:
                 raise ProviderError("目录在读取时发生变化，请重新加载")
             expected_total = page["total"]
@@ -114,7 +118,7 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
         parent = params.get("parentId", "0")
         dest = params.get("destId", "0")
         if method == "ops.plan":
-            return self.operation_plan(params)
+            return self.operation_plan(params, checkpoint=getattr(report, "checkpoint", lambda: None))
         if method == "ops.execute":
             return self.operation_execute(params, report)
         if method == "batch.scan":

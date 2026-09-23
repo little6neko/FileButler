@@ -2,8 +2,21 @@ import json
 import sys
 
 print(json.dumps({"ready": 1}), flush=True)
+canceled_plans = 0
 for line in sys.stdin:
     request = json.loads(line)
+    if "cancelId" in request:
+        canceled_plans += 1
+        print(json.dumps({"id": request["cancelId"], "canceled": True}), flush=True)
+        continue
+    if request.get("ack"):
+        continue
+    if request["method"] == "ops.plan":
+        print(json.dumps({"id": request["id"], "progress": {"phase": "scan", "file": "", "bytesTotal": 0, "bytesDone": 0, "cancelable": True}}), flush=True)
+        continue
+    if request["method"] == "canceled-plans":
+        print(json.dumps({"id": request["id"], "data": canceled_plans}), flush=True)
+        continue
     if request["method"] == "crash":
         sys.exit(1)
     if request["method"] == "progress":

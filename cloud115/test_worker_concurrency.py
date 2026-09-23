@@ -14,6 +14,36 @@ class Input:
 
 
 class WorkerConcurrencyTests(unittest.TestCase):
+    def test_preview_cancellation_stops_checkpoints_without_progress_messages(self):
+        stream, results = Input(), queue.Queue()
+        started, release = threading.Event(), threading.Event()
+        class Adapter:
+            def call(self, method, params, progress):
+                if method == "ops.plan":
+                    started.set()
+                    if not release.wait(3): raise RuntimeError("timed out")
+                    progress.checkpoint()
+                    raise AssertionError("canceled preview continued")
+                return {"ok": True}
+        def emit(message):
+            if "id" in message: results.put(message)
+        with patch("worker.emit", side_effect=emit):
+            thread = threading.Thread(target=serve, args=(Adapter(), stream))
+            thread.start()
+            try:
+                stream.send({"id": 1, "method": "ops.plan"})
+                self.assertTrue(started.wait(2))
+                stream.send({"cancelId": 1})
+                stream.send({"id": 2, "method": "browse"})
+                self.assertEqual(results.get(timeout=2), {"id": 2, "data": {"ok": True}})
+                release.set()
+                self.assertTrue(results.get(timeout=2)["canceled"])
+            finally:
+                release.set()
+                stream.lines.put(b"")
+                thread.join(timeout=3)
+            self.assertFalse(thread.is_alive())
+
     def test_details_cancel_message_releases_pending_progress(self):
         stream, results = Input(), queue.Queue()
         class Adapter:

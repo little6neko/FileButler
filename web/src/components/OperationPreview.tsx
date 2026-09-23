@@ -95,8 +95,9 @@ export function OperationPreviewContent({
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
     operationClient
-      .preview(activeRequest)
+      .preview(activeRequest, controller.signal)
       .then((plan) => {
         if (!active) return;
         setPreviewResult({
@@ -118,6 +119,7 @@ export function OperationPreviewContent({
       });
     return () => {
       active = false;
+      controller.abort();
     };
   }, [activeRequest, labels.previewFailed]);
 

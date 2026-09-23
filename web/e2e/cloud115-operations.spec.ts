@@ -71,6 +71,52 @@ test("shared keyboard clipboard downloads with a warning and preserves cut state
   expect(legacy).toEqual([]);
 });
 
+test("canceling a pending same-account folder move aborts preview and leaves browsing usable", async ({ page }) => {
+  const { cloud, creates } = await setup(page);
+  let browseCalls = 0;
+  await page.route("**/api/cloud115/browse", async (route) => {
+    browseCalls++;
+    const root = route.request().postDataJSON().parentId === "0";
+    const entries = root ? [
+      { id: "2", parentId: "0", name: "Large album", isDirectory: true, size: 0 },
+      { id: "9", parentId: "0", name: "Destination", isDirectory: true, size: 0 },
+    ] : [];
+    await route.fulfill({ json: { data: { entries, total: entries.length, offset: 0 } } });
+  });
+  let release!: () => void;
+  const pending = new Promise<void>((resolve) => { release = resolve; });
+  const previews: Record<string, unknown>[] = [];
+  const failures: string[] = [];
+  page.on("requestfailed", (request) => { if (request.url().endsWith("/ops.preview")) failures.push(request.failure()?.errorText ?? ""); });
+  await page.route("**/api/cloud115/ops.preview", async (route) => {
+    previews.push(route.request().postDataJSON());
+    await pending;
+    await route.fulfill({ json: { data: { items: [], hasConflict: false, previewToken: "late" } } });
+  });
+  try {
+    await cloud.getByRole("button", { name: / refresh$/ }).click();
+    await cloud.getByRole("button", { name: "Large album", exact: true }).click();
+    await page.keyboard.press("Control+x");
+    await expect(cloud.locator('[data-entry-path="2"]')).toHaveAttribute("data-clipboard-cut", "true");
+    await cloud.getByRole("button", { name: "Destination", exact: true }).dblclick();
+    await expect(cloud.getByRole("button", { name: "mkdir", exact: true })).toBeEnabled();
+    await page.keyboard.press("Control+v");
+    const dialog = cloud.getByRole("dialog", { name: "move preview" });
+    await expect(dialog).toBeVisible();
+    await expect.poll(() => previews.length).toBe(1);
+    expect(previews[0]).toMatchObject({ type: "move", sources: ["2"], destPath: "9", sourceAccountId: "7", destAccountId: "7" });
+    await expect(dialog.getByRole("button", { name: "Start move" })).toBeDisabled();
+    await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect.poll(() => failures.length).toBe(1);
+    const before = browseCalls;
+    await cloud.getByRole("button", { name: / refresh$/ }).click();
+    await expect.poll(() => browseCalls).toBeGreaterThan(before);
+    expect(creates).toHaveLength(0);
+    await expect(cloud.getByRole("alert")).toHaveCount(0);
+  } finally { release(); }
+});
+
 test("local cut uploads through the shared preview, cloud delete and paste never submit without confirmation", async ({ page }) => {
   const { local, cloud, plans, creates, legacy } = await setup(page);
   await local.getByRole("button", { name: "local.txt", exact: true }).click();

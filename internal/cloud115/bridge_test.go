@@ -65,3 +65,31 @@ func TestBridgeProgressCancellationAndRestart(t *testing.T) {
 		t.Fatalf("could not restart: %v", err)
 	}
 }
+
+func TestBridgeCancelsPreviewWithoutRestartingWorker(t *testing.T) {
+	python, err := exec.LookPath("python3")
+	if err != nil {
+		t.Skip("python3 unavailable")
+	}
+	script, _ := filepath.Abs("testdata/worker.py")
+	db, err := storage.Open(filepath.Join(t.TempDir(), "filebutler.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	b := NewBridge(python, script, db, roots.NewResolver(nil))
+	defer b.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	started := false
+	_, err = b.Call(ctx, "ops.plan", nil, func(jobs.TransferProgress) error { started = true; cancel(); return nil })
+	if !started || !errors.Is(err, context.Canceled) {
+		t.Fatalf("preview did not cancel: %v", err)
+	}
+	ctx, stop := context.WithTimeout(context.Background(), time.Second)
+	defer stop()
+	data, err := b.Call(ctx, "canceled-plans", nil, nil)
+	if err != nil || string(data) != "1" {
+		t.Fatalf("cancel not delivered to worker: %s %v", data, err)
+	}
+}

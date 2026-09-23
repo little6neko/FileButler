@@ -929,7 +929,7 @@ it("renders mkdir and delete inside the command's file window", async () => {
   await userEvent.click(within(toolbar).getByRole("button", { name: "delete" }));
   expect(await within(sourceWindow).findByRole("dialog", { name: "delete preview" })).toBeInTheDocument();
   expect(within(otherWindow).queryByRole("dialog")).not.toBeInTheDocument();
-  expect(api.opsDryRun).toHaveBeenCalledWith({ type: "delete", sourceRoot: "source", sources: ["a.txt"] });
+  expect(api.opsDryRun).toHaveBeenCalledWith({ type: "delete", sourceRoot: "source", sources: ["a.txt"] }, expect.any(AbortSignal));
   expect(container.querySelectorAll(".taskbar-window-button")).toHaveLength(2);
 });
 
@@ -1342,7 +1342,7 @@ it("uses the active window for keyboard copy and paste and opens the fixed copy 
     sources: ["a.txt"],
     destRoot: "target",
     destPath: ".",
-  }));
+  }, expect.any(AbortSignal)));
   expect(within(secondWindow).getByRole("dialog", { name: "copy preview" })).toBeInTheDocument();
   expect(within(firstWindow).queryByRole("dialog")).not.toBeInTheDocument();
   expect(container.querySelector("[data-slot='dialog-content']")).toBeNull();
@@ -1393,7 +1393,7 @@ it("opens root-card paste inside its virtual-root file window", async () => {
     sources: ["a.txt"],
     destRoot: "target",
     destPath: ".",
-  });
+  }, expect.any(AbortSignal));
 });
 
 it("clears a cut clipboard only after the local move job is created", async () => {

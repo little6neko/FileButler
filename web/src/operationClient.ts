@@ -7,8 +7,8 @@ export function isCloudOperation(request: OpsRequest) {
   return request.sourceRoot === "@115" || request.destRoot === "@115";
 }
 export const operationClient = {
-  preview(request: OpsRequest): Promise<OperationPlan> {
-    return isCloudOperation(request) ? cloudCall("ops.preview", request) : api.opsDryRun(request);
+  preview(request: OpsRequest, signal?: AbortSignal): Promise<OperationPlan> {
+    return isCloudOperation(request) ? cloudCall("ops.preview", request, signal) : api.opsDryRun(request, signal);
   },
   create(request: OpsRequest, previewToken?: string): Promise<{ id: string }> {
     if (!isCloudOperation(request)) return api.opsCreateJob(request);

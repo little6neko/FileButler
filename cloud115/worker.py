@@ -46,6 +46,10 @@ def serve(adapter, input_stream, storage=None):
         last_key = None
         last_at = 0.0
 
+        def checkpoint():
+            if canceled.is_set():
+                raise Canceled()
+
         def progress(value):
             nonlocal last_key, last_at
             if canceled.is_set():
@@ -60,6 +64,7 @@ def serve(adapter, input_stream, storage=None):
             if ack.get(timeout=60) or canceled.is_set():
                 raise Canceled()
 
+        progress.checkpoint = checkpoint
         try:
             if canceled.is_set():
                 raise Canceled()

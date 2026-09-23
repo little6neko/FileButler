@@ -41,6 +41,9 @@ func (p Planner) Plan(ctx context.Context, req Request) (Plan, error) {
 		return finalize([]PlanItem{item}), nil
 	}
 	for _, src := range req.Sources {
+		if err := ctx.Err(); err != nil {
+			return Plan{}, err
+		}
 		item := PlanItem{Operation: req.Type, SourceRoot: req.SourceRoot, SourcePath: src}
 		source, srcErr := resolveOperationSource(p.Resolver, req.SourceRoot, src)
 		if srcErr != nil {

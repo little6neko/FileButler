@@ -138,6 +138,10 @@ func (b *Bridge) read(p *workerProcess, scanner *bufio.Scanner) {
 
 func (b *Bridge) Call(ctx context.Context, method string, params any, report jobs.Reporter) (json.RawMessage, error) {
 	b.mu.Lock()
+	if err := ctx.Err(); err != nil {
+		b.mu.Unlock()
+		return nil, err
+	}
 	if err := b.startLocked(); err != nil {
 		b.mu.Unlock()
 		return nil, err
@@ -156,8 +160,8 @@ func (b *Bridge) Call(ctx context.Context, method string, params any, report job
 	for {
 		select {
 		case <-ctx.Done():
-			// Read-only details workers use progress checkpoints to stop canceled scans.
-			if strings.HasPrefix(method, "details.") {
+			// Read-only workers stop at checkpoints after their current I/O returns.
+			if strings.HasPrefix(method, "details.") || method == "ops.plan" {
 				b.mu.Lock()
 				_ = json.NewEncoder(p.in).Encode(map[string]any{"cancelId": id})
 				b.mu.Unlock()

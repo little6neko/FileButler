@@ -1,6 +1,7 @@
 package cloud115
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -30,6 +31,16 @@ type operationPlan struct {
 	Revision    string            `json:"revision"`
 	Entries     []map[string]any  `json:"entries"`
 }
+
+func (p *operationPlan) UnmarshalJSON(data []byte) error {
+	// Worker entries are sent back unchanged for safety checks. NAS inode IDs
+	// and nanosecond timestamps must not pass through float64 (or signed int64).
+	type plainPlan operationPlan
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	return decoder.Decode((*plainPlan)(p))
+}
+
 type operationPreview struct {
 	Actor   int64
 	Expires time.Time

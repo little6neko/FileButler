@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
@@ -23,6 +25,103 @@ type operationProvider struct {
 }
 
 type canceledPreviewProvider struct{ started chan struct{} }
+
+type exactOperationProvider struct {
+	entry    json.RawMessage
+	executed chan json.RawMessage
+}
+
+func (p *exactOperationProvider) Call(_ context.Context, method string, args any, _ jobs.Reporter) (json.RawMessage, error) {
+	if method == "ops.execute" {
+		data, err := json.Marshal(args)
+		p.executed <- data
+		return json.RawMessage(`{"ok":true}`), err
+	}
+	return json.Marshal(map[string]any{
+		"items":       []json.RawMessage{json.RawMessage(`{"sourcePath":"file.txt","conflict":false}`)},
+		"hasConflict": false, "revision": "unchanged", "entries": []json.RawMessage{p.entry},
+	})
+}
+
+func TestSharedOperationPreservesLargeIntegersFromPreviewThroughExecution(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, entry string
+	}{
+		{
+			name:  "download NAS directory inode",
+			body:  `{"type":"copy","sourceRoot":"@115","sources":["1"],"destRoot":"local","destPath":".","accountId":"7","sourceAccountId":"7"}`,
+			entry: `{"accountId":"7","id":"1","targetRevision":[61,6880056867922244703],"sourceItem":{"size":4}}`,
+		},
+		{
+			name:  "download inode above signed 64-bit range",
+			body:  `{"type":"move","sourceRoot":"@115","sources":["1"],"destRoot":"local","destPath":".","accountId":"7","sourceAccountId":"7"}`,
+			entry: `{"accountId":"7","id":"1","targetRevision":[62,16458696828404379608],"sourceItem":{"size":4}}`,
+		},
+		{
+			name:  "upload source inode and nanosecond timestamps",
+			body:  `{"type":"move","sourceRoot":"local","sources":["file.txt"],"destRoot":"@115","destPath":"0","accountId":"7","destAccountId":"7"}`,
+			entry: `{"accountId":"7","targetRevision":[],"sourceItem":{"directory":false,"revision":[62,18446744073709551615,33188,4,1790403121243683339,1790403121243683341]}}`,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(dir, "file.txt"), []byte("data"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			p := &exactOperationProvider{entry: json.RawMessage(tc.entry), executed: make(chan json.RawMessage, 1)}
+			s := NewService(p, jobs.NewStore(), roots.NewResolver([]roots.Root{{ID: "local", Path: dir}}))
+			post := func(method, body string) *httptest.ResponseRecorder {
+				out := httptest.NewRecorder()
+				ctx := auth.ContextWithUser(context.Background(), auth.User{ID: 1})
+				s.operationHandler(out, httptest.NewRequest("POST", "/"+method, strings.NewReader(body)).WithContext(ctx), method)
+				return out
+			}
+			out := post("ops.preview", tc.body)
+			if out.Code != 200 {
+				t.Fatal(out.Code, out.Body.String())
+			}
+			var response struct {
+				Data struct {
+					PreviewToken string `json:"previewToken"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(out.Body.Bytes(), &response); err != nil {
+				t.Fatal(err)
+			}
+			assertEntry := func(data []byte) {
+				t.Helper()
+				var want, got map[string]json.RawMessage
+				if err := json.Unmarshal([]byte(tc.entry), &want); err != nil {
+					t.Fatal(err)
+				}
+				if err := json.Unmarshal(data, &got); err != nil {
+					t.Fatal(err)
+				}
+				// Compare raw JSON, never decode expected integers through float64.
+				for _, key := range []string{"targetRevision", "sourceItem"} {
+					if string(got[key]) != string(want[key]) {
+						t.Errorf("%s changed: got %s, want %s", key, got[key], want[key])
+					}
+				}
+			}
+			cached, err := json.Marshal(s.operationPreviews[response.Data.PreviewToken].Plan.Entries[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertEntry(cached)
+			out = post("ops.create", `{"accountId":"7","previewToken":"`+response.Data.PreviewToken+`"}`)
+			if out.Code != 201 {
+				t.Fatal(out.Code, out.Body.String())
+			}
+			select {
+			case data := <-p.executed:
+				assertEntry(data)
+			case <-time.After(3 * time.Second):
+				t.Fatal("operation was not executed")
+			}
+		})
+	}
+}
 
 func (p *canceledPreviewProvider) Call(ctx context.Context, method string, _ any, _ jobs.Reporter) (json.RawMessage, error) {
 	if method == "ops.plan" {

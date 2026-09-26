@@ -17,10 +17,31 @@ type Executor struct {
 	Cache    *storage.Store
 }
 
+type localCacheKey struct{}
+type localCache struct {
+	store    *storage.Store
+	resolver roots.Resolver
+}
+
+func operationCache(ctx context.Context) localCache {
+	cache, _ := ctx.Value(localCacheKey{}).(localCache)
+	return cache
+}
+
+func (c localCache) invalidate(path string) {
+	if c.store == nil {
+		return
+	}
+	if mapped, err := c.resolver.MapPath(path); err == nil {
+		c.store.InvalidateLocal(mapped.Root.ID, mapped.Root.Path, mapped.Rel)
+	}
+}
+
 func (e Executor) Execute(ctx context.Context, item PlanItem) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	ctx = context.WithValue(ctx, localCacheKey{}, localCache{store: e.Cache, resolver: e.Resolver})
 	switch item.Operation {
 	case OpMove:
 		if filepath.Clean(item.SourcePath) == "." || item.SourcePath == "" {
@@ -34,9 +55,6 @@ func (e Executor) Execute(ctx context.Context, item PlanItem) error {
 		if err != nil {
 			return err
 		}
-		e.Cache.InvalidateLocal(src.Actual.Root.ID, src.Actual.Root.Path, src.Actual.Rel)
-		defer e.Cache.InvalidateLocal(src.Actual.Root.ID, src.Actual.Root.Path, src.Actual.Rel)
-		defer e.Cache.InvalidateLocal(dest.Actual.Root.ID, dest.Actual.Root.Path, dest.Actual.Rel)
 		return movePath(ctx, src.Actual.Abs, dest.Actual.Abs, nil)
 	case OpCopy:
 		src, err := resolveOperationSource(e.Resolver, item.SourceRoot, item.SourcePath)
@@ -47,7 +65,6 @@ func (e Executor) Execute(ctx context.Context, item PlanItem) error {
 		if err != nil {
 			return err
 		}
-		defer e.Cache.InvalidateLocal(dest.Actual.Root.ID, dest.Actual.Root.Path, dest.Actual.Rel)
 		return copyPath(ctx, src.Actual.Abs, dest.Actual.Abs)
 	case OpDelete:
 		src, err := resolveOperationSource(e.Resolver, item.SourceRoot, item.SourcePath)
@@ -120,6 +137,12 @@ func copyFileContext(ctx context.Context, src, dest string, mode os.FileMode) er
 		return err
 	}
 	defer in.Close()
+	cache := operationCache(ctx)
+	if cache.store != nil {
+		if _, err := storage.FreshLocalInfo(src); err != nil {
+			return err
+		}
+	}
 	info, err := in.Stat()
 	if err != nil {
 		return err
@@ -162,11 +185,16 @@ func copyFileContext(ctx context.Context, src, dest string, mode os.FileMode) er
 			return readErr
 		}
 	}
+	if cache.store != nil {
+		if _, err := storage.FreshLocalInfo(src); err != nil {
+			return err
+		}
+	}
 	current, err := in.Stat()
 	if err != nil {
 		return err
 	}
-	if progress.BytesDone != info.Size() || !sameRevision(info, current) {
+	if progress.BytesDone != info.Size() || !sameRevision(info, current) || storage.LocalVersion(info) != storage.LocalVersion(current) {
 		return fmt.Errorf("复制期间源文件发生变化：%s", src)
 	}
 	if durable, _ := ctx.Value(durableCopyKey{}).(bool); durable {
@@ -178,5 +206,6 @@ func copyFileContext(ctx context.Context, src, dest string, mode os.FileMode) er
 		return err
 	}
 	completed = true
+	cache.store.CopyLocal(context.WithoutCancel(ctx), cache.resolver, src, dest, current)
 	return nil
 }

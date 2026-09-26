@@ -2,9 +2,7 @@ package storage_test
 
 import (
 	"context"
-	"github.com/little6neko/filebutler/internal/jobs"
 	"github.com/little6neko/filebutler/internal/ops"
-	"github.com/little6neko/filebutler/internal/rename"
 	"github.com/little6neko/filebutler/internal/roots"
 	"github.com/little6neko/filebutler/internal/storage"
 	"github.com/little6neko/filebutler/internal/textfile"
@@ -14,8 +12,8 @@ import (
 	"testing"
 )
 
-func TestLocalMutationsInvalidateCache(t *testing.T) {
-	for _, action := range []string{"rename", "move", "delete", "edit"} {
+func TestContentEditsAndDeletionInvalidateCache(t *testing.T) {
+	for _, action := range []string{"delete", "edit"} {
 		t.Run(action, func(t *testing.T) {
 			ctx := context.Background()
 			a, b := t.TempDir(), t.TempDir()
@@ -32,10 +30,6 @@ func TestLocalMutationsInvalidateCache(t *testing.T) {
 				t.Fatal(err)
 			}
 			switch action {
-			case "rename":
-				err = (rename.Executor{Resolver: resolver, Cache: db}).ExecuteItem(ctx, jobs.ExecutableItem{SourceRoot: "a", SourcePath: "dir", DestRoot: "a", DestPath: "renamed"})
-			case "move":
-				err = (ops.Executor{Resolver: resolver, Cache: db}).Execute(ctx, ops.PlanItem{Operation: ops.OpMove, SourceRoot: "a", SourcePath: "dir", DestRoot: "b", DestPath: "dir"})
 			case "delete":
 				err = (ops.Executor{Resolver: resolver, Cache: db}).Execute(ctx, ops.PlanItem{Operation: ops.OpDelete, SourceRoot: "a", SourcePath: "dir"})
 			case "edit":

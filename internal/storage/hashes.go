@@ -35,21 +35,33 @@ func (s *Store) Hash(ctx context.Context, h Hash) (string, error) {
 	return value, nil
 }
 func (s *Store) PutHash(ctx context.Context, h Hash) error {
+	return putHash(ctx, s.DB, h)
+}
+
+type hashWriter interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}
+
+func putHash(ctx context.Context, db hashWriter, h Hash) error {
 	bytes, err := hex.DecodeString(h.SHA1)
 	if err != nil || len(bytes) != 20 || h.Scope == "" || h.Path == "" || h.Version == "" {
 		return errors.New("invalid hash record")
 	}
-	_, err = s.DB.ExecContext(ctx, `INSERT INTO file_hashes(scope,path,version,sha1,origin,updated_at) VALUES(?,?,?,?,?,unixepoch())
+	_, err = db.ExecContext(ctx, `INSERT INTO file_hashes(scope,path,version,sha1,origin,updated_at) VALUES(?,?,?,?,?,unixepoch())
  ON CONFLICT(scope,path) DO UPDATE SET version=excluded.version,sha1=excluded.sha1,origin=excluded.origin,updated_at=excluded.updated_at`, h.Scope, h.Path, h.Version, strings.ToUpper(h.SHA1), h.Origin)
 	return err
 }
 func (s *Store) Invalidate(ctx context.Context, scope, path string) error {
+	return invalidateHashes(ctx, s.DB, scope, path)
+}
+
+func invalidateHashes(ctx context.Context, db hashWriter, scope, path string) error {
 	if path == "." || path == "" {
-		_, err := s.DB.ExecContext(ctx, "DELETE FROM file_hashes WHERE scope=?", scope)
+		_, err := db.ExecContext(ctx, "DELETE FROM file_hashes WHERE scope=?", scope)
 		return err
 	}
 	prefix := strings.TrimSuffix(filepath.ToSlash(path), "/") + "/"
-	_, err := s.DB.ExecContext(ctx, "DELETE FROM file_hashes WHERE scope=? AND (path=? OR substr(path,1,?)=?)", scope, filepath.ToSlash(path), len([]rune(prefix)), prefix)
+	_, err := db.ExecContext(ctx, "DELETE FROM file_hashes WHERE scope=? AND (path=? OR substr(path,1,?)=?)", scope, filepath.ToSlash(path), len([]rune(prefix)), prefix)
 	return err
 }
 

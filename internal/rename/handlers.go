@@ -224,10 +224,7 @@ func (e Executor) ExecuteItem(ctx context.Context, item jobs.ExecutableItem) err
 	if err != nil {
 		return err
 	}
-	e.Cache.InvalidateLocal(src.Actual.Root.ID, src.Actual.Root.Path, src.Actual.Rel)
-	defer e.Cache.InvalidateLocal(src.Actual.Root.ID, src.Actual.Root.Path, src.Actual.Rel)
-	defer e.Cache.InvalidateLocal(dest.Actual.Root.ID, dest.Actual.Root.Path, dest.Actual.Rel)
-	return os.Rename(src.Actual.Abs, dest.Actual.Abs)
+	return e.Cache.RenameLocal(ctx, e.Resolver, src.Actual.Abs, dest.Actual.Abs, os.Rename)
 }
 
 func writeData(w http.ResponseWriter, status int, value any) {

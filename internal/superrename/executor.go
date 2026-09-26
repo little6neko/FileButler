@@ -39,6 +39,19 @@ type executorFileSystem interface {
 
 type osExecutorFileSystem struct{}
 
+// Wrap the existing staging/rollback renames so hashes follow the file at every
+// successful step, including filename swaps and partially recovered groups.
+type cachedFileSystem struct {
+	executorFileSystem
+	ctx      context.Context
+	cache    *storage.Store
+	resolver roots.Resolver
+}
+
+func (fs cachedFileSystem) Rename(source, destination string) error {
+	return fs.cache.RenameLocal(fs.ctx, fs.resolver, source, destination, fs.executorFileSystem.Rename)
+}
+
 func (osExecutorFileSystem) Lstat(name string) (os.FileInfo, error) {
 	return os.Lstat(name)
 }
@@ -82,14 +95,12 @@ func (e Executor) ExecuteGroup(ctx context.Context, jobID string, rootID string,
 		}
 	}
 
-	fs := e.fs()
+	fs := cachedFileSystem{executorFileSystem: e.fs(), ctx: ctx, cache: e.Cache, resolver: e.Resolver}
 	groupResolved, err := e.Resolver.ResolveEntry(rootID, group.Path)
 	if err != nil {
 		return err
 	}
 	groupInfo, err := fs.Lstat(groupResolved.Actual.Abs)
-	e.Cache.InvalidateLocal(groupResolved.Actual.Root.ID, groupResolved.Actual.Root.Path, groupResolved.Actual.Rel)
-	defer e.Cache.InvalidateLocal(groupResolved.Actual.Root.ID, groupResolved.Actual.Root.Path, groupResolved.Actual.Rel)
 	if err != nil {
 		return err
 	}

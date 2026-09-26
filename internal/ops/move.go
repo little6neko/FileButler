@@ -40,8 +40,12 @@ func snapshotTree(path string) (map[string]os.FileInfo, error) {
 }
 
 func movePath(ctx context.Context, src, dest string, rename func(string, string) error) error {
+	cache := operationCache(ctx)
+	publish := func(source, destination string) error {
+		return cache.store.RenameLocal(ctx, cache.resolver, source, destination, links.RenameNoReplace)
+	}
 	if rename == nil {
-		rename = links.RenameNoReplace
+		rename = publish
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -60,6 +64,7 @@ func movePath(ctx context.Context, src, dest string, rename func(string, string)
 		return err
 	}
 	defer os.RemoveAll(stage)
+	defer cache.invalidate(stage)
 	payload := filepath.Join(stage, "payload")
 	if err := copyPath(context.WithValue(ctx, durableCopyKey{}, true), src, payload); err != nil {
 		return err
@@ -79,7 +84,7 @@ func movePath(ctx context.Context, src, dest string, rename func(string, string)
 	if err := jobs.Report(ctx, jobs.TransferProgress{Phase: "waiting", File: filepath.Base(src), Cancelable: true}); err != nil {
 		return err
 	}
-	if err := links.RenameNoReplace(payload, dest); err != nil {
+	if err := publish(payload, dest); err != nil {
 		return err
 	}
 	// Remove only the copied entries, never recursively remove a changed tree.
@@ -107,6 +112,7 @@ func movePath(ctx context.Context, src, dest string, rename func(string, string)
 		if err := os.Remove(path); err != nil {
 			return fmt.Errorf("复制成功，源文件删除失败：%w", err)
 		}
+		cache.invalidate(path)
 	}
 	return nil
 }

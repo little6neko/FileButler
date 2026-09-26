@@ -4,6 +4,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
+from urllib.error import HTTPError
 
 from errors import Canceled, ProviderError
 from operations import CloudOperations
@@ -30,6 +31,50 @@ class FakeShared(CloudOperations):
 
 
 class SharedOperationsTests(unittest.TestCase):
+    def test_download_recheck_preserves_upstream_error_without_starting_transfer(self):
+        for operation in ("copy", "move"):
+            with self.subTest(operation=operation), tempfile.TemporaryDirectory() as dest:
+                ops = FakeShared()
+                plan = ops.operation_plan({"type": operation, "accountId": "7", "sourceCloud": True, "targetCloud": False, "sources": [{"id": "9"}], "localDest": dest})
+                error = HTTPError("https://webapi.115.com/files/get_info?token=private", 405, "Method Not Allowed", {}, None)
+                error.request_method = "GET"
+                with patch.object(ops, "info", side_effect=error), patch.object(ops, "operation") as transfer:
+                    with self.assertRaises(ProviderError) as raised:
+                        ops.operation_execute(plan["entries"][0], lambda p: None)
+                    self.assertEqual(str(raised.exception), "GET https://webapi.115.com/files/get_info\nHTTP 405 Method Not Allowed")
+                    transfer.assert_not_called()
+                self.assertEqual(os.listdir(dest), [])
+                self.assertIn("9", ops.nodes)
+
+    def test_download_recheck_reports_destination_name_conflict(self):
+        with tempfile.TemporaryDirectory() as dest:
+            ops = FakeShared()
+            plan = ops.operation_plan({"type": "copy", "accountId": "7", "sourceCloud": True, "targetCloud": False, "sources": [{"id": "9"}], "localDest": dest})
+            Path(dest, "dest").mkdir()
+            with patch.object(ops, "operation") as transfer:
+                with self.assertRaisesRegex(ProviderError, "目标已存在：dest（未覆盖）"):
+                    ops.operation_execute(plan["entries"][0], lambda p: None)
+                transfer.assert_not_called()
+            self.assertTrue(Path(dest, "dest").is_dir())
+
+    def test_download_recheck_distinguishes_source_and_destination_changes(self):
+        for change, message in (("source", "源文件已变化"), ("target", "目标目录已变化")):
+            with self.subTest(change=change), tempfile.TemporaryDirectory() as folder:
+                dest = Path(folder, "downloads")
+                dest.mkdir()
+                ops = FakeShared()
+                plan = ops.operation_plan({"type": "copy", "accountId": "7", "sourceCloud": True, "targetCloud": False, "sources": [{"id": "9"}], "localDest": str(dest)})
+                if change == "source":
+                    ops.nodes["9"]["name"] = "renamed"
+                else:
+                    dest.rename(Path(folder, "old-downloads"))
+                    dest.mkdir()
+                with patch.object(ops, "operation") as transfer:
+                    with self.assertRaisesRegex(ProviderError, message):
+                        ops.operation_execute(plan["entries"][0], lambda p: None)
+                    transfer.assert_not_called()
+                self.assertEqual(os.listdir(dest), [])
+
     def test_preview_shows_full_paths_and_saved_account_name(self):
         ops = FakeShared()
         ops.nodes["2"] = {"id": "2", "name": "source", "parent_id": "0", "is_dir": True}

@@ -252,8 +252,14 @@ class SharedFileOperations:
         def checkpoint():
             report(progress_value("scan", name))
         fresh = self.operation_plan({**params, "sources": [source]}, checkpoint=checkpoint)
-        if fresh["hasConflict"] or fresh["entries"][0]["sourceItem"] != params["sourceItem"] or fresh["entries"][0]["targetRevision"] != params["targetRevision"]:
-            raise ProviderError("源或目标已变化，请重新预览")
+        if fresh["hasConflict"]:
+            # The plan already contains the specific, sanitized failure (including
+            # upstream HTTP errors); do not misreport it as a changed file.
+            raise ProviderError(fresh["items"][0]["errorText"])
+        if fresh["entries"][0]["sourceItem"] != params["sourceItem"]:
+            raise ProviderError("源文件已变化，请重新预览")
+        if fresh["entries"][0]["targetRevision"] != params["targetRevision"]:
+            raise ProviderError("目标目录已变化，请重新预览")
         operation = params["type"]
         report(progress_value("scan", fresh["items"][0]["sourcePath"]))
         if source_cloud and (target_cloud or operation == "delete"):

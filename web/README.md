@@ -36,7 +36,7 @@ npm run build
 前端从构建环境变量 `VITE_APP_VERSION` 读取版本号：
 
 ```bash
-VITE_APP_VERSION=0.3.2 npm run build
+VITE_APP_VERSION=0.3.3 npm run build
 ```
 
 未设置时界面显示 `dev`。Dockerfile 和发布工作流会自动注入镜像版本。

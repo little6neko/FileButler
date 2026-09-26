@@ -12,7 +12,7 @@ from errors import Canceled, ProviderError
 from download_progress import FolderDownloadProgress
 from batch import BatchOperations
 from file_operations import SharedFileOperations
-from hash_cache import HashCache
+from hash_cache import HashCache, fresh_local_stat
 from details import FileDetails
 
 
@@ -255,6 +255,8 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
             os.close(fd)
 
     def upload_file(self, file, name, parent, report, local_path=None):
+        if local_path:
+            fresh_local_stat(local_path)
         before = os.fstat(file.fileno())
         total = before.st_size
         report(progress_value("hash", name, 0, total))
@@ -382,7 +384,9 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
         # Count a file only after validation, fsync and exclusive publication.
         report({**progress_value("download", name, done, total), "fileComplete": True})
         try:
-            published = os.stat(name, dir_fd=directory, follow_symlinks=False)
+            # FUSE can cache link-time ctime even after unlinking the temporary
+            # name. Refresh metadata once; never reread the downloaded contents.
+            published = fresh_local_stat(name, dir_fd=directory)
         except OSError:
             # A concurrent rename after successful publication is not a failed download.
             return

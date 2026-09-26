@@ -56,6 +56,10 @@ func TestHashAndCachedBasic(t *testing.T) {
 	if e != nil || cached != want {
 		t.Fatalf("cache=%s err=%v", cached, e)
 	}
+	basic, e = s.Basic(ctx, req)
+	if e != nil || basic[0].SHA1 != want {
+		t.Fatalf("freshly saved hash not displayed: %+v %v", basic, e)
+	}
 	write(t, path, "other")
 	newBasic, e := s.Basic(ctx, req)
 	if e != nil || newBasic[0].SHA1 != "" {

@@ -1,14 +1,17 @@
 import hashlib
 import io
+import json
 import os
 from pathlib import Path
 import tempfile
+import time
 import unittest
 from unittest.mock import Mock, patch
 
 from errors import Canceled, ProviderError
 from operations import open_directory
 from test_operations import FakeOperations
+from hash_cache import fresh_local_stat
 
 class MemoryCache:
     def __init__(self): self.records = {}; self.calls = []
@@ -36,18 +39,27 @@ class HashCacheTests(unittest.TestCase):
         # Mock SDK accepts precomputed hash without reading payload, like instant upload.
         self.ops.client = Mock()
         self.ops.client.upload_file.return_value = {"state": True}
-        with self.path.open("rb") as file, patch("hash_cache.time.time_ns", return_value=self.path.stat().st_ctime_ns + 3_000_000_000), patch.object(file, "read", side_effect=AssertionError("unnecessary full-file read")):
+        with self.path.open("rb") as file, patch.object(file, "read", side_effect=AssertionError("unnecessary full-file read")):
             self.ops.upload_file(file, "a.txt", "0", lambda p: None, str(self.path))
         self.assertEqual(self.ops.client.upload_file.call_args.kwargs["filesha1"], hashlib.sha1(b"data").hexdigest().upper())
 
     def test_same_size_same_mtime_edit_invalidates_using_ctime(self):
         self.upload(); before = self.path.stat()
+        # Let the filesystem timestamp tick advance. This test models a changed
+        # ctime, not an external edit preserving every field of the cache key.
+        time.sleep(0.01)
         self.path.write_bytes(b"EDIT"); os.utime(self.path, ns=(before.st_atime_ns, before.st_mtime_ns))
+        self.assertNotEqual(self.path.stat().st_ctime_ns, before.st_ctime_ns)
         self.upload()
         self.assertEqual(self.ops.storage.records[("local", str(self.path))]["sha1"], hashlib.sha1(b"EDIT").hexdigest().upper())
 
     def test_same_path_replacement_never_reuses_old_hash(self):
-        self.upload(); self.path.unlink(); self.path.write_bytes(b"next"); self.upload()
+        self.upload()
+        # Keep the old inode alive so the replacement has a distinct identity.
+        with self.path.open("rb") as old:
+            self.path.unlink(); self.path.write_bytes(b"next")
+            self.assertNotEqual(self.path.stat().st_ino, os.fstat(old.fileno()).st_ino)
+            self.upload()
         self.assertEqual(self.ops.storage.records[("local", str(self.path))]["sha1"], hashlib.sha1(b"next").hexdigest().upper())
 
     def test_canceled_or_modified_hash_is_not_saved(self):
@@ -83,3 +95,39 @@ class HashCacheTests(unittest.TestCase):
             self.ops.download_entry("1", directory, lambda p: None, self.folder.name)
         self.assertFalse(self.ops.storage.records)
         self.assertFalse(self.path.exists())
+
+    def test_download_does_not_overwrite_raced_destination_or_cache_partial_file(self):
+        self.path.unlink()
+        self.ops.client = Mock(); self.ops.client.download_url.return_value = "https://example.test/download"
+        self.ops.info = lambda _: {"id": "1", "is_dir": False, "name": "a.txt", "size": 4, "pickcode": "p", "sha1": hashlib.sha1(b"data").hexdigest()}
+        def report(progress):
+            if progress["phase"] == "download" and progress["bytesDone"] == 4:
+                self.path.write_bytes(b"existing")
+        with open_directory(self.folder.name) as directory, patch("operations.urlopen", return_value=io.BytesIO(b"data")):
+            with self.assertRaises(FileExistsError):
+                self.ops.download_entry("1", directory, report, self.folder.name)
+        self.assertEqual(self.path.read_bytes(), b"existing")
+        self.assertFalse(self.ops.storage.records)
+        self.assertEqual(list(Path(self.folder.name).iterdir()), [self.path])
+
+    @unittest.skipUnless(os.getenv("FILEBUTLER_TEST_FUSE_ROOT") and os.getenv("FILEBUTLER_TEST_FUSE_BACKING"), "temporary mergerfs mount required")
+    def test_download_cache_uses_final_mergerfs_metadata_without_content_reread(self):
+        mount = Path(os.environ["FILEBUTLER_TEST_FUSE_ROOT"])
+        backing = Path(os.environ["FILEBUTLER_TEST_FUSE_BACKING"])
+        with tempfile.TemporaryDirectory(dir=mount) as folder:
+            ops = FakeOperations(Mock()); ops.storage = MemoryCache()
+            ops.client.download_url.return_value = "https://example.test/download"
+            ops.info = lambda _: {"id": "1", "is_dir": False, "name": "a.txt", "size": 4, "pickcode": "p", "sha1": hashlib.sha1(b"data").hexdigest()}
+            unlink = os.unlink
+            def delayed_unlink(*args, **kwargs):
+                # Ensure link and unlink land in different filesystem clock ticks.
+                time.sleep(0.01)
+                return unlink(*args, **kwargs)
+            with open_directory(folder) as fd, patch("operations.urlopen", return_value=io.BytesIO(b"data")) as fetch, patch("operations.os.unlink", side_effect=delayed_unlink):
+                ops.download_entry("1", fd, lambda p: None, folder)
+            path = str(Path(folder, "a.txt"))
+            record = ops.storage.records[("local", path)]
+            actual = (backing / Path(path).relative_to(mount)).stat()
+            self.assertEqual(json.loads(record["version"])[-1], actual.st_ctime_ns)
+            fetch.assert_called_once()
+            self.assertEqual(ops.local_hash("hash.get", path, fresh_local_stat(path)), hashlib.sha1(b"data").hexdigest().upper())

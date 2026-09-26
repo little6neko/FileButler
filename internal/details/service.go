@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"syscall"
-	"time"
 
 	"github.com/little6neko/filebutler/internal/roots"
 	"github.com/little6neko/filebutler/internal/storage"
@@ -76,10 +75,7 @@ func (s Service) resolve(req Request) ([]roots.ResolvedPath, error) {
 	return out, nil
 }
 func version(info os.FileInfo) string {
-	if !info.Mode().IsRegular() {
-		return ""
-	}
-	return snapshot(info)
+	return storage.LocalVersion(info)
 }
 func snapshot(info os.FileInfo) string {
 	st, ok := info.Sys().(*syscall.Stat_t)
@@ -113,7 +109,7 @@ func (s Service) Basic(ctx context.Context, req Request) ([]Item, error) {
 		if e = ctx.Err(); e != nil {
 			return nil, e
 		}
-		info, e := os.Lstat(p.Abs)
+		info, e := storage.FreshLocalInfo(p.Abs)
 		if e != nil {
 			return nil, e
 		}
@@ -136,12 +132,9 @@ func (s Service) Basic(ctx context.Context, req Request) ([]Item, error) {
 			if e != nil {
 				return nil, e
 			}
-			st := info.Sys().(*syscall.Stat_t)
-			if time.Since(info.ModTime()) >= 2*time.Second && time.Since(time.Unix(st.Ctim.Sec, st.Ctim.Nsec)) >= 2*time.Second {
-				item.SHA1, e = s.DB.Hash(ctx, h)
-				if e != nil {
-					item.Warning = "SHA1缓存暂时无法读取"
-				}
+			item.SHA1, e = s.DB.Hash(ctx, h)
+			if e != nil {
+				item.Warning = "SHA1缓存暂时无法读取"
 			}
 		}
 		out = append(out, item)

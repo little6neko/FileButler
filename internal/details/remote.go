@@ -26,12 +26,16 @@ type RemoteReader struct {
 }
 
 func NewRemoteReader(ctx context.Context, url, agent string, size int64) *RemoteReader {
-	return &RemoteReader{Context: ctx, URL: url, UserAgent: agent, Size: size, left: MediaBudget, Client: &http.Client{Transport: safeTransport, Timeout: 10 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
+	return &RemoteReader{Context: ctx, URL: url, UserAgent: agent, Size: size, left: MediaBudget, Client: newRemoteClient()}
+}
+
+func newRemoteClient() *http.Client {
+	return &http.Client{Transport: safeTransport, Timeout: 10 * time.Second, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 3 {
 			return errors.New("too many redirects")
 		}
 		return validateURL(req.URL)
-	}}}
+	}}
 }
 func validateURL(u *url.URL) error {
 	if (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {

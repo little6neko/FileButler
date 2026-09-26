@@ -83,6 +83,10 @@ func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) handle(w http.ResponseWriter, r *http.Request) {
+	if chi.URLParam(r, "method") == "preview.text" {
+		s.textPreviewHandler(w, r)
+		return
+	}
 	if strings.HasPrefix(chi.URLParam(r, "method"), "details.") {
 		s.detailsHandler(w, r)
 		return

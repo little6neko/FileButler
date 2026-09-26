@@ -40,11 +40,23 @@ it("removes the left-hand loading message when media loads without moving the bu
   expect(buttons).toHaveClass("ml-auto");
 });
 
-it("shows the exact size error only for text, retaining a copyable link", async () => {
+it("shows server text errors without a direct-link toolbar", async () => {
+  vi.mocked(cloudCall).mockRejectedValue(new Error("文本超过10 MiB预览上限，请直接下载。"));
   preview("large.txt");
   expect((await screen.findByRole("alert")).textContent).toBe("文本超过10 MiB预览上限，请直接下载。");
-  expect(screen.getByRole("button", { name: "复制直链" })).toBeEnabled();
+  expect(screen.queryByRole("button", { name: "复制直链" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("toolbar", { name: "直链操作" })).not.toBeInTheDocument();
   expect(screen.queryByText("正在直接从115加载…")).not.toBeInTheDocument();
+});
+
+it("loads read-only text through FB and cancels pending reads on close", async () => {
+  vi.mocked(cloudCall).mockReturnValue(new Promise(() => {}));
+  const view = preview("notes.txt");
+  expect(cloudCall).toHaveBeenCalledWith("preview.text", { id: "1", accountId: "1" }, expect.any(AbortSignal));
+  expect(screen.queryByRole("toolbar", { name: "直链操作" })).not.toBeInTheDocument();
+  const signal = vi.mocked(cloudCall).mock.calls[0][2]!;
+  view.unmount();
+  expect(signal.aborted).toBe(true);
 });
 
 it("does not fetch a link or report a text size error for unsupported files", () => {

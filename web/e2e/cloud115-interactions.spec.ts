@@ -33,6 +33,12 @@ async function installCloud(page: Page, initiallyLoggedIn = true) {
         const entry = entries.find((item) => item.id === params.id)!;
         data = { url: `https://115-preview.example/${entry.name}`, accountId: "7", size: entry.size };
       }
+      else if (method === "preview.text") {
+        const entry = entries.find((item) => item.id === params.id)!;
+        if (entry.name === "blocked.txt") return route.fulfill({ status: 502, json: { error: { code: "cloud115_error", message: "GET https://115-preview.example/blocked.txt\nHTTP 403 Forbidden" } } });
+        if (entry.name === "large.txt") return route.fulfill({ status: 413, json: { error: { code: "cloud115_error", message: "文本超过10 MiB预览上限，请直接下载。" } } });
+        data = { accountId: "7", document: { content: "cloud read-only text\nsecond line", byteSize: 32, encoding: "utf-8", lineEnding: "lf", preferredLineEnding: "lf", revision: "cloud-read-only" } };
+      }
       else if (method === "extract") data = { id: "extract-job" };
     }
     return route.fulfill({ json: { data } });
@@ -153,10 +159,13 @@ test("cloud previews load bytes directly, text is read-only and archive double c
   await expect(preview.locator(".cm-content")).toContainText("cloud read-only text");
   await expect(preview.locator(".cm-content")).toHaveAttribute("contenteditable", "false");
   await expect(preview.getByRole("button", { name: "Save", exact: true })).toHaveCount(0);
+  await expect(preview.getByRole("toolbar", { name: "直链操作" })).toHaveCount(0);
+  expect(contentRequests.some(url => url.endsWith(".txt"))).toBe(false);
+  expect(calls.some(call => call.method === "preview.text" && call.params.id === "4")).toBe(true);
   await page.evaluate(() => window.dispatchEvent(new CustomEvent("cloud115-account-changed", { detail: { accountId: "7" } })));
   await expect(preview.getByRole("alert")).toContainText("115账号已变化");
   await expect(preview.locator(".cm-content")).toHaveCount(0);
-  await expect(preview.getByRole("button", { name: "复制直链" })).toBeDisabled();
+  await expect(preview.getByRole("button", { name: "复制直链" })).toHaveCount(0);
   await preview.getByRole("button", { name: "Close window" }).click();
 
   await cloud.getByRole("button", { name: /Cloud tester/ }).dblclick();
@@ -164,8 +173,8 @@ test("cloud previews load bytes directly, text is read-only and archive double c
   preview = page.locator('.desktop-window[data-window-kind="cloudPreview"]');
   await expect(preview.getByRole("alert")).toBeVisible();
   await expect(preview.getByRole("alert")).not.toContainText("不会通过FB中转");
-  await preview.getByRole("button", { name: "复制直链" }).click();
-  await expect.poll(() => page.evaluate(() => sessionStorage.getItem("test-copied-link"))).toBe("https://115-preview.example/blocked.txt");
+  await expect(preview.getByRole("alert")).toContainText("HTTP 403 Forbidden");
+  await expect(preview.getByRole("button", { name: "复制直链" })).toHaveCount(0);
   await preview.getByRole("button", { name: "Close window" }).click();
 
   await cloud.getByRole("button", { name: "large.txt", exact: true }).dblclick();

@@ -200,6 +200,42 @@ test("cloud previews load bytes directly, text is read-only and archive double c
   expect(errors).toEqual([]);
 });
 
+test("folder download shows cumulative bytes, completed file counts and current leaf", async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(navigator, "languages", { get: () => ["en-US"] }));
+  const jobs = [
+    { id: "folder", type: "copy", status: "running", actorId: 1, sourceRootId: "@115", destRootId: "local", progressDone: 0, progressTotal: 1, failedCount: 0, cancelRequested: false, errorMessage: "", createdAtUnix: 1, updatedAtUnix: 1, eventVersion: 1,
+      transfer: { phase: "download", scope: "folder-1", file: "second.txt", bytesDone: 400, bytesTotal: 1000, percent: 40, bytesPerSecond: 100, remainingSeconds: 6, cancelable: true, filesDone: 22, filesTotal: 266 } },
+    { id: "unknown", type: "copy", status: "running", actorId: 1, sourceRootId: "@115", destRootId: "local", progressDone: 0, progressTotal: 1, failedCount: 0, cancelRequested: false, errorMessage: "", createdAtUnix: 2, updatedAtUnix: 2, eventVersion: 2,
+      transfer: { phase: "download", scope: "folder-2", file: "third.txt", bytesDone: 600, bytesTotal: 0, bytesPerSecond: 100, cancelable: true, filesDone: 1, filesTotal: 3, warning: "扫描后文件大小发生变化，总字节进度暂不可用" } },
+  ];
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path === "/api/jobs/events") return route.fulfill({ contentType: "text/event-stream", body: `event: jobs.snapshot\ndata: ${JSON.stringify({ runtimeId: "folder-progress", cursor: 0, reset: false, jobs })}\n\n` });
+    const data = path === "/api/init/status" ? { needsInitialization: false } : path === "/api/auth/me" ? { id: 1, username: "admin" } : [];
+    return route.fulfill({ json: { data } });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Jobs", exact: true }).click();
+  await page.getByRole("button", { name: "View progress", exact: true }).nth(1).click();
+  const folder = page.locator('[data-progress-job="folder"]');
+  await expect(folder.getByText("Downloading · second.txt")).toBeVisible();
+  await expect(folder.getByText("400 B / 1000 B · 40%")).toBeVisible();
+  await expect(folder.getByLabel("File count progress")).toHaveText("22/266");
+  const byteBox = (await folder.getByText("400 B / 1000 B · 40%").boundingBox())!;
+  const countBox = (await folder.getByLabel("File count progress").boundingBox())!;
+  expect(countBox.x).toBeGreaterThan(byteBox.x + byteBox.width);
+  expect(Math.abs(countBox.y - byteBox.y)).toBeLessThan(2);
+  await expect(folder.getByText("100 B/s · Folder remaining 6s")).toBeVisible();
+  await folder.getByRole("button", { name: "Run in background" }).click();
+  await page.getByRole("button", { name: "Jobs", exact: true }).click();
+  await page.getByRole("button", { name: "View progress", exact: true }).first().click();
+  const unknown = page.locator('[data-progress-job="unknown"]');
+  await expect(unknown.getByText("600 B / —")).toBeVisible();
+  await expect(unknown.getByText("100 B/s · Folder remaining —")).toBeVisible();
+  await expect(unknown.getByLabel("File count progress")).toHaveText("1/3");
+  await expect(unknown.getByRole("status")).toContainText("扫描后文件大小发生变化");
+});
+
 test("multiple progress windows can be dragged and closed independently in compact mode", async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.addInitScript(() => Object.defineProperty(navigator, "languages", { get: () => ["en-US"] }));

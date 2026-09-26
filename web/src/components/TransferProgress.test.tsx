@@ -3,11 +3,28 @@ import { describe, expect, it, vi } from "vitest";
 import { JobEventsStore } from "../jobEvents";
 import type { Job } from "../api/types";
 import { strings } from "../i18n";
-import { TransferProgressWindows } from "./TransferProgress";
+import { TransferDetails, TransferProgressWindows } from "./TransferProgress";
 import { api } from "../api/client";
 
 vi.mock("../api/client", () => ({ api: { cancelJob: vi.fn().mockResolvedValue({}) } }));
 const job: Job = { id: "a", type: "copy", status: "running", actorId: 1, sourceRootId: "local", progressDone: 0, progressTotal: 1, failedCount: 0, cancelRequested: false, errorMessage: "", createdAtUnix: 1, updatedAtUnix: 1, eventVersion: 1, transfer: { phase: "copy", file: "a.txt", bytesDone: 100, bytesTotal: 1000, bytesPerSecond: 100, remainingSeconds: 9, cancelable: true } };
+
+it("shows completed file counts beside folder byte progress while retaining the current file", () => {
+  const transfer = { ...job.transfer!, phase: "download", scope: "folder-1", file: "second.txt", bytesDone: 400, bytesTotal: 1000, percent: 40, filesDone: 22, filesTotal: 266 };
+  const view = render(<TransferDetails job={{ ...job, transfer }} labels={strings["zh-CN"]} />);
+  expect(screen.getByText("下载 · second.txt")).toBeInTheDocument();
+  expect(screen.getByText(/400 B \/ 1000 B/)).toBeInTheDocument();
+  expect(screen.getByText(/40%/)).toBeInTheDocument();
+  expect(screen.getByText(/文件夹剩余/)).toBeInTheDocument();
+  expect(screen.getByText("22/266")).toBeInTheDocument();
+  expect(screen.getByText("22/266").parentElement).toContainElement(screen.getByText(/400 B \/ 1000 B/));
+  view.rerender(<TransferDetails job={{ ...job, transfer: { ...transfer, bytesTotal: 0, percent: undefined, remainingSeconds: undefined } }} labels={strings["zh-CN"]} />);
+  expect(screen.getByText(/400 B \/ —/)).toBeInTheDocument();
+  expect(screen.queryByText(/40%/)).not.toBeInTheDocument();
+  expect(screen.getByText("22/266")).toBeInTheDocument();
+  view.rerender(<TransferDetails job={{ ...job, transfer: { ...transfer, bytesDone: 0, bytesTotal: 0, percent: 100, filesDone: 0, filesTotal: 0 } }} labels={strings["zh-CN"]} />);
+  expect(screen.getByText("0/0")).toBeInTheDocument();
+});
 
 function setup() {
   const store = new JobEventsStore();

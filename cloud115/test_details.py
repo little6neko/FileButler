@@ -60,6 +60,14 @@ class DetailsTests(unittest.TestCase):
     def test_incomplete_page_is_not_a_total(self):
         self.ops.browse = Mock(return_value={"entries": [], "total": 1})
         with self.assertRaises(ProviderError): self.call("details.stats", ["2"])
+    def test_root_statistics_recurse_and_count_exact_bytes(self):
+        pages = {
+            "0": [{"id": "2", "isDirectory": True, "size": 0}],
+            "2": [{"id": "1", "isDirectory": False, "size": 12345}],
+        }
+        self.ops.browse = lambda file_id, offset: {"entries": pages[file_id], "total": len(pages[file_id])}
+        self.ops.client.fs_category_get.side_effect = AssertionError("rounded statistics must not be used")
+        self.assertEqual(self.call("details.stats", ["0"]), {"size": 12345, "allocated": None, "files": 1, "folders": 1})
 
 
 if __name__ == "__main__": unittest.main()

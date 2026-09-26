@@ -9,6 +9,10 @@ import (
 
 // TransferProgress describes the current phase, not an estimate for later phases.
 type TransferProgress struct {
+	Scope            string   `json:"scope,omitempty"`
+	Warning          string   `json:"warning,omitempty"`
+	FilesDone        *int     `json:"filesDone,omitempty"`
+	FilesTotal       *int     `json:"filesTotal,omitempty"`
 	Percent          *float64 `json:"percent,omitempty"`
 	Phase            string   `json:"phase"`
 	File             string   `json:"file"`
@@ -57,7 +61,7 @@ func (s Store) ReportTransfer(ctx context.Context, id string, progress TransferP
 	}
 	now := s.state.currentTime()
 	previous := record.job.Transfer
-	reset := previous == nil || previous.Phase != progress.Phase || previous.File != progress.File || progress.BytesDone < previous.BytesDone
+	reset := previous == nil || previous.Phase != progress.Phase || previous.Scope != progress.Scope || (progress.Scope == "" && previous.File != progress.File) || progress.BytesDone < previous.BytesDone
 	if reset {
 		record.transferSampleAt, record.transferSampleBytes = now, progress.BytesDone
 		record.transferRate = 0

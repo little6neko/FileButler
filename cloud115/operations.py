@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 from urllib.parse import urlsplit, parse_qs
 
 from errors import Canceled, ProviderError
+from download_progress import FolderDownloadProgress
 from batch import BatchOperations
 from file_operations import SharedFileOperations
 from hash_cache import HashCache
@@ -171,8 +172,18 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
                 self.upload_entry(directory, os.path.basename(path), dest, report, path)
             return {"ok": True}
         if method == "download":
+            item = self.info(params["id"])
+            folder_progress = None
+            inventory = None
+            if item["is_dir"]:
+                inventory, total, files_total = self.download_inventory(params["id"], item["name"], report)
+                folder_progress = FolderDownloadProgress(report, item["name"], total, files_total)
+                report = folder_progress
+                folder_progress.emit()
             with open_directory(params["localPath"]) as directory:
-                self.download_entry(params["id"], directory, report, params["localPath"])
+                self.download_entry(params["id"], directory, report, params["localPath"], item=item, inventory=inventory)
+            if folder_progress is not None:
+                folder_progress.finish()
             return {"ok": True}
         if method == "mkdir":
             report(progress_value("waiting", params["name"], cancelable=False))
@@ -286,8 +297,40 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
         check_unchanged()
         self.checked(result)
 
-    def download_entry(self, file_id, directory, report, local_directory=None):
-        item = self.info(file_id)
+    def download_inventory(self, file_id, name, report):
+        # List each directory once after confirmation. Reuse the manifest during
+        # download instead of performing a second recursive listing.
+        inventory, seen = {}, {str(file_id)}
+        pending = [(str(file_id), safe_name(name))]
+        total, files = 0, 0
+        while pending:
+            parent, name = pending.pop()
+            def checkpoint():
+                report(progress_value("statistics", name))
+            checkpoint()
+            entries = []
+            for entry in self.children(parent, checkpoint=checkpoint):
+                checkpoint()
+                child_id = str(entry["id"])
+                child_name = safe_name(entry["name"])
+                if child_id in seen or len(seen) >= 100000:
+                    raise ProviderError("目录层级异常或单项文件过多")
+                seen.add(child_id)
+                entries.append(entry)
+                if entry["isDirectory"]:
+                    pending.append((child_id, child_name))
+                else:
+                    size = int(entry["size"])
+                    if size < 0:
+                        raise ProviderError("115返回了无效的文件大小")
+                    total += size
+                    files += 1
+            inventory[parent] = entries
+        return inventory, total, files
+
+    def download_entry(self, file_id, directory, report, local_directory=None, item=None, inventory=None):
+        if item is None:
+            item = self.info(file_id)
         name = safe_name(item["name"])
         report(progress_value("scan", name))
         if item["is_dir"]:
@@ -295,8 +338,9 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
             os.mkdir(name, mode=0o755, dir_fd=directory)
             child_fd = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=directory)
             try:
-                for child in self.children(file_id):
-                    self.download_entry(child["id"], child_fd, report, os.path.join(local_directory, name) if local_directory else None)
+                children = inventory[str(file_id)] if inventory is not None else self.children(file_id)
+                for child in children:
+                    self.download_entry(child["id"], child_fd, report, os.path.join(local_directory, name) if local_directory else None, inventory=inventory)
             finally:
                 os.close(child_fd)
             return
@@ -331,6 +375,8 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
             os.link(temp, name, src_dir_fd=directory, dst_dir_fd=directory, follow_symlinks=False)
         finally:
             os.unlink(temp, dir_fd=directory)
+        # Count a file only after validation, fsync and exclusive publication.
+        report({**progress_value("download", name, done, total), "fileComplete": True})
         try:
             published = os.stat(name, dir_fd=directory, follow_symlinks=False)
         except OSError:

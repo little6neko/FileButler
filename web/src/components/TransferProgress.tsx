@@ -22,14 +22,19 @@ export function TransferDetails({ job, labels }: { job: Job; labels: UIStrings }
   if (!transfer) return null;
   const zh = labels === strings["zh-CN"];
   const phases: Record<string, string> = zh
-    ? { copy: "复制", scan: "扫描", hash: "校验秒传", upload: "上传", download: "下载", extract: "在线解压", waiting: "等待服务端", "delete-source": "删除源文件" }
-    : { copy: "Copying", scan: "Scanning", hash: "Checking instant upload", upload: "Uploading", download: "Downloading", extract: "Extracting", waiting: "Waiting for server", "delete-source": "Deleting source" };
+    ? { copy: "复制", scan: "扫描", statistics: "正在统计…", hash: "校验秒传", upload: "上传", download: "下载", extract: "在线解压", waiting: "等待服务端", "delete-source": "删除源文件" }
+    : { copy: "Copying", scan: "Scanning", statistics: "Calculating…", hash: "Checking instant upload", upload: "Uploading", download: "Downloading", extract: "Extracting", waiting: "Waiting for server", "delete-source": "Deleting source" };
   const percent = transfer.percent ?? (transfer.bytesTotal > 0 ? Math.min(100, transfer.bytesDone / transfer.bytesTotal * 100) : null);
   return <div className="grid gap-1 text-xs">
     <span className="truncate" title={transfer.file}>{phases[transfer.phase] ?? transfer.phase} · {transfer.file}</span>
-    <Progress aria-label={zh ? "阶段进度" : "Phase progress"} value={percent} />
-    <span>{transfer.percent !== undefined ? `${transfer.percent}%` : `${bytes(transfer.bytesDone)} / ${transfer.bytesTotal > 0 ? bytes(transfer.bytesTotal) : "—"}`}</span>
-    <span>{transfer.bytesPerSecond > 0 ? `${bytes(transfer.bytesPerSecond)}/s` : "—"} · {zh ? "本阶段剩余" : "Phase remaining"} {transfer.remainingSeconds === undefined ? "—" : `${transfer.remainingSeconds}s`}</span>
+    <Progress aria-label={transfer.scope ? (zh ? "文件夹总进度" : "Folder progress") : (zh ? "阶段进度" : "Phase progress")} value={percent} />
+    <div className="flex flex-wrap items-center gap-x-3"><span>{transfer.scope
+      ? `${bytes(transfer.bytesDone)} / ${transfer.bytesTotal > 0 || transfer.percent === 100 ? bytes(transfer.bytesTotal) : "—"}${percent !== null ? ` · ${Number(percent.toFixed(1))}%` : ""}`
+      : transfer.percent !== undefined ? `${transfer.percent}%` : `${bytes(transfer.bytesDone)} / ${transfer.bytesTotal > 0 ? bytes(transfer.bytesTotal) : "—"}`}</span>
+      {transfer.filesDone !== undefined && transfer.filesTotal !== undefined ? <span aria-label={zh ? "文件数进度" : "File count progress"}>{transfer.filesDone}/{transfer.filesTotal}</span> : null}
+    </div>
+    <span>{transfer.bytesPerSecond > 0 ? `${bytes(transfer.bytesPerSecond)}/s` : "—"} · {transfer.scope ? (zh ? "文件夹剩余" : "Folder remaining") : (zh ? "本阶段剩余" : "Phase remaining")} {transfer.remainingSeconds === undefined ? "—" : `${transfer.remainingSeconds}s`}</span>
+    {transfer.warning ? <p role="status" className="whitespace-pre-wrap break-words text-amber-700">{transfer.warning}</p> : null}
   </div>;
 }
 

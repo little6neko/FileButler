@@ -116,7 +116,7 @@ it("keeps the breadcrumb row compact with matching pane dividers", () => {
 });
 
 it("keeps the compact root selector inside its pane header", () => {
-  expect(rule(".pane-header")).toContain("grid-template-columns: auto auto 132px minmax(120px, 1fr) auto;");
+  expect(rule(".pane-header")).toContain("grid-template-columns: auto auto 132px minmax(120px, 1fr);");
   expect(rule(".pane-navigation")).toContain("display: inline-flex;");
   expect(rule(".pane-navigation")).toContain("grid-column: 2;");
 

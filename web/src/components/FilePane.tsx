@@ -374,6 +374,16 @@ export function FilePane({
             onClick={() => navigation?.onUp()}
             icon={<ArrowUp />}
           />
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={labels.refreshLabel(title)}
+            title={labels.refresh}
+            onClick={onRefresh}
+          >
+            <RefreshCw />
+          </Button>
         </div>
         {pathRootControl ?? <LocationMenu
           label={labels.rootLabel(title)}
@@ -413,16 +423,6 @@ export function FilePane({
             </div>
           ) : null}
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon-sm"
-          aria-label={labels.refreshLabel(title)}
-          title={labels.refresh}
-          onClick={onRefresh}
-        >
-          <RefreshCw />
-        </Button>
       </div>
       <nav className="path-segments" aria-label={`${title} segments`}>
         <div className="path-segments-content" ref={pathSegmentsContentRef}>

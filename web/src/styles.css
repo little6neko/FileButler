@@ -1123,7 +1123,7 @@ body {
 .pane-header {
   min-height: 0;
   display: grid;
-  grid-template-columns: auto auto 132px minmax(120px, 1fr) auto;
+  grid-template-columns: auto auto 132px minmax(120px, 1fr);
   gap: 8px;
   align-items: center;
   padding: 0 10px;
@@ -1135,7 +1135,7 @@ body {
 }
 
 .pane-header[data-root-selector="hidden"] {
-  grid-template-columns: auto 132px minmax(120px, 1fr) auto;
+  grid-template-columns: auto 132px minmax(120px, 1fr);
 }
 
 .pane-header[data-root-selector="hidden"] > strong:first-child {

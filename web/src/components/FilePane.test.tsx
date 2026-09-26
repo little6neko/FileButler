@@ -196,6 +196,26 @@ it.each([
   expect(screen.getByRole("button", { name: accessibleName })).toHaveAttribute("title", tooltip);
 });
 
+it.each([
+  { title: "Local", showRootSelector: false },
+  { title: "115", provider: "cloud115" as const, showRootSelector: false },
+  { title: "Left pane", showRootSelector: true },
+  { title: "Right pane", showRootSelector: true },
+])("places refresh fourth in the borderless navigation for $title", async (props) => {
+  const onRefresh = vi.fn();
+  const { container } = renderPane({ ...props, onRefresh });
+  const navigation = container.querySelector(".pane-navigation") as HTMLElement;
+  const buttons = within(navigation).getAllByRole("button");
+  expect(buttons).toHaveLength(4);
+  const refresh = screen.getByRole("button", { name: `${props.title} refresh` });
+  expect(buttons[3]).toBe(refresh);
+  expect(refresh).toHaveAttribute("data-variant", "ghost");
+  expect(refresh).toHaveAttribute("title", "Refresh");
+  expect(refresh).toBeEnabled();
+  await userEvent.click(refresh);
+  expect(onRefresh).toHaveBeenCalledOnce();
+});
+
 it("displays non-root paths with a leading slash", () => {
   renderPane({ currentPath: "photos" });
 

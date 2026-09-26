@@ -51,6 +51,66 @@ class FakeOperations(CloudOperations):
 
 
 class OperationsTests(unittest.TestCase):
+    def test_move_checks_original_id_without_listing_destination_after_mutation(self):
+        for is_directory in (False, True):
+            for destination in ("0", "9"):
+                with self.subTest(directory=is_directory, destination=destination):
+                    client = Mock()
+                    operations = FakeOperations(client)
+                    item = {"id": 1, "name": "target", "is_dir": is_directory, "parent_id": 2}
+                    inspected = []
+                    def info(file_id):
+                        inspected.append(str(file_id))
+                        return dict(item) if str(file_id) == "1" else {"parent_id": 0, "is_dir": True}
+                    def browse(parent, offset=0, checkpoint=lambda: None):
+                        self.assertEqual(parent, destination)
+                        if client.fs_move.called:
+                            raise ProviderError("目录在读取时发生变化，请重新加载")
+                        return {"entries": [], "total": 0, "offset": offset}
+                    def move(file_id, pid, **kwargs):
+                        self.assertEqual(file_id, 1)
+                        self.assertEqual(pid, destination)
+                        item["parent_id"] = int(pid)
+                        return {"state": True}
+                    client.fs_move.side_effect = move
+                    with patch.object(operations, "info", side_effect=info), patch.object(operations, "browse", side_effect=browse) as listing:
+                        result = operations.operation("move", {"id": "1", "destId": destination}, lambda p: None)
+                    self.assertEqual(result, {"ok": True})
+                    self.assertEqual(listing.call_count, 1)  # Keep the pre-move name check.
+                    self.assertEqual(inspected.count("1"), 2)
+                    self.assertEqual(inspected[-1], "1")
+                    client.fs_move.assert_called_once_with(1, pid=destination, timeout=30)
+
+    def test_move_rejects_success_response_when_original_id_still_has_old_parent(self):
+        client = Mock()
+        client.fs_move.return_value = {"state": True}
+        operations = FakeOperations(client)
+        item = {"id": "1", "name": "target", "is_dir": False, "parent_id": "2"}
+        with patch.object(operations, "info", return_value=item), patch.object(operations, "browse", return_value={"entries": [], "total": 0}):
+            with self.assertRaisesRegex(ProviderError, "115尚未确认移动完成"):
+                operations.operation("move", {"id": "1", "destId": "9"}, lambda p: None)
+
+    def test_move_name_conflict_prevents_remote_mutation(self):
+        client = Mock()
+        operations = FakeOperations(client)
+        item = {"id": "1", "name": "target", "is_dir": False, "parent_id": "2"}
+        page = {"entries": [{"id": "3", "name": "target"}], "total": 1}
+        with patch.object(operations, "info", return_value=item), patch.object(operations, "browse", return_value=page):
+            with self.assertRaisesRegex(ProviderError, "目标已存在"):
+                operations.operation("move", {"id": "1", "destId": "9"}, lambda p: None)
+        client.fs_move.assert_not_called()
+
+    def test_copy_still_confirms_new_entry_in_destination(self):
+        client = Mock()
+        client.fs_copy.return_value = {"state": True}
+        operations = FakeOperations(client)
+        item = {"id": "1", "name": "target", "is_dir": False, "parent_id": "2"}
+        pages = [{"entries": [], "total": 0}, {"entries": [{"id": "3", "name": "target"}], "total": 1}]
+        with patch.object(operations, "info", return_value=item), patch.object(operations, "browse", side_effect=pages) as listing:
+            self.assertEqual(operations.operation("copy", {"id": "1", "destId": "9"}, lambda p: None), {"ok": True})
+            self.assertEqual(listing.call_count, 2)
+        client.fs_copy.assert_called_once_with("1", pid="9", timeout=30)
+
     def test_preview_url_never_fetches_bytes_or_exposes_headers(self):
         class URL(str):
             headers = {"User-Agent": "Browser-UA"}

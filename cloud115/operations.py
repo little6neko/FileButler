@@ -215,9 +215,13 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
                 self.copy_directory(item, dest, report)
                 return {"ok": True}
             self.checked(getattr(client, "fs_" + method)(item["id"], pid=dest, timeout=30))
-            self.find_child(dest, name)
-            if method == "move" and str(self.info(item["id"])["parent_id"]) != str(dest):
-                raise ProviderError("115尚未确认移动完成，请刷新后核实")
+            if method == "move":
+                # Moving preserves the ID. Check it directly rather than paging
+                # through a destination listing that may still be changing.
+                if str(self.info(item["id"])["parent_id"]) != str(dest):
+                    raise ProviderError("115尚未确认移动完成，请刷新后核实")
+            else:
+                self.find_child(dest, name)
         elif method == "delete":
             self.invalidate_cloud()
             self.checked(client.fs_delete(item["id"], timeout=30))

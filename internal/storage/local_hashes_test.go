@@ -220,6 +220,97 @@ func TestLocalCacheFollowsRenameOnMergerFS(t *testing.T) {
 	}
 }
 
+func TestCachedSHA1FollowsMovesOnMergerFS(t *testing.T) {
+	mount := os.Getenv("FILEBUTLER_TEST_FUSE_ROOT")
+	if mount == "" {
+		t.Skip("temporary mergerfs mount required")
+	}
+	for _, direction := range []string{"same-filesystem", "into-mergerfs", "out-of-mergerfs"} {
+		for _, directory := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/directory=%t", direction, directory), func(t *testing.T) {
+				fuseDir, err := os.MkdirTemp(mount, "move-hash-")
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer os.RemoveAll(fuseDir)
+				a, b := fuseDir, fuseDir
+				if direction != "same-filesystem" {
+					other, err := os.MkdirTemp("/dev/shm", "fb-mergerfs-move-")
+					if err != nil {
+						t.Skip(err)
+					}
+					defer os.RemoveAll(other)
+					if direction == "into-mergerfs" {
+						a = other
+					} else {
+						b = other
+					}
+				}
+				db, err := storage.Open(filepath.Join(t.TempDir(), "db"))
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer db.Close()
+				resolver := roots.NewResolver([]roots.Root{{ID: "a", Path: a}, {ID: "b", Path: b}})
+				destRoot := "b"
+				if a == b {
+					resolver = roots.NewResolver([]roots.Root{{ID: "a", Path: a}})
+					destRoot = "a"
+				}
+				leaf := ""
+				if directory {
+					leaf = "nested/file.txt"
+					if err := os.MkdirAll(filepath.Join(a, "source", "nested"), 0700); err != nil {
+						t.Fatal(err)
+					}
+				}
+				source := filepath.Join(a, "source", leaf)
+				if err := os.WriteFile(source, []byte("data"), 0600); err != nil {
+					t.Fatal(err)
+				}
+				// A same-filesystem move must not read the file to copy or hash it.
+				if a == b {
+					if err := os.Chmod(source, 0000); err != nil {
+						t.Fatal(err)
+					}
+				}
+				digest := seedLocalHash(t, db, resolver, source, "data")
+				before, err := storage.FreshLocalInfo(source)
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = (ops.Executor{Resolver: resolver, Cache: db}).Execute(context.Background(), ops.PlanItem{
+					Operation: ops.OpMove, SourceRoot: "a", SourcePath: "source", DestRoot: destRoot, DestPath: "dest",
+				})
+				if err != nil {
+					t.Fatal(err)
+				}
+				assertLocalHash(t, db, resolver, destRoot, filepath.Join("dest", leaf), digest)
+				if _, err := os.Lstat(filepath.Join(a, "source")); !errors.Is(err, os.ErrNotExist) {
+					t.Fatalf("source remains: %v", err)
+				}
+				after, err := storage.FreshLocalInfo(filepath.Join(b, "dest", leaf))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if a == b && !os.SameFile(before, after) {
+					t.Fatal("same-filesystem move copied the file")
+				}
+				if a != b {
+					body, err := os.ReadFile(filepath.Join(b, "dest", leaf))
+					if err != nil || string(body) != "data" {
+						t.Fatalf("destination data=%q err=%v", body, err)
+					}
+				}
+				var stale int
+				if err := db.DB.QueryRow(`SELECT count(*) FROM file_hashes WHERE path LIKE '.filebutler-move-%' OR path='source' OR path LIKE 'source/%'`).Scan(&stale); err != nil || stale != 0 {
+					t.Fatalf("stale source/staging hashes=%d err=%v", stale, err)
+				}
+			})
+		}
+	}
+}
+
 func TestReplacementDuringRenameCannotInheritOriginalDigest(t *testing.T) {
 	dir := t.TempDir()
 	db, err := storage.Open(filepath.Join(t.TempDir(), "db"))

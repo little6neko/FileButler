@@ -1,6 +1,7 @@
 import type { Entry, LinkRequest, OpsRequest } from "./api/types";
 import type { DragOperation } from "./fileDrag";
 import type { AppClipboard } from "./appClipboard";
+import type { ExtractTarget } from "./localExtract";
 
 type WindowDialogBase = {
   dialogId: string;
@@ -37,6 +38,7 @@ export type LinkWindowDialog = WindowDialogBase & {
 };
 
 export type WindowDialogState =
+  | (WindowDialogBase & { kind: "extract"; target: ExtractTarget })
   | MkdirWindowDialog
   | SingleRenameWindowDialog
   | OperationWindowDialog

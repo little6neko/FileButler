@@ -21,6 +21,7 @@ vi.mock("../api/client", async (importOriginal) => {
     textSave: vi.fn(),
     opsDryRun: vi.fn(),
     opsCreateJob: vi.fn(),
+    extractCreateJob: vi.fn(),
     renamePreview: vi.fn(),
     renameCreateJob: vi.fn(),
     singleRenameCreateJob: vi.fn(),
@@ -133,6 +134,7 @@ beforeEach(() => {
   vi.mocked(api.opsDryRun).mockReset();
   vi.mocked(api.opsDryRun).mockResolvedValue({ hasConflict: false, items: [] });
   vi.mocked(api.opsCreateJob).mockReset();
+  vi.mocked(api.extractCreateJob).mockReset();
   vi.mocked(api.renamePreview).mockReset();
   vi.mocked(api.renamePreview).mockResolvedValue({ hasConflict: false, items: [] });
   vi.mocked(api.renameCreateJob).mockReset();
@@ -1465,8 +1467,35 @@ it("orders full-mode toolbar and context-menu actions", async () => {
   expect(within(menu).getAllByRole("menuitem").map((item) => item.dataset.actionId)).toEqual([
     "openInNewWindow", "clipboardCopy", "clipboardCut", "clipboardPaste",
     "selectLinkSource",
-    "rename", "powerRename", "superRename", "mkdir", "delete", "details",
+    "rename", "powerRename", "superRename", "mkdir", "extract", "delete", "details",
   ]);
+});
+
+it.each(["desktop", "compact"] as const)("opens local extraction from double click and more in %s mode", async (mode) => {
+  vi.mocked(api.browse).mockResolvedValue([mediaEntry("photos.zip")]);
+  vi.mocked(api.extractCreateJob).mockResolvedValue({ id: "extract-job" });
+  const { container } = render(<FileWorkspace initialMode={mode} persistMode={false} />);
+  let scope: HTMLElement;
+  if (mode === "desktop") {
+    await userEvent.dblClick(screen.getByRole("button", { name: "Open File Manager" }));
+    scope = container.querySelector<HTMLElement>(".desktop-window")!;
+    await userEvent.dblClick(within(scope).getByRole("button", { name: /Source/ }));
+  } else scope = await screen.findByRole("region", { name: "Left pane" });
+  await userEvent.dblClick(await within(scope).findByText("photos.zip"));
+  let dialog = await screen.findByRole("dialog", { name: "Extract archive" });
+  if (mode === "desktop") expect(scope).toContainElement(dialog);
+  await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  const checkbox = within(scope).getByLabelText<HTMLInputElement>("Select photos.zip");
+  if (!checkbox.checked && checkbox.getAttribute("aria-checked") !== "true") await userEvent.click(checkbox);
+  const toolbar = mode === "desktop" ? within(scope).getByRole("navigation", { name: "File actions" }) : screen.getByRole("navigation", { name: "File actions" });
+  await userEvent.click(within(toolbar).getByRole("button", { name: "More" }));
+  const extractMenu = await screen.findByRole("menuitem", { name: "Extract archive" });
+  expect(extractMenu).not.toHaveAttribute("aria-disabled", "true");
+  await userEvent.click(extractMenu);
+  dialog = await screen.findByRole("dialog", { name: "Extract archive" });
+  await userEvent.click(within(dialog).getByRole("button", { name: "Confirm" }));
+  await waitFor(() => expect(api.extractCreateJob).toHaveBeenCalledWith({ sourceRoot: "source", sourcePath: "photos.zip", destRoot: "source", destPath: ".", name: "photos", password: "" }));
+  expect(screen.queryByRole("dialog", { name: "Extract archive" })).not.toBeInTheDocument();
 });
 
 it("uses the compact context workflow without duplicating direct link commands", async () => {
@@ -1494,7 +1523,7 @@ it("uses the compact context workflow without duplicating direct link commands",
     "copy", "move",
     "clipboardCopy", "clipboardCut", "clipboardPaste",
     "selectLinkSource", "cancelLinkSource", "createLinkAs",
-    "rename", "powerRename", "superRename", "mkdir", "delete", "details",
+    "rename", "powerRename", "superRename", "mkdir", "extract", "delete", "details",
   ]);
   expect(parentIds).not.toContain("hardlink");
   expect(parentIds).not.toContain("symlink");

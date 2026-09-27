@@ -8,7 +8,7 @@ import { activeJobStatuses, type JobEventsStore } from "../jobEvents";
 import { strings, type UIStrings } from "../i18n";
 import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
-import { hasTransferProgress } from "../transferProgress";
+import { hasTransferProgress, dismissCompletedProgress } from "../transferProgress";
 
 function bytes(value: number) {
   const units = ["B", "KiB", "MiB", "GiB", "TiB"];
@@ -26,7 +26,7 @@ export function TransferDetails({ job, labels }: { job: Job; labels: UIStrings }
     : { copy: "Copying", scan: "Scanning", statistics: "Calculating…", hash: "Checking instant upload", upload: "Uploading", download: "Downloading", extract: "Extracting", waiting: "Waiting for server", "delete-source": "Deleting source" };
   const percent = transfer.percent ?? (transfer.bytesTotal > 0 ? Math.min(100, transfer.bytesDone / transfer.bytesTotal * 100) : null);
   return <div className="grid gap-1 text-xs">
-    <span className="truncate" title={transfer.file}>{phases[transfer.phase] ?? transfer.phase} · {transfer.file}</span>
+    <span className="truncate" title={transfer.file}>{transfer.phase === "extract" && job.sourceRootId !== "@115" ? (zh ? "解压" : "Extracting") : phases[transfer.phase] ?? transfer.phase} · {transfer.file}</span>
     <Progress aria-label={transfer.scope ? (zh ? "文件夹总进度" : "Folder progress") : (zh ? "阶段进度" : "Phase progress")} value={percent} />
     <div className="flex flex-wrap items-center gap-x-3"><span>{transfer.scope
       ? `${bytes(transfer.bytesDone)} / ${transfer.bytesTotal > 0 || transfer.percent === 100 ? bytes(transfer.bytesTotal) : "—"}${percent !== null ? ` · ${Number(percent.toFixed(1))}%` : ""}`
@@ -40,7 +40,7 @@ export function TransferDetails({ job, labels }: { job: Job; labels: UIStrings }
 
 export function TransferProgressWindows({ store, labels }: { store: JobEventsStore; labels: UIStrings }) {
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  const visible = state.jobs.filter((job) => state.progressJobIDs.includes(job.id) && hasTransferProgress(job) && !["completed", "canceled"].includes(job.status));
+  const visible = state.jobs.filter((job) => state.progressJobIDs.includes(job.id) && hasTransferProgress(job) && !dismissCompletedProgress(job));
   const [orders, setOrders] = useState<Record<string, number>>({});
   const unopened = state.progressJobIDs.filter((id) => visible.some((job) => job.id === id) && orders[id] === undefined);
   if (unopened.length) {
@@ -102,7 +102,7 @@ function TransferWindow({ job, store, labels, viewport, order, onFocus }: { job:
     {active && job.transfer?.cancelable === false ? <p className="text-xs">{zh ? "当前服务端阶段不可取消" : "This server phase cannot be canceled"}</p> : null}
     <footer className="flex justify-end gap-2">
       <Button variant="outline" disabled={!active || canceling || job.status === "cancel_requested" || job.transfer?.cancelable === false} onClick={() => void cancel()}>{canceling || job.status === "cancel_requested" ? (zh ? "正在取消" : "Canceling") : (zh ? "取消" : "Cancel")}</Button>
-      <Button onClick={() => store.closeProgress(job.id)}>{zh ? "后台运行" : "Run in background"}</Button>
+      <Button onClick={() => store.closeProgress(job.id)}>{active ? (zh ? "后台运行" : "Run in background") : labels.closeWindow}</Button>
     </footer>
     </div>
   </section>;

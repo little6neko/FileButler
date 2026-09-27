@@ -9,6 +9,18 @@ import { api } from "../api/client";
 vi.mock("../api/client", () => ({ api: { cancelJob: vi.fn().mockResolvedValue({}) } }));
 const job: Job = { id: "a", type: "copy", status: "running", actorId: 1, sourceRootId: "local", progressDone: 0, progressTotal: 1, failedCount: 0, cancelRequested: false, errorMessage: "", createdAtUnix: 1, updatedAtUnix: 1, eventVersion: 1, transfer: { phase: "copy", file: "a.txt", bytesDone: 100, bytesTotal: 1000, bytesPerSecond: 100, remainingSeconds: 9, cancelable: true } };
 
+it("retains local extraction cancellation warnings until dismissed", () => {
+  const store = new JobEventsStore();
+  const extraction: Job = { ...job, type: "extract", transfer: { ...job.transfer!, phase: "extract" } };
+  store.handleSnapshot({ runtimeId: "r", cursor: 1, reset: false, jobs: [extraction] });
+  store.registerCreatedJob("a");
+  render(<TransferProgressWindows store={store} labels={strings["zh-CN"]} />);
+  act(() => store.handleChanged({ runtimeId: "r", cursor: 2, job: { ...extraction, eventVersion: 2, status: "canceled", errorMessage: "可能保留部分解压文件：./photos" } }));
+  expect(screen.getByRole("alert")).toHaveTextContent("可能保留部分解压文件");
+  expect(screen.getByText("解压 · a.txt")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "后台运行" })).not.toBeInTheDocument();
+});
+
 it("shows completed file counts beside folder byte progress while retaining the current file", () => {
   const transfer = { ...job.transfer!, phase: "download", scope: "folder-1", file: "second.txt", bytesDone: 400, bytesTotal: 1000, percent: 40, filesDone: 22, filesTotal: 266 };
   const view = render(<TransferDetails job={{ ...job, transfer }} labels={strings["zh-CN"]} />);

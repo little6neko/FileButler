@@ -18,6 +18,8 @@ import type {
   TextSaveResult,
 } from "./types";
 
+import type { ExtractRequest } from "../localExtract";
+
 export class APIError extends Error {
   code: string;
   status: number;
@@ -51,6 +53,8 @@ async function request<T>(
 }
 
 export const api = {
+  extractCreateJob: (payload: ExtractRequest) =>
+    request<{ id: string }>("/api/extract/jobs", { method: "POST", body: JSON.stringify(payload) }),
   initStatus: () => request<{ needsInitialization: boolean }>("/api/init/status"),
   createAdmin: (username: string, password: string) =>
     request<{ id: number; username: string }>("/api/init/admin", {

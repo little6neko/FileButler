@@ -1,4 +1,5 @@
 import type { Job, JobEvent, JobSnapshot } from "./api/types";
+import { dismissCompletedProgress } from "./transferProgress";
 
 export type JobConnectionState = "connecting" | "connected" | "reconnecting";
 export type ProgressAnchor = { x: number; y: number };
@@ -116,7 +117,7 @@ export class JobEventsStore {
 
   openProgress(jobID: string) {
     const job = this.jobsByID.get(jobID);
-    if (job && ["completed", "canceled"].includes(job.status)) return;
+    if (job && dismissCompletedProgress(job)) return;
     if (this.state.progressJobIDs.includes(jobID)) return;
     this.state = { ...this.state, progressJobIDs: [...this.state.progressJobIDs, jobID] };
     this.emit();
@@ -208,7 +209,7 @@ export class JobEventsStore {
       ...this.state,
       progressJobIDs: this.state.progressJobIDs.filter((id) => {
         const job = this.jobsByID.get(id);
-        return !job || !["completed", "canceled"].includes(job.status);
+        return !job || !dismissCompletedProgress(job);
       }),
       jobs,
       activeCount: jobs.filter((job) => activeJobStatuses.has(job.status)).length,

@@ -830,7 +830,7 @@ export const strings: Record<Language, UIStrings> = {
         rename: "重命名",
         upload: "上传",
         download: "下载",
-        extract: "在线解压",
+        extract: "解压",
         power_rename: "PowerRename",
         super_rename: "SuperRename",
       })[type] ?? type,

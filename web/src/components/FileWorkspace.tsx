@@ -20,7 +20,9 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { Cloud, FileCode2, FileImage, FileVideo, Files, ScanText, WandSparkles } from "lucide-react";
+import { Cloud, FileCode2, FileImage, FileVideo, Files, FolderArchive, ScanText, WandSparkles } from "lucide-react";
+import { ExtractContent, ExtractDialog } from "./ExtractDialog";
+import { archiveDirectoryName, isLocalArchive, type ExtractRequest, type ExtractTarget } from "../localExtract";
 import { Cloud115Window, type CloudFileController } from "./Cloud115Window";
 import { Cloud115Preview, type CloudPreviewInstance } from "./Cloud115Preview";
 import { mediaKindForPath } from "../media";
@@ -296,6 +298,7 @@ export function FileWorkspace({
   const [detailTargets, setDetailTargets] = useState<Record<string, DetailsTarget>>({});
   const detailsCounter = useRef(0);
   const [mkdirSessionId, setMkdirSessionId] = useState<string | null>(null);
+  const [extractTarget, setExtractTarget] = useState<ExtractTarget | null>(null);
   const [singleRenameSessionId, setSingleRenameSessionId] = useState<string | null>(null);
   const [windowDialogs, setWindowDialogsState] = useState<WindowDialogs>({});
   const windowDialogsRef = useRef(windowDialogs);
@@ -851,6 +854,11 @@ export function FileWorkspace({
       ) : null}
       {mode === "compact" && compactTextEditorSession ? renderCompactTextEditorPrompt(compactTextEditorSession) : null}
       {mkdirSessionId ? renderMkdirDialog(mkdirSessionId) : null}
+      {extractTarget ? <ExtractDialog target={extractTarget} roots={roots} labels={labels} onClose={() => setExtractTarget(null)} onSubmit={async (request) => {
+        const job = await api.extractCreateJob(request);
+        setExtractTarget(null);
+        handleExtractJob(job.id, request);
+      }} /> : null}
       {singleRenameSessionId ? renderSingleRenameDialog(singleRenameSessionId) : null}
       {powerRenameSessionId ? renderPowerRenameDialog(powerRenameSessionId) : null}
       {mode === "compact" && compactSuperRenameTarget ? (
@@ -1239,6 +1247,14 @@ export function FileWorkspace({
     const titleId = `window-dialog-title-${dialog.dialogId}`;
     const close = () => dismissWindowDialog(dialog);
 
+    if (dialog.kind === "extract") return <WindowDialogLayer labelledBy={titleId} onClose={close}>
+      <ExtractContent titleId={titleId} target={dialog.target} roots={roots} labels={labels} onClose={close} onSubmit={async (request) => {
+        const job = await api.extractCreateJob(request);
+        dismissWindowDialog(dialog);
+        handleExtractJob(job.id, request, dialog.windowId);
+      }} />
+    </WindowDialogLayer>;
+
     if (dialog.kind === "mkdir") {
       return (
         <WindowDialogLayer labelledBy={titleId} onClose={close}>
@@ -1483,6 +1499,9 @@ export function FileWorkspace({
         : [];
     const targetPath = toolbar ? (selectedCount === 1 ? session?.selectionStore.getOrderedPaths()[0] : null) : contextTargetsRef.current[sessionId] ?? null;
     const targetEntry = session?.entries.find((entry) => entry.relativePath === targetPath);
+    const archive = session?.entries.find((entry) => entry.relativePath === session.selectionStore.getOrderedPaths()[0]);
+    const extractAction: FileContextAction = { kind: "command", id: "extract", label: labels === strings["zh-CN"] ? "解压" : "Extract archive", icon: FolderArchive, disabled: !locationReady || selectedCount !== 1 || !isLocalArchive(archive), run: () => { if (archive) openExtract(sessionId, archive); } };
+    const actionsWithExtraction = baseActions.flatMap((action) => action.id === "delete" ? [extractAction, action] : [action]);
     const detailAction: FileContextAction = { kind: "command", id: "details", label: labels.details.title, icon: Info, separatorBefore: true, disabled: !locationReady, run: () => {
       if (session?.location.kind !== "directory") return;
       const location = session.location;
@@ -1530,7 +1549,7 @@ export function FileWorkspace({
     });
     if (compactPane) {
       const transferActions = baseActions.filter((action) => action.id === "copy" || action.id === "move");
-      const ordinaryActions = baseActions.filter((action) => !["copy", "move", "hardlink", "symlink"].includes(action.id));
+      const ordinaryActions = actionsWithExtraction.filter((action) => !["copy", "move", "hardlink", "symlink"].includes(action.id));
       const compactClipboardActions = clipboardActions
         .filter((action) => action.id !== "openInNewWindow")
         .map((action, index) => index === 0 ? { ...action, separatorBefore: true } : action);
@@ -1545,7 +1564,7 @@ export function FileWorkspace({
     return [
       ...clipboardActions,
       ...linkActions,
-      ...baseActions.map((action, index) => index === 0 ? { ...action, separatorBefore: true } : action),
+      ...actionsWithExtraction.map((action, index) => index === 0 ? { ...action, separatorBefore: true } : action),
       detailAction,
     ];
   }
@@ -2293,6 +2312,7 @@ export function FileWorkspace({
     setLinkPreviewState(null);
     setMediaPreview(null);
     setMkdirSessionId(null);
+    setExtractTarget(null);
     setSingleRenameSessionId(null);
     setPowerRenameSessionId(null);
     setCompactSuperRenameTarget(null);
@@ -2373,7 +2393,23 @@ export function FileWorkspace({
     setMediaPreview(snapshot);
   }
 
+  function handleExtractJob(id: string, request: ExtractRequest, windowId?: string) {
+    // Use the existing destination-centering logic without adding extraction to
+    // the copy/move preview request model.
+    handleJobCreated(id, windowId, { type: "copy", sourceRoot: request.sourceRoot, sources: [request.sourcePath], destRoot: request.destRoot, destPath: request.destPath });
+  }
+
+  function openExtract(sessionId: string, entry: Entry) {
+    const session = sessionsRef.current[sessionId];
+    if (!session || session.location.kind !== "directory" || !isLocalArchive(entry)) return;
+    const target: ExtractTarget = { sourceRoot: session.location.rootId, sourcePath: entry.relativePath, destRoot: session.location.rootId, destPath: session.location.path, name: archiveDirectoryName(entry.name) };
+    const window = windowStateRef.current.windows.find((candidate) => isFileWindow(candidate) && candidate.sessionId === sessionId);
+    if (mode === "desktop" && window) openDialogForWindow({ kind: "extract", windowId: window.id, dialogId: nextDialogId(), target });
+    else setExtractTarget(target);
+  }
+
   function openFile(sessionId: string, entry: Entry) {
+    if (isLocalArchive(entry)) { openExtract(sessionId, entry); return; }
     const openKind = fileOpenKind(entry);
     if (openKind.kind === "directory") {
       if (openKind.target) {

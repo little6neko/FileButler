@@ -9,6 +9,7 @@ import (
 	"github.com/little6neko/filebutler/internal/browser"
 	"github.com/little6neko/filebutler/internal/cloud115"
 	"github.com/little6neko/filebutler/internal/config"
+	"github.com/little6neko/filebutler/internal/extract"
 	"github.com/little6neko/filebutler/internal/jobs"
 	"github.com/little6neko/filebutler/internal/links"
 	"github.com/little6neko/filebutler/internal/ops"
@@ -20,6 +21,7 @@ import (
 )
 
 func main() {
+	extract.RunHelper()
 	configPath := flag.String("config", "configs/filebutler.example.yaml", "path to config file")
 	flag.Parse()
 

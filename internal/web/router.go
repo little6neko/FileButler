@@ -9,6 +9,7 @@ import (
 	"github.com/little6neko/filebutler/internal/cloud115"
 	"github.com/little6neko/filebutler/internal/config"
 	"github.com/little6neko/filebutler/internal/details"
+	"github.com/little6neko/filebutler/internal/extract"
 	"github.com/little6neko/filebutler/internal/jobs"
 	"github.com/little6neko/filebutler/internal/links"
 	"github.com/little6neko/filebutler/internal/ops"
@@ -73,6 +74,7 @@ func NewRouter(deps Deps) http.Handler {
 		protected.Put("/api/text", textSaveHandler(textService))
 		protected.Post("/api/ops/dry-run", ops.DryRunHandler(deps.OpsPlanner))
 		protected.Post("/api/ops/jobs", ops.CreateJobHandler(deps.OpsPlanner, deps.JobStore, deps.OpsRunner))
+		protected.Post("/api/extract/jobs", extract.Handler(extract.Service{Roots: deps.Roots}, deps.JobStore))
 		protected.Post("/api/rename/preview", rename.PreviewHandler(deps.Browser))
 		protected.Post("/api/rename/jobs", rename.CreateJobHandler(deps.Browser, deps.JobStore, deps.RenameRunner))
 		protected.Post("/api/rename/single/jobs", rename.SingleRenameCreateJobHandler(deps.Browser, deps.JobStore, deps.RenameRunner))

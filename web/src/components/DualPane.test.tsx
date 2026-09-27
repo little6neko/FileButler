@@ -447,9 +447,9 @@ it("clears selection on whitespace but keeps every action visible", async () => 
   const items = within(menu).getAllByRole("menuitem");
   expect(items.map((item) => item.dataset.actionId)).toEqual([
     "copy", "move",
-    "clipboardCopy", "clipboardCut", "clipboardPaste",
+    "clipboardCopy", "clipboardCut", "clipboardPaste", "extract",
     "selectLinkSource",
-    "rename", "powerRename", "superRename", "mkdir", "extract", "delete", "details",
+    "rename", "powerRename", "superRename", "mkdir", "delete", "details",
   ]);
   expect(items.find((item) => item.dataset.actionId === "mkdir")).not.toHaveAttribute("aria-disabled", "true");
   expect(items.find((item) => item.dataset.actionId === "superRename")).not.toHaveAttribute("aria-disabled", "true");

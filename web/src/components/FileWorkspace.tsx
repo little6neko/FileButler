@@ -1501,7 +1501,6 @@ export function FileWorkspace({
     const targetEntry = session?.entries.find((entry) => entry.relativePath === targetPath);
     const archive = session?.entries.find((entry) => entry.relativePath === session.selectionStore.getOrderedPaths()[0]);
     const extractAction: FileContextAction = { kind: "command", id: "extract", label: labels === strings["zh-CN"] ? "解压" : "Extract archive", icon: FolderArchive, disabled: !locationReady || selectedCount !== 1 || !isLocalArchive(archive), run: () => { if (archive) openExtract(sessionId, archive); } };
-    const actionsWithExtraction = baseActions.flatMap((action) => action.id === "delete" ? [extractAction, action] : [action]);
     const detailAction: FileContextAction = { kind: "command", id: "details", label: labels.details.title, icon: Info, separatorBefore: true, disabled: !locationReady, run: () => {
       if (session?.location.kind !== "directory") return;
       const location = session.location;
@@ -1549,13 +1548,14 @@ export function FileWorkspace({
     });
     if (compactPane) {
       const transferActions = baseActions.filter((action) => action.id === "copy" || action.id === "move");
-      const ordinaryActions = actionsWithExtraction.filter((action) => !["copy", "move", "hardlink", "symlink"].includes(action.id));
+      const ordinaryActions = baseActions.filter((action) => !["copy", "move", "hardlink", "symlink"].includes(action.id));
       const compactClipboardActions = clipboardActions
         .filter((action) => action.id !== "openInNewWindow")
         .map((action, index) => index === 0 ? { ...action, separatorBefore: true } : action);
       return [
         ...transferActions,
         ...compactClipboardActions,
+        extractAction,
         ...linkActions,
         ...ordinaryActions,
         detailAction,
@@ -1563,8 +1563,9 @@ export function FileWorkspace({
     }
     return [
       ...clipboardActions,
+      extractAction,
       ...linkActions,
-      ...actionsWithExtraction.map((action, index) => index === 0 ? { ...action, separatorBefore: true } : action),
+      ...baseActions.map((action, index) => index === 0 ? { ...action, separatorBefore: true } : action),
       detailAction,
     ];
   }

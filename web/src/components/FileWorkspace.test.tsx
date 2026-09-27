@@ -1465,10 +1465,11 @@ it("orders full-mode toolbar and context-menu actions", async () => {
   fireEvent.contextMenu(await within(window).findByText("a.txt"), { clientX: 100, clientY: 100 });
   const menu = await screen.findByRole("menu", { name: "File actions" });
   expect(within(menu).getAllByRole("menuitem").map((item) => item.dataset.actionId)).toEqual([
-    "openInNewWindow", "clipboardCopy", "clipboardCut", "clipboardPaste",
+    "openInNewWindow", "clipboardCopy", "clipboardCut", "clipboardPaste", "extract",
     "selectLinkSource",
-    "rename", "powerRename", "superRename", "mkdir", "extract", "delete", "details",
+    "rename", "powerRename", "superRename", "mkdir", "delete", "details",
   ]);
+  expect(within(menu).getByRole("menuitem", { name: "Extract archive" }).previousElementSibling).toHaveAttribute("data-action-id", "clipboardPaste");
 });
 
 it.each(["desktop", "compact"] as const)("opens local extraction from double click and more in %s mode", async (mode) => {
@@ -1490,6 +1491,7 @@ it.each(["desktop", "compact"] as const)("opens local extraction from double cli
   const toolbar = mode === "desktop" ? within(scope).getByRole("navigation", { name: "File actions" }) : screen.getByRole("navigation", { name: "File actions" });
   await userEvent.click(within(toolbar).getByRole("button", { name: "More" }));
   const extractMenu = await screen.findByRole("menuitem", { name: "Extract archive" });
+  expect(extractMenu.previousElementSibling).toHaveAttribute("data-action-id", "clipboardPaste");
   expect(extractMenu).not.toHaveAttribute("aria-disabled", "true");
   await userEvent.click(extractMenu);
   dialog = await screen.findByRole("dialog", { name: "Extract archive" });
@@ -1521,11 +1523,12 @@ it("uses the compact context workflow without duplicating direct link commands",
   const parentIds = within(menu).getAllByRole("menuitem").map((item) => item.dataset.actionId);
   expect(parentIds).toEqual([
     "copy", "move",
-    "clipboardCopy", "clipboardCut", "clipboardPaste",
+    "clipboardCopy", "clipboardCut", "clipboardPaste", "extract",
     "selectLinkSource", "cancelLinkSource", "createLinkAs",
-    "rename", "powerRename", "superRename", "mkdir", "extract", "delete", "details",
+    "rename", "powerRename", "superRename", "mkdir", "delete", "details",
   ]);
   expect(parentIds).not.toContain("hardlink");
+  expect(within(menu).getByRole("menuitem", { name: "Extract archive" }).previousElementSibling).toHaveAttribute("data-action-id", "clipboardPaste");
   expect(parentIds).not.toContain("symlink");
   await user.hover(within(menu).getByRole("menuitem", { name: "Create as…" }));
   const submenu = await screen.findByRole("menu", { name: "Create as…" });

@@ -8,7 +8,7 @@ from contextlib import contextmanager
 from urllib.request import Request, urlopen
 from urllib.parse import urlsplit, parse_qs
 
-from errors import Canceled, ProviderError
+from errors import Canceled, ProviderError, response_error
 from download_progress import FolderDownloadProgress
 from batch import BatchOperations
 from file_operations import SharedFileOperations
@@ -396,33 +396,82 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
     def extract(self, item, dest, password, report):
         if item["is_dir"]:
             raise ProviderError("请选择压缩文件")
+
+        missing_status = object()
+
+        def failure(result, endpoint, reason):
+            message = f"{endpoint}\n{reason}"
+            if isinstance(result, dict) and any(key in result for key in ("errno", "errNo", "code", "message", "msg", "error_msg", "error", "error_message")):
+                detail = response_error(result, secrets=(password,))
+                message += "\n" + detail.removeprefix(endpoint + "\n")
+            return ProviderError(message)
+
+        def field(result, endpoint, name, optional=False):
+            if not isinstance(result, dict):
+                raise failure(result, endpoint, "115接口返回了非对象响应")
+            if result.get("state") in (False, 0):
+                raise failure(result, endpoint, "115解压接口返回失败")
+            data = result.get("data")
+            if not isinstance(data, dict) or name not in data:
+                # Only an explicitly accepted submission may omit its initial
+                # status. Query once rather than guessing or submitting again.
+                if optional and result.get("state") in (True, 1) and (data is None or isinstance(data, dict)):
+                    return missing_status
+                raise failure(result, endpoint, f"115解压响应缺少 data.{name}，或 data 不是对象")
+            return data[name]
+
         client = self.load()
         pickcode = item["pickcode"]
         report(progress_value("extract", item["name"], cancelable=False))
-        result = self.checked(client.extract_push({"pick_code": pickcode, "secret": password}, timeout=60))
+        endpoint = "POST https://webapi.115.com/files/push_extract"
+        result = client.extract_push({"pick_code": pickcode, "secret": password}, timeout=60)
+        initial = True
         deadline = time.monotonic() + 6*3600
         while True:
-            status = int(result["data"]["unzip_status"])
+            value = field(result, endpoint, "unzip_status", optional=initial)
+            missing = value is missing_status
+            if missing:
+                status = None
+            else:
+                try:
+                    if type(value) not in (int, str):
+                        raise ValueError()
+                    status = int(value)
+                except (ValueError, TypeError):
+                    raise failure(result, endpoint, "115解压响应 data.unzip_status 不是有效整数") from None
             if status == 4:
                 break
-            if status not in (0, 1):
-                raise ProviderError("115压缩包解析失败，请检查密码、格式、大小及账号权限")
+            if status is not None and status not in (0, 1):
+                raise failure(result, endpoint, f"115压缩包解析失败，unzip_status={status}；请检查密码、格式、大小及账号权限")
             if time.monotonic() > deadline:
                 raise ProviderError("云端解压等待超时；远端可能仍在执行，请在115确认状态")
-            time.sleep(2)
+            if not missing:
+                time.sleep(2)
             report(progress_value("extract", item["name"], cancelable=False))
-            result = self.checked(client.extract_push_progress(pickcode, timeout=30))
+            endpoint = "GET https://webapi.115.com/files/push_extract"
+            result = client.extract_push_progress(pickcode, timeout=30)
+            initial = False
         # Isolate extraction from existing names; never silently merge/overwrite.
         folder = self.mkdir(dest, os.path.splitext(item["name"])[0])
-        result = self.checked(client.extract_file(pickcode, to_pid=folder, timeout=60))
-        task_id = result["data"]["extract_id"]
+        endpoint = "POST https://webapi.115.com/files/add_extract_file"
+        result = client.extract_file(pickcode, to_pid=folder, timeout=60)
+        task_id = field(result, endpoint, "extract_id")
+        if type(task_id) not in (str, int) or not str(task_id).strip():
+            raise failure(result, endpoint, "115解压响应 data.extract_id 无效；远端可能已接受任务，请在115确认状态")
         while time.monotonic() < deadline:
-            result = self.checked(client.extract_progress(task_id, timeout=30))
-            percent = float(result["data"]["percent"])
+            endpoint = "GET https://webapi.115.com/files/add_extract_file"
+            result = client.extract_progress(task_id, timeout=30)
+            value = field(result, endpoint, "percent")
+            try:
+                if type(value) not in (str, int, float):
+                    raise ValueError()
+                percent = float(value)
+                if not 0 <= percent <= 100:
+                    raise ValueError()
+            except (ValueError, TypeError, OverflowError):
+                raise failure(result, endpoint, "115解压响应 data.percent 不是有效进度（0–100）") from None
             report(progress_value("extract", item["name"], cancelable=False, percent=percent))
             if percent == 100:
                 return
-            if percent < 0 or percent > 100:
-                raise ProviderError("115返回无效解压进度")
             time.sleep(2)
         raise ProviderError("云端解压等待超时；远端可能仍在执行，请在115确认状态")

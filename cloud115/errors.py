@@ -101,8 +101,9 @@ def install_request_diagnostics(client, cookie):
             error.request_method = method
             error.request_secrets = secrets
             raise
-        if isinstance(result, dict) and result.get("state") in (False, 0):
-            # Preserve SDK fallback/check_response behavior for API-level failures.
+        if isinstance(result, dict):
+            # Keep private diagnostics on successful responses too: malformed
+            # success payloads must not expose echoed account credentials.
             result = DiagnosticResponse(result)
             result.request_endpoint = f"{method.upper()} {public_url(url)}"
             result.request_secrets = secrets

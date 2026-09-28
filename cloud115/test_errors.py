@@ -36,3 +36,11 @@ class DiagnosticTests(unittest.TestCase):
         install_request_diagnostics(client, "UID=account")
         self.assertEqual(client.request("https://webapi.115.com/files", params={"cid": "9"}, timeout=30), {"state": True, "data": []})
         original.assert_called_once_with(url="https://webapi.115.com/files", method="GET", params={"cid": "9"}, timeout=30)
+
+    def test_malformed_success_retains_private_redaction_context(self):
+        original = Mock(return_value={"state": True, "data": {}, "message": "reply private"})
+        client = SimpleNamespace(request=original)
+        install_request_diagnostics(client, "UID=account; SEID=private")
+        response = client.request("https://webapi.115.com/files/push_extract?pick_code=hidden")
+        self.assertEqual(response, original.return_value)
+        self.assertEqual(response_error(response), "GET https://webapi.115.com/files/push_extract\n115 API unknown: reply [redacted]")

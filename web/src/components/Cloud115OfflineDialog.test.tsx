@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 import { cloudCall } from "../cloud115";
 import { Cloud115OfflineDialog } from "./Cloud115OfflineDialog";
@@ -29,12 +29,14 @@ it("shows current quota below links with the same text size and color as destina
 });
 
 it("refreshes once after a batch, including partial failures, and retains failed links", async () => {
+  const onClose = vi.fn();
+  const onSubmitted = vi.fn();
   vi.mocked(cloudCall).mockImplementation(async (method, params) => {
     if (method === "offline.quota") return quotaCalls().length === 1 ? quota : { ...quota, used: 129, remaining: 1871 };
     if (params?.url === "https://example.com/b") throw new Error("提交失败");
     return { submitted: true };
   });
-  render(<Cloud115OfflineDialog target={target} onClose={vi.fn()} />);
+  render(<Cloud115OfflineDialog target={target} onClose={onClose} onSubmitted={onSubmitted} />);
   await screen.findByText("离线配额：剩余 1,872 / 2,000");
   fireEvent.change(screen.getByRole("textbox", { name: "下载链接" }), { target: { value: "https://example.com/a\nhttps://example.com/b" } });
   fireEvent.click(screen.getByRole("button", { name: "提交" }));
@@ -42,6 +44,33 @@ it("refreshes once after a batch, including partial failures, and retains failed
   expect(quotaCalls()).toHaveLength(2);
   expect(screen.getByRole("textbox", { name: "下载链接" })).toHaveValue("https://example.com/b");
   expect(vi.mocked(cloudCall).mock.calls.filter(([method]) => method === "offline.add")).toHaveLength(2);
+  expect(onClose).not.toHaveBeenCalled();
+  expect(onSubmitted).not.toHaveBeenCalled();
+});
+
+it.each(["pending", "failed"])("closes only after the whole batch is accepted even when quota is %s", async (state) => {
+  let finishLast!: (value: unknown) => void;
+  const onClose = vi.fn();
+  const onSubmitted = vi.fn();
+  vi.mocked(cloudCall).mockImplementation(async (method, params) => {
+    if (method === "offline.quota") {
+      if (state === "failed") throw new Error("quota unavailable");
+      return new Promise(() => {});
+    }
+    if (params?.url === "https://example.com/b") return new Promise((resolve) => { finishLast = resolve; });
+    return { submitted: true };
+  });
+  render(<Cloud115OfflineDialog target={target} onClose={onClose} onSubmitted={onSubmitted} />);
+  if (state === "failed") await screen.findByText("配额获取失败");
+  fireEvent.change(screen.getByRole("textbox", { name: "下载链接" }), { target: { value: "https://example.com/a\nhttps://example.com/b" } });
+  fireEvent.click(screen.getByRole("button", { name: "提交" }));
+  await waitFor(() => expect(finishLast).toBeTypeOf("function"));
+  expect(onClose).not.toHaveBeenCalled();
+  expect(onSubmitted).not.toHaveBeenCalled();
+  await act(async () => finishLast({ submitted: true }));
+  expect(onClose).toHaveBeenCalledTimes(1);
+  expect(onSubmitted).toHaveBeenCalledTimes(1);
+  expect(quotaCalls()).toHaveLength(1);
 });
 
 it("quota failure permits submission and has an independent retry button", async () => {
@@ -61,7 +90,7 @@ it("does not wait for quota before submitting and ignores an obsolete response",
   let resolveOld!: (value: unknown) => void;
   vi.mocked(cloudCall).mockImplementation(async (method) => {
     if (method === "offline.quota") return quotaCalls().length === 1 ? new Promise((resolve) => { resolveOld = resolve; }) : quota;
-    return { submitted: true };
+    throw new Error("submission failed");
   });
   render(<Cloud115OfflineDialog target={target} onClose={vi.fn()} />);
   expect(screen.getByText("离线配额：加载中…")).toBeInTheDocument();

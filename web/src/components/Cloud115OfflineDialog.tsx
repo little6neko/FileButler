@@ -5,7 +5,7 @@ import { DialogFooter } from "./ui/dialog";
 import { Textarea } from "./ui/textarea";
 import { WindowDialogLayer } from "./WindowDialogLayer";
 
-export function Cloud115OfflineDialog({ target, onClose }: { target: { id: string; name: string; accountId: string }; onClose(): void }) {
+export function Cloud115OfflineDialog({ target, onClose, onSubmitted }: { target: { id: string; name: string; accountId: string }; onClose(): void; onSubmitted?(): void }) {
   const titleId = useId();
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -29,6 +29,11 @@ export function Cloud115OfflineDialog({ target, onClose }: { target: { id: strin
     }
     setText(failed.join("\n"));
     setBusy(false);
+    if (!failed.length) {
+      onClose();
+      onSubmitted?.();
+      return;
+    }
     setQuotaRevision((revision) => revision + 1);
   }
 

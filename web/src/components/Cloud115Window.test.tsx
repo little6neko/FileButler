@@ -152,11 +152,11 @@ it("submits unique links to the current directory without creating a completed d
   expect(screen.getByRole("textbox", { name: "下载链接" })).toHaveAttribute("data-slot", "textarea");
   fireEvent.change(screen.getByRole("textbox", { name: "下载链接" }), { target: { value: " magnet:?xt=test\nhttps://example.com/file\nmagnet:?xt=test " } });
   fireEvent.click(screen.getByRole("button", { name: /^提交$/ }));
-  await waitFor(() => expect(screen.getAllByText("已提交到115")).toHaveLength(2));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "离线下载" })).not.toBeInTheDocument());
   expect(cloudCall).toHaveBeenCalledWith("offline.add", { url: "magnet:?xt=test", destId: "0", accountId: "1" });
   expect(cloudCall).toHaveBeenCalledWith("offline.add", { url: "https://example.com/file", destId: "0", accountId: "1" });
   expect(created).not.toHaveBeenCalled();
-  expect(screen.getByRole("textbox", { name: "下载链接" })).toHaveValue("");
+  await waitFor(() => expect(vi.mocked(cloudCall).mock.calls.filter(([method]) => method === "browse")).toHaveLength(2));
 });
 
 it.each(["folder", "file", "blank"])("targets the correct directory from the %s context menu", async (kind) => {
@@ -173,8 +173,9 @@ it.each(["folder", "file", "blank"])("targets the correct directory from the %s 
   fireEvent.click(await screen.findByRole("menuitem", { name: "离线下载" }));
   fireEvent.change(screen.getByRole("textbox", { name: "下载链接" }), { target: { value: "ed2k://|file|test|1|hash|/" } });
   fireEvent.click(screen.getByRole("button", { name: /^提交$/ }));
-  await screen.findByText("已提交到115");
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "离线下载" })).not.toBeInTheDocument());
   expect(cloudCall).toHaveBeenCalledWith("offline.add", { url: "ed2k://|file|test|1|hash|/", destId: kind === "folder" ? "123" : "0", accountId: "1" });
+  await waitFor(() => expect(vi.mocked(cloudCall).mock.calls.filter(([method]) => method === "browse")).toHaveLength(2));
 });
 
 it("keeps only failed links for explicit retry", async () => {
@@ -194,6 +195,7 @@ it("keeps only failed links for explicit retry", async () => {
   await screen.findByText(/提交失败：.*链接无效/);
   expect(screen.getByRole("textbox", { name: "下载链接" })).toHaveValue("bad-link");
   expect(screen.getByText("已提交到115")).toBeInTheDocument();
+  expect(vi.mocked(cloudCall).mock.calls.filter(([method]) => method === "browse")).toHaveLength(1);
 });
 
 it("reuses the file table and local dialogs, hides links and disables extraction for non-archives", async () => {

@@ -4,6 +4,7 @@ test("offline quota shares destination typography, refreshes per batch and allow
   await page.setViewportSize({ width: 1500, height: 1000 });
   await page.addInitScript(() => Object.defineProperty(navigator, "languages", { get: () => ["en-US"] }));
   let quotaCalls = 0;
+  let browseCalls = 0;
   const submissions: unknown[] = [];
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -16,7 +17,7 @@ test("offline quota shares destination typography, refreshes per batch and allow
     else if (path === "/api/cloud115/status") data = { loggedIn: true };
     else if (path === "/api/cloud115/accounts") data = [{ accountId: "7", name: "Quota tester", avatar: "", usedBytes: 1, totalBytes: 2 }];
     else if (path === "/api/cloud115/profile") data = { accountId: "7", name: "Quota tester" };
-    else if (path === "/api/cloud115/browse") data = { entries: [], offset: 0, total: 0 };
+    else if (path === "/api/cloud115/browse") { browseCalls++; data = { entries: [], offset: 0, total: 0 }; }
     else if (path === "/api/cloud115/offline.quota") {
       quotaCalls++;
       expect(route.request().postDataJSON()).toEqual({ accountId: "7" });
@@ -24,6 +25,7 @@ test("offline quota shares destination typography, refreshes per batch and allow
       data = { used: quotaCalls === 1 ? 128 : 129, total: 2000, remaining: quotaCalls === 1 ? 1872 : 1871 };
     } else if (path === "/api/cloud115/offline.add") {
       submissions.push(route.request().postDataJSON());
+      if (submissions.length === 1) return route.fulfill({ status: 502, json: { error: { message: "submission failed" } } });
       data = { submitted: true };
     } else if (path === "/api/jobs/events") {
       return route.fulfill({ contentType: "text/event-stream", body: 'event: jobs.snapshot\ndata: {"runtimeId":"quota","cursor":0,"reset":false,"jobs":[]}\n\n' });
@@ -56,5 +58,11 @@ test("offline quota shares destination typography, refreshes per batch and allow
   await dialog.getByRole("button", { name: "重试", exact: true }).click();
   await expect(dialog.getByText("离线配额：剩余 1,871 / 2,000", { exact: true })).toBeVisible();
   expect(quotaCalls).toBe(3);
+  const beforeRefresh = browseCalls;
+  await dialog.getByRole("button", { name: "提交", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect.poll(() => browseCalls).toBe(beforeRefresh + 1);
+  expect(quotaCalls).toBe(3);
+  expect(submissions).toHaveLength(2);
   expect(errors).toEqual([]);
 });

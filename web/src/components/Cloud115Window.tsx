@@ -290,6 +290,6 @@ function Cloud115Files({ accountId, onSwitch, onAdd, onTitle, windowId, layer, o
         <DialogFooter><Button type="button" variant="outline" disabled={busy} onClick={() => setPrompt(null)}>{labels.cancel}</Button><Button type="submit" disabled={busy}>{labels.confirm}</Button></DialogFooter>
       </form>}
     </WindowDialogLayer> : null}
-    {offlineTarget ? <Cloud115OfflineDialog target={{ ...offlineTarget, accountId }} onClose={() => setOfflineTarget(null)} /> : null}
+    {offlineTarget ? <Cloud115OfflineDialog target={{ ...offlineTarget, accountId }} onClose={() => setOfflineTarget(null)} onSubmitted={() => { void refresh(); }} /> : null}
   </div>;
 }

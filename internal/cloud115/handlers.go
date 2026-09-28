@@ -158,6 +158,15 @@ func (s *Service) handle(w http.ResponseWriter, r *http.Request) {
 	}
 	if method == "offline.add" {
 		link := strings.TrimSpace(req.URL)
+		if strings.HasPrefix(link, "ed2k://|file|") {
+			// Encode literal filename spaces only; preserve existing escapes and
+			// pipe-delimited fields, which are not a standard URL authority.
+			fields := strings.SplitN(link, "|", 4)
+			if len(fields) == 4 {
+				fields[2] = strings.ReplaceAll(fields[2], " ", "%20")
+				link = strings.Join(fields, "|")
+			}
+		}
 		parsed, err := url.Parse(link)
 		valid := len(link) <= 16384 && !strings.ContainsAny(link, "\r\n\t\x00 ")
 		if strings.HasPrefix(link, "ed2k://") {

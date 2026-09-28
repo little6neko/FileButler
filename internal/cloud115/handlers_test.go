@@ -81,13 +81,15 @@ func TestCloudTaskSurvivesRequestCancellation(t *testing.T) {
 }
 
 type stubProvider struct {
-	cancel  bool
-	failure bool
-	calls   int
+	cancel   bool
+	failure  bool
+	calls    int
+	lastArgs any
 }
 
 func (p *stubProvider) Call(ctx context.Context, method string, args any, report jobs.Reporter) (json.RawMessage, error) {
 	p.calls++
+	p.lastArgs = args
 	if p.cancel {
 		return nil, context.Canceled
 	}
@@ -180,6 +182,42 @@ func TestOfflineSubmission(t *testing.T) {
 		if response.Code != 200 || provider.calls != 1 {
 			t.Fatalf("%s: %d %s", link, response.Code, response.Body.String())
 		}
+	}
+}
+
+func TestOfflineEd2kFilenameSpaces(t *testing.T) {
+	for _, tc := range []struct{ link, want string }{
+		{"ed2k://|file|my movie.mkv|123|hash|/", "ed2k://|file|my%20movie.mkv|123|hash|/"},
+		{"ed2k://|file|电影  第1集.mkv|123|hash|/", "ed2k://|file|电影%20%20第1集.mkv|123|hash|/"},
+		{"ed2k://|file|my%20movie part+1.mkv|123|hash|/", "ed2k://|file|my%20movie%20part+1.mkv|123|hash|/"},
+		{"ed2k://|file|my movie.mkv|12 3|hash|/", ""},
+		{"ed2k://|file|my\tmovie.mkv|123|hash|/", ""},
+		{"ed2k://|file|my\nmovie.mkv|123|hash|/", ""},
+		{"ed2k://|file|my\rmovie.mkv|123|hash|/", ""},
+		{"ed2k://|file|my\x00movie.mkv|123|hash|/", ""},
+		{"https://example.com/my movie.mkv", ""},
+	} {
+		t.Run(tc.link, func(t *testing.T) {
+			provider := &stubProvider{}
+			service := NewService(provider, jobs.NewStore(), roots.NewResolver(nil))
+			router := chi.NewRouter()
+			router.Post("/{method}", service.Handler)
+			body, _ := json.Marshal(map[string]string{"accountId": "7", "url": tc.link, "destId": "123"})
+			response := httptest.NewRecorder()
+			router.ServeHTTP(response, httptest.NewRequest("POST", "/offline.add", strings.NewReader(string(body))))
+			if tc.want == "" {
+				if response.Code != 400 || provider.calls != 0 {
+					t.Fatalf("invalid link reached provider: %d, calls=%d", response.Code, provider.calls)
+				}
+				return
+			}
+			if response.Code != 200 || provider.calls != 1 {
+				t.Fatalf("%d %s", response.Code, response.Body.String())
+			}
+			if got := provider.lastArgs.(map[string]any)["url"]; got != tc.want {
+				t.Fatalf("got %q, want %q", got, tc.want)
+			}
+		})
 	}
 }
 

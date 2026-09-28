@@ -14,7 +14,7 @@ beforeEach(() => {
 
 it("shows current quota below links with the same text size and color as destination", async () => {
   render(<Cloud115OfflineDialog target={target} onClose={vi.fn()} />);
-  const line = await screen.findByText("离线配额：已用 128 / 2,000，剩余 1,872");
+  const line = await screen.findByText("离线配额：剩余 1,872 / 2,000");
   const destination = screen.getByText(`保存到：${target.name}`);
   const status = screen.getByRole("status");
   expect(status).toContainElement(line);
@@ -25,6 +25,7 @@ it("shows current quota below links with the same text size and color as destina
   expect(cloudCall).toHaveBeenCalledWith("offline.quota", { accountId: "1" }, expect.any(AbortSignal));
   expect(quotaCalls()).toHaveLength(1);
   expect(line).not.toHaveTextContent("本月");
+  expect(line).not.toHaveTextContent("已用");
 });
 
 it("refreshes once after a batch, including partial failures, and retains failed links", async () => {
@@ -34,10 +35,10 @@ it("refreshes once after a batch, including partial failures, and retains failed
     return { submitted: true };
   });
   render(<Cloud115OfflineDialog target={target} onClose={vi.fn()} />);
-  await screen.findByText(/已用 128/);
+  await screen.findByText("离线配额：剩余 1,872 / 2,000");
   fireEvent.change(screen.getByRole("textbox", { name: "下载链接" }), { target: { value: "https://example.com/a\nhttps://example.com/b" } });
   fireEvent.click(screen.getByRole("button", { name: "提交" }));
-  await screen.findByText(/已用 129/);
+  await screen.findByText("离线配额：剩余 1,871 / 2,000");
   expect(quotaCalls()).toHaveLength(2);
   expect(screen.getByRole("textbox", { name: "下载链接" })).toHaveValue("https://example.com/b");
   expect(vi.mocked(cloudCall).mock.calls.filter(([method]) => method === "offline.add")).toHaveLength(2);
@@ -51,7 +52,7 @@ it("quota failure permits submission and has an independent retry button", async
   fireEvent.change(screen.getByRole("textbox", { name: "下载链接" }), { target: { value: "magnet:?xt=test" } });
   expect(screen.getByRole("button", { name: "提交" })).toBeEnabled();
   fireEvent.click(screen.getByRole("button", { name: "重试" }));
-  await screen.findByText(/已用 128/);
+  await screen.findByText("离线配额：剩余 1,872 / 2,000");
   expect(quotaCalls()).toHaveLength(2);
   expect(vi.mocked(cloudCall).mock.calls.some(([method]) => method === "offline.add")).toBe(false);
 });
@@ -66,10 +67,10 @@ it("does not wait for quota before submitting and ignores an obsolete response",
   expect(screen.getByText("离线配额：加载中…")).toBeInTheDocument();
   fireEvent.change(screen.getByRole("textbox", { name: "下载链接" }), { target: { value: "magnet:?xt=test" } });
   fireEvent.click(screen.getByRole("button", { name: "提交" }));
-  await screen.findByText(/已用 128/);
+  await screen.findByText("离线配额：剩余 1,872 / 2,000");
   expect(quotaCalls()[0][2]?.aborted).toBe(true);
   await act(async () => resolveOld({ used: 0, total: 0, remaining: 0 }));
-  expect(screen.getByText(/已用 128/)).toBeInTheDocument();
+  expect(screen.getByText("离线配额：剩余 1,872 / 2,000")).toBeInTheDocument();
 });
 
 it("clears old account quota and aborts outstanding requests on close", async () => {
@@ -79,11 +80,11 @@ it("clears old account quota and aborts outstanding requests on close", async ()
     : quota);
   const view = render(<Cloud115OfflineDialog target={target} onClose={vi.fn()} />);
   view.rerender(<Cloud115OfflineDialog target={{ ...target, accountId: "2" }} onClose={vi.fn()} />);
-  await screen.findByText(/已用 128/);
+  await screen.findByText("离线配额：剩余 1,872 / 2,000");
   expect(quotaCalls().map(([, params]) => params?.accountId)).toEqual(["1", "2"]);
   expect(quotaCalls()[0][2]?.aborted).toBe(true);
   await act(async () => resolveOld({ used: 0, total: 0, remaining: 0 }));
-  expect(screen.getByText(/已用 128/)).toBeInTheDocument();
+  expect(screen.getByText("离线配额：剩余 1,872 / 2,000")).toBeInTheDocument();
   view.unmount();
   expect(quotaCalls()[1][2]?.aborted).toBe(true);
 });

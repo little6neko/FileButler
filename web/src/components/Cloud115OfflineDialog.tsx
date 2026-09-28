@@ -63,7 +63,7 @@ function OfflineQuota({ accountId, revision }: { accountId: string; revision: nu
   const format = (value: number) => value.toLocaleString("zh-CN");
   return <div role="status" className="flex flex-wrap items-center gap-2 text-sm" title={current?.error}>
     <span>{current?.data
-      ? `离线配额：已用 ${format(current.data.used)} / ${format(current.data.total)}，剩余 ${format(current.data.remaining)}`
+      ? `离线配额：剩余 ${format(current.data.remaining)} / ${format(current.data.total)}`
       : current?.error ? "配额获取失败" : "离线配额：加载中…"}</span>
     {current?.error ? <Button type="button" variant="outline" size="sm" onClick={() => setRetry((value) => value + 1)}>重试</Button> : null}
   </div>;

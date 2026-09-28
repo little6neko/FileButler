@@ -36,7 +36,7 @@ test("offline quota shares destination typography, refreshes per batch and allow
   await cloud.getByRole("button", { name: /Quota tester/ }).dblclick();
   await cloud.getByRole("button", { name: "离线下载", exact: true }).click();
   const dialog = cloud.getByRole("dialog", { name: "离线下载", exact: true });
-  const text = dialog.getByText("离线配额：已用 128 / 2,000，剩余 1,872", { exact: true });
+  const text = dialog.getByText("离线配额：剩余 1,872 / 2,000", { exact: true });
   await expect(text).toBeVisible();
   const typography = await dialog.getByText(/^保存到：/).evaluate((element) => {
     const style = getComputedStyle(element);
@@ -54,7 +54,7 @@ test("offline quota shares destination typography, refreshes per batch and allow
   expect(quotaCalls).toBe(2);
   expect(submissions).toEqual([{ url: "https://example.com/file", destId: "0", accountId: "7" }]);
   await dialog.getByRole("button", { name: "重试", exact: true }).click();
-  await expect(dialog.getByText("离线配额：已用 129 / 2,000，剩余 1,871", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("离线配额：剩余 1,871 / 2,000", { exact: true })).toBeVisible();
   expect(quotaCalls).toBe(3);
   expect(errors).toEqual([]);
 });

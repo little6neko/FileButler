@@ -12,6 +12,7 @@ const entry = { id: "1", parentId: "0", name: "sample.txt", isDirectory: false, 
 beforeEach(() => {
   vi.mocked(cloudCall).mockReset();
   vi.mocked(cloudCall).mockImplementation(async (method) => {
+    if (method === "offline.quota") return { used: 1, total: 100, remaining: 99 };
     if (method === "status") return { loggedIn: true };
     if (method === "profile") return { accountId: "1", name: "测试115账号" };
     if (method === "browse") return { entries: [entry], offset: 0, total: 1 };
@@ -160,6 +161,7 @@ it("submits unique links to the current directory without creating a completed d
 
 it.each(["folder", "file", "blank"])("targets the correct directory from the %s context menu", async (kind) => {
   vi.mocked(cloudCall).mockImplementation(async (method) => {
+    if (method === "offline.quota") return { used: 1, total: 100, remaining: 99 };
     if (method === "status") return { loggedIn: true };
     if (method === "profile") return { accountId: "1", name: "测试115账号" };
     if (method === "browse") return { entries: [entry, { ...entry, id: "123", name: "子文件夹", isDirectory: true }], offset: 0, total: 2 };
@@ -177,6 +179,7 @@ it.each(["folder", "file", "blank"])("targets the correct directory from the %s 
 
 it("keeps only failed links for explicit retry", async () => {
   vi.mocked(cloudCall).mockImplementation(async (method, params) => {
+    if (method === "offline.quota") return { used: 1, total: 100, remaining: 99 };
     if (method === "status") return { loggedIn: true };
     if (method === "profile") return { accountId: "1", name: "测试115账号" };
     if (method === "browse") return { entries: [entry], offset: 0, total: 1 };

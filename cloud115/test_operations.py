@@ -51,6 +51,34 @@ class FakeOperations(CloudOperations):
 
 
 class OperationsTests(unittest.TestCase):
+    def test_offline_quota_reads_current_totals_without_submitting_or_listing(self):
+        client = Mock()
+        # Totals include bonus packages; these are not necessarily monthly totals.
+        client.clouddownload_request.return_value = {"count": "3000", "used": 434, "surplus": 2566, "package": {"1": {"name": "VIP配额"}, "3": {"name": "赠送配额"}}}
+        result = FakeOperations(client).operation("offline.quota", {"accountId": "1"}, Mock())
+        self.assertEqual(result, {"total": 3000, "used": 434, "remaining": 2566})
+        client.clouddownload_request.assert_called_once_with(action="get_quota_package_info", method="GET", timeout=20)
+        client.clouddownload_task_add_url.assert_not_called()
+        client.fs_files.assert_not_called()
+
+    def test_offline_quota_accepts_zero_and_rejects_missing_or_invalid_counts(self):
+        client = Mock()
+        operations = FakeOperations(client)
+        client.clouddownload_request.return_value = {"count": 0, "used": 0, "surplus": 0}
+        self.assertEqual(operations.operation("offline.quota", {}, Mock()), {"total": 0, "used": 0, "remaining": 0})
+        for key in ("count", "used", "surplus"):
+            for value in (None, True, -1, 1.5, "NaN", "", "-1", 2**53):
+                with self.subTest(key=key, value=value):
+                    client.clouddownload_request.return_value = {"count": 10, "used": 1, "surplus": 9, key: value}
+                    with self.assertRaisesRegex(ProviderError, "配额"):
+                        operations.operation("offline.quota", {}, Mock())
+        client.clouddownload_request.return_value = {"state": True, "data": {}}
+        with self.assertRaisesRegex(ProviderError, "配额"):
+            operations.operation("offline.quota", {}, Mock())
+        client.clouddownload_request.return_value = {"state": False, "errno": 911, "message": "验证失败"}
+        with self.assertRaisesRegex(ProviderError, "911"):
+            operations.operation("offline.quota", {}, Mock())
+
     def test_move_checks_original_id_without_listing_destination_after_mutation(self):
         for is_directory in (False, True):
             for destination in ("0", "9"):

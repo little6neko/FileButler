@@ -52,7 +52,7 @@ type Request struct {
 }
 
 var numericID = regexp.MustCompile(`^(0|[1-9][0-9]{0,19})$`)
-var queries = map[string]bool{"accounts": true, "status": true, "login.start": true, "login.check": true, "login.cancel": true, "logout": true, "browse": true, "profile": true, "resolve": true, "offline.add": true, "preview.url": true}
+var queries = map[string]bool{"accounts": true, "status": true, "login.start": true, "login.check": true, "login.cancel": true, "logout": true, "browse": true, "profile": true, "resolve": true, "offline.add": true, "offline.quota": true, "preview.url": true}
 var mutations = map[string]bool{"mkdir": true, "rename": true, "copy": true, "move": true, "delete": true, "upload": true, "download": true, "extract": true}
 
 func (s *Service) Handler(w http.ResponseWriter, r *http.Request) {
@@ -92,7 +92,9 @@ func (s *Service) handle(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	method := chi.URLParam(r, "method")
-	if method != "accounts" && !strings.HasPrefix(method, "login.") {
+	// Quota is a read-only snapshot; a slow display query must not delay task
+	// submissions or directory navigation behind the account lifecycle lock.
+	if method != "accounts" && method != "offline.quota" && !strings.HasPrefix(method, "login.") {
 		s.accountMu.Lock()
 		defer s.accountMu.Unlock()
 		if r.Context().Err() != nil {

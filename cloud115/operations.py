@@ -160,6 +160,22 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
                     raise ProviderError("目录不存在或存在同名目录，请通过目录列表逐级打开")
                 trail.append({"id": matches[0]["id"], "name": part})
             return {"trail": trail}
+        if method == "offline.quota":
+            # The pinned SDK's quota shortcut passes `ac` instead of `action`.
+            # Use its public dispatcher explicitly; this is one read-only call.
+            result = self.checked(client.clouddownload_request(action="get_quota_package_info", method="GET", timeout=20))
+            if result.get("state") in (False, 0):
+                raise ProviderError(response_error(result))
+            quota = {}
+            for source, target in (("count", "total"), ("used", "used"), ("surplus", "remaining")):
+                value = result.get(source)
+                if isinstance(value, str) and len(value) <= 16 and value.isascii() and value.isdecimal():
+                    value = int(value)
+                if type(value) is not int or not 0 <= value <= 2**53 - 1:
+                    raise ProviderError(f"GET https://clouddownload.115.com/web/?ac=get_quota_package_info\n115返回的离线配额字段 {source} 缺失或无效")
+                quota[target] = value
+            # This aggregate includes bonus/purchased packages, not just this month.
+            return quota
         if method == "offline.add":
             if str(dest) != "0" and not self.info(dest)["is_dir"]:
                 raise ProviderError("目标不是文件夹")

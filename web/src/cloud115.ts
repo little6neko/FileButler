@@ -4,6 +4,7 @@ import type { RenameOptions } from "./api/types";
 export type CloudEntry = { id: string; parentId: string; name: string; isDirectory: boolean; size: number; modifiedUnix?: number };
 export type CloudLocation = { id: string; name: string }[];
 export type CloudPage = { entries: CloudEntry[]; total: number; offset: number };
+export type CloudOfflineQuota = { used: number; total: number; remaining: number };
 export type CloudRequest = { accountId?: string; id?: string; ids?: string[]; parentId?: string; destId?: string; name?: string; password?: string; offset?: number; rootId?: string; path?: string; paths?: string[]; url?: string; options?: RenameOptions; previewToken?: string; revisions?: Record<string, string>; loginSession?: string };
 
 export async function cloudDirectory(parentId: string, accountId: string, isCurrent: () => boolean = () => true): Promise<CloudEntry[]> {

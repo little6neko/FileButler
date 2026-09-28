@@ -182,3 +182,99 @@ func TestOfflineSubmission(t *testing.T) {
 		}
 	}
 }
+
+type quotaProvider struct {
+	t     *testing.T
+	calls []string
+}
+
+func (p *quotaProvider) Call(ctx context.Context, method string, args any, report jobs.Reporter) (json.RawMessage, error) {
+	if method != "offline.quota" || report != nil {
+		p.t.Fatalf("quota must be a query, got %s, progress=%v", method, report != nil)
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		p.t.Fatal("quota request has no deadline")
+	}
+	account := args.(map[string]any)["accountId"].(string)
+	p.calls = append(p.calls, account)
+	return json.RawMessage(`{"used":128,"total":2000,"remaining":1872}`), nil
+}
+
+func TestOfflineQuotaIsReadOnlyAndAccountScoped(t *testing.T) {
+	provider := &quotaProvider{t: t}
+	store := jobs.NewStore()
+	service := NewService(provider, store, roots.NewResolver(nil))
+	router := chi.NewRouter()
+	router.Post("/{method}", service.Handler)
+	for _, account := range []string{"7", "8"} {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest("POST", "/offline.quota", strings.NewReader(`{"accountId":"`+account+`"}`)))
+		if response.Code != 200 || !strings.Contains(response.Body.String(), `"remaining":1872`) {
+			t.Fatalf("%d %s", response.Code, response.Body.String())
+		}
+	}
+	for _, body := range []string{`{}`, `{"accountId":"0"}`, `{"accountId":"invalid"}`} {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest("POST", "/offline.quota", strings.NewReader(body)))
+		if response.Code != 400 {
+			t.Fatalf("missing/invalid account accepted: %d", response.Code)
+		}
+	}
+	if len(provider.calls) != 2 || provider.calls[0] != "7" || provider.calls[1] != "8" {
+		t.Fatalf("wrong account calls: %v", provider.calls)
+	}
+	snapshot, err := store.Snapshot(context.Background())
+	if err != nil || len(snapshot.Jobs) != 0 {
+		t.Fatalf("quota query created a job: %+v %v", snapshot, err)
+	}
+}
+
+type slowQuotaProvider struct{ started chan struct{} }
+
+func (p *slowQuotaProvider) Call(ctx context.Context, method string, args any, report jobs.Reporter) (json.RawMessage, error) {
+	if method == "offline.quota" {
+		close(p.started)
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
+	return json.RawMessage(`{"submitted":true}`), nil
+}
+
+func TestSlowOfflineQuotaDoesNotBlockSubmissionAndCanBeCanceled(t *testing.T) {
+	provider := &slowQuotaProvider{started: make(chan struct{})}
+	service := NewService(provider, jobs.NewStore(), roots.NewResolver(nil))
+	router := chi.NewRouter()
+	router.Post("/{method}", service.Handler)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	quotaDone := make(chan struct{})
+	go func() {
+		defer close(quotaDone)
+		router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("POST", "/offline.quota", strings.NewReader(`{"accountId":"7"}`)).WithContext(ctx))
+	}()
+	select {
+	case <-provider.started:
+	case <-time.After(time.Second):
+		t.Fatal("quota query did not start")
+	}
+	submitted := make(chan int, 1)
+	go func() {
+		response := httptest.NewRecorder()
+		router.ServeHTTP(response, httptest.NewRequest("POST", "/offline.add", strings.NewReader(`{"accountId":"7","url":"https://example.com/file"}`)))
+		submitted <- response.Code
+	}()
+	select {
+	case status := <-submitted:
+		if status != 200 {
+			t.Fatalf("submission status=%d", status)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("submission blocked behind quota query")
+	}
+	cancel()
+	select {
+	case <-quotaDone:
+	case <-time.After(time.Second):
+		t.Fatal("quota request ignored cancellation")
+	}
+}

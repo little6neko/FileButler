@@ -11,7 +11,7 @@ for line in sys.stdin:
         continue
     if request.get("ack"):
         continue
-    if request["method"] == "ops.plan":
+    if request["method"] in ("ops.plan", "transfer.statistics"):
         print(json.dumps({"id": request["id"], "progress": {"phase": "scan", "file": "", "bytesTotal": 0, "bytesDone": 0, "cancelable": True}}), flush=True)
         continue
     if request["method"] == "canceled-plans":

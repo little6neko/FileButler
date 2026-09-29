@@ -132,7 +132,7 @@ class OperationsTests(unittest.TestCase):
         client = Mock()
         client.fs_copy.return_value = {"state": True}
         operations = FakeOperations(client)
-        item = {"id": "1", "name": "target", "is_dir": False, "parent_id": "2"}
+        item = {"id": "1", "name": "target", "is_dir": False, "parent_id": "2", "size": 4}
         pages = [{"entries": [], "total": 0}, {"entries": [{"id": "3", "name": "target"}], "total": 1}]
         with patch.object(operations, "info", return_value=item), patch.object(operations, "browse", side_effect=pages) as listing:
             self.assertEqual(operations.operation("copy", {"id": "1", "destId": "9"}, lambda p: None), {"ok": True})
@@ -213,7 +213,9 @@ class OperationsTests(unittest.TestCase):
                 FakeOperations(FakeClient(reuse)).upload_file(file, "test.txt", "0", progress.append)
                 hashes = [p for p in progress if p["phase"] == "hash"]
                 self.assertEqual(hashes[-1]["bytesDone"], 2400000)
-                self.assertEqual(any(p["phase"] == "upload" for p in progress), not reuse)
+                self.assertEqual(any(p["phase"] == "upload" and not p.get("fileComplete") for p in progress), not reuse)
+                self.assertTrue(progress[-1]["fileComplete"])
+                self.assertEqual(progress[-1]["bytesDone"], 2400000)
 
     def test_hash_cancellation(self):
         with tempfile.TemporaryFile() as file:

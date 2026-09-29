@@ -31,7 +31,7 @@ class FolderDownloadTests(unittest.TestCase):
     def fetch(self, req, **kwargs):
         return io.BytesIO(b"abcd" if req.full_url.endswith("/a") else b"123456")
 
-    def test_download_accumulates_bytes_across_nested_files(self):
+    def test_download_reports_stable_leaf_ids_for_job_aggregation(self):
         ops = self.make_ops()
         events = []
         with tempfile.TemporaryDirectory() as dest, patch("operations.urlopen", side_effect=self.fetch):
@@ -40,37 +40,32 @@ class FolderDownloadTests(unittest.TestCase):
             self.assertEqual(Path(dest, "album/sub/b.txt").read_bytes(), b"123456")
         progress = [e for e in events if e["phase"] == "download"]
         self.assertTrue(progress)
-        self.assertTrue(all(e["bytesTotal"] == 10 for e in progress))
-        self.assertEqual([e["bytesDone"] for e in progress], sorted(e["bytesDone"] for e in progress))
-        self.assertEqual(progress[-1]["bytesDone"], 10)
-        self.assertEqual(progress[-1]["percent"], 100)
-        self.assertEqual(next(e for e in progress if e["file"] == "b.txt")["bytesDone"], 4)
-        self.assertEqual(len({e["scope"] for e in progress}), 1)
-        self.assertTrue(all(e.get("filesTotal") == 2 for e in progress))
-        self.assertEqual(progress[-1]["filesDone"], 2)
-        self.assertEqual(next(e for e in progress if e["file"] == "b.txt")["filesDone"], 1)
+        complete = [e for e in progress if e.get("fileComplete")]
+        self.assertEqual([(e["fileId"], e["bytesDone"]) for e in complete], [("2", 4), ("4", 6)])
+        self.assertEqual(sum(e["bytesDone"] for e in complete), 10)
+        self.assertFalse(any("filesTotal" in e for e in progress))
         self.assertEqual([str(call.args[0]) for call in ops.children.call_args_list], ["1", "3"])
         ops.client.fs_category_get.assert_not_called()
 
-    def test_scan_finishes_before_creating_files_or_fetching_bytes(self):
+    def test_download_starts_before_listing_later_subfolders(self):
         ops = self.make_ops()
         with tempfile.TemporaryDirectory() as dest, patch("operations.urlopen", side_effect=self.fetch):
             original = ops.children.side_effect
             def children(parent, checkpoint=lambda: None):
-                self.assertEqual(list(Path(dest).iterdir()), [])
+                if str(parent) == "3":
+                    self.assertEqual(Path(dest, "album/a.txt").read_bytes(), b"abcd")
                 return original(parent, checkpoint)
             ops.children.side_effect = children
             ops.operation("download", {"id": "1", "localPath": dest}, lambda _: None)
 
-    def test_empty_folder_finishes_at_100_percent(self):
+    def test_empty_folder_is_created_without_fake_leaf_completion(self):
         ops = self.make_ops()
         ops.children = lambda _, checkpoint=lambda: None: []
         events = []
         with tempfile.TemporaryDirectory() as dest:
             ops.operation("download", {"id": "1", "localPath": dest}, events.append)
             self.assertTrue(Path(dest, "album").is_dir())
-        self.assertEqual(events[-1]["percent"], 100)
-        self.assertEqual((events[-1]["filesDone"], events[-1]["filesTotal"]), (0, 0))
+        self.assertFalse(any(e.get("fileComplete") for e in events))
 
     def test_zero_byte_files_are_counted_after_publication(self):
         ops = self.make_ops()
@@ -79,13 +74,12 @@ class FolderDownloadTests(unittest.TestCase):
             events = []
             def report(event):
                 events.append(event)
-                if event.get("filesDone", 0) >= 1:
+                if event.get("fileComplete") and event["fileId"] == "2":
                     self.assertTrue(Path(dest, "album/a.txt").is_file())
-                if event.get("filesDone", 0) == 2:
+                if event.get("fileComplete") and event["fileId"] == "4":
                     self.assertTrue(Path(dest, "album/sub/b.txt").is_file())
             ops.operation("download", {"id": "1", "localPath": dest}, report)
-        self.assertEqual((events[-1]["filesDone"], events[-1]["filesTotal"]), (2, 2))
-        self.assertEqual(events[-1]["percent"], 100)
+        self.assertEqual([e["fileId"] for e in events if e.get("fileComplete")], ["2", "4"])
 
     def test_failed_file_is_not_counted_as_complete(self):
         ops = self.make_ops()
@@ -97,17 +91,16 @@ class FolderDownloadTests(unittest.TestCase):
                 ops.operation("download", {"id": "1", "localPath": dest}, events.append)
             self.assertTrue(Path(dest, "album/a.txt").is_file())
             self.assertEqual(list(Path(dest, "album/sub").iterdir()), [])
-        self.assertEqual(events[-1].get("filesDone"), 1)
-        self.assertEqual(events[-1]["filesTotal"], 2)
+        self.assertEqual([e["fileId"] for e in events if e.get("fileComplete")], ["2"])
 
     def test_canceled_statistics_do_not_start_downloading(self):
         ops = self.make_ops()
         def report(event):
-            if event["phase"] == "statistics" and event["file"] == "sub":
+            if event["phase"] == "statistics":
                 raise Canceled()
         with tempfile.TemporaryDirectory() as dest, patch("operations.urlopen", side_effect=self.fetch) as fetch:
             with self.assertRaises(Canceled):
-                ops.operation("download", {"id": "1", "localPath": dest}, report)
+                ops.operation("transfer.statistics", {"id": "1", "transferMethod": "download"}, report)
             self.assertEqual(list(Path(dest).iterdir()), [])
             fetch.assert_not_called()
 
@@ -117,5 +110,14 @@ class FolderDownloadTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as dest, patch("operations.urlopen") as fetch:
             with self.assertRaisesRegex(ProviderError, "HTTP 405"):
                 ops.operation("download", {"id": "1", "localPath": dest}, lambda _: None)
-            self.assertEqual(list(Path(dest).iterdir()), [])
+            self.assertEqual([p.name for p in Path(dest).iterdir()], ["album"])
+            self.assertEqual(list(Path(dest, "album").iterdir()), [])
+            fetch.assert_not_called()
+
+    def test_repeated_directory_id_is_rejected_while_streaming(self):
+        ops = self.make_ops()
+        ops.children.side_effect = lambda _, checkpoint=lambda: None: [{"id": "1"}]
+        with tempfile.TemporaryDirectory() as dest, patch("operations.urlopen") as fetch:
+            with self.assertRaisesRegex(ProviderError, "目录层级异常"):
+                ops.operation("download", {"id": "1", "localPath": dest}, lambda _: None)
             fetch.assert_not_called()

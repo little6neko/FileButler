@@ -79,17 +79,19 @@ func TestBridgeCancelsPreviewWithoutRestartingWorker(t *testing.T) {
 	defer db.Close()
 	b := NewBridge(python, script, db, roots.NewResolver(nil))
 	defer b.Close()
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	started := false
-	_, err = b.Call(ctx, "ops.plan", nil, func(jobs.TransferProgress) error { started = true; cancel(); return nil })
-	if !started || !errors.Is(err, context.Canceled) {
-		t.Fatalf("preview did not cancel: %v", err)
+	for _, method := range []string{"ops.plan", "transfer.statistics"} {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		started := false
+		_, err = b.Call(ctx, method, nil, func(jobs.TransferProgress) error { started = true; cancel(); return nil })
+		cancel()
+		if !started || !errors.Is(err, context.Canceled) {
+			t.Fatalf("%s did not cancel: %v", method, err)
+		}
 	}
 	ctx, stop := context.WithTimeout(context.Background(), time.Second)
 	defer stop()
 	data, err := b.Call(ctx, "canceled-plans", nil, nil)
-	if err != nil || string(data) != "1" {
+	if err != nil || string(data) != "2" {
 		t.Fatalf("cancel not delivered to worker: %s %v", data, err)
 	}
 }

@@ -10,7 +10,7 @@ import type { UIStrings } from "../i18n";
 import { activeJobStatuses, JobEventsStore } from "../jobEvents";
 import { useOptionalJobEventsStore } from "../jobEventsContext";
 import { TransferDetails } from "./TransferProgress";
-import { hasTransferProgress } from "../transferProgress";
+import { hasTransferProgress, jobFileProgress } from "../transferProgress";
 
 type Filter = "all" | "running" | "completed";
 
@@ -95,7 +95,8 @@ export function JobsSheet({
           <div className="mt-4 grid gap-2">
             {filteredJobs.length ? (
               filteredJobs.map((job) => {
-                const percent = progressPercent(job);
+                const fileProgress = jobFileProgress(job);
+                const percent = fileProgress.percent;
                 const active = activeJobStatuses.has(job.status);
                 const canceling = cancelingJobIDs.has(job.id) && (job.status === "pending" || job.status === "running");
                 const cancelDisabled = canceling || job.status === "cancel_requested" || job.transfer?.cancelable === false;
@@ -115,8 +116,8 @@ export function JobsSheet({
                         </span>
                         <Progress aria-label={labels.jobProgress(job.type)} value={percent} className="mt-2" />
                         <span className="mt-1 flex justify-between text-[11px] text-slate-500">
-                          <span>{job.progressDone}/{job.progressTotal}</span>
-                          <span>{percent}%</span>
+                          <span>{fileProgress.count}</span>
+                          <span>{percent ?? "--"}%</span>
                         </span>
                         {summaryError ? <p className="mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[11px] text-destructive">{summaryError}</p> : null}
                         <TransferDetails job={job} labels={labels} />
@@ -159,10 +160,6 @@ function filterLabel(filter: Filter, labels: UIStrings) {
   if (filter === "running") return labels.runningJobs;
   if (filter === "completed") return labels.completedJobs;
   return labels.allJobs;
-}
-
-function progressPercent(job: Job) {
-  return job.progressTotal ? Math.round((job.progressDone / job.progressTotal) * 100) : 0;
 }
 
 function failureSummary(job: Job, labels: UIStrings) {

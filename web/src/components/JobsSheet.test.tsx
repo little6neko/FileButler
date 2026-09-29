@@ -44,7 +44,7 @@ it("renders an empty active snapshot without requesting REST history", async () 
 
 it("renders aggregate progress and failure summaries as a static task row", async () => {
   const store = storeWithJobs([
-    makeJob({ status: "running", progressTotal: 4, progressDone: 1, failedCount: 1 }),
+    makeJob({ status: "running", progressTotal: 4, progressDone: 1, failedCount: 1, transfer: { phase: "copy", file: "test", scope: "batch", bytesDone: 10, bytesTotal: 40, bytesPerSecond: 0, cancelable: true, filesDone: 1, filesTotal: 4 } }),
   ]);
   render(<JobsSheet open onOpenChange={vi.fn()} eventsStore={store} />);
 
@@ -61,6 +61,7 @@ it("renders aggregate progress and failure summaries as a static task row", asyn
         status: "running",
         progressTotal: 4,
         progressDone: 2,
+        transfer: { phase: "copy", file: "test", scope: "batch", bytesDone: 20, bytesTotal: 40, bytesPerSecond: 0, cancelable: true, filesDone: 2, filesTotal: 4 },
         failedCount: 2,
         errorMessage: "permission denied",
         eventVersion: 2,

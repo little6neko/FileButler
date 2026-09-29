@@ -288,8 +288,12 @@ func (s *Service) run(id, method string, params map[string]any, items []map[stri
 	ctx := context.Background()
 	// Each job runs independently; HTTP requests and SSE never own this context.
 	_ = s.Store.MarkRunning(ctx, id)
+	batch := s.transferBatch(ctx, id, method, params, items)
+	if batch != nil {
+		defer batch.Close()
+	}
 	failures := 0
-	for _, item := range items {
+	for i, item := range items {
 		cancel, err := s.Store.IsCancelRequested(ctx, id)
 		if err != nil {
 			return
@@ -298,14 +302,16 @@ func (s *Service) run(id, method string, params map[string]any, items []map[stri
 			_ = s.Store.Finish(ctx, id, jobs.StatusCanceled, "")
 			return
 		}
-		args := make(map[string]any, len(params)+len(item))
-		for k, v := range params {
-			args[k] = v
+		args := transferArgs(params, item)
+		_, err = s.Provider.Call(ctx, method, args, func(p jobs.TransferProgress) error {
+			if batch != nil {
+				return batch.Report(i, p)
+			}
+			return s.Store.ReportTransfer(ctx, id, p)
+		})
+		if batch != nil {
+			batch.CompleteItem(i, err)
 		}
-		for k, v := range item {
-			args[k] = v
-		}
-		_, err = s.Provider.Call(ctx, method, args, func(p jobs.TransferProgress) error { return s.Store.ReportTransfer(ctx, id, p) })
 		if errors.Is(err, context.Canceled) {
 			_ = s.Store.Finish(ctx, id, jobs.StatusCanceled, "")
 			return
@@ -314,6 +320,9 @@ func (s *Service) run(id, method string, params map[string]any, items []map[stri
 			failures++
 		}
 		_ = s.Store.RecordProgress(ctx, id, err)
+	}
+	if batch != nil {
+		batch.Close()
 	}
 	status := jobs.StatusCompleted
 	if failures > 0 {

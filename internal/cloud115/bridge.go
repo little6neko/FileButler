@@ -161,7 +161,7 @@ func (b *Bridge) Call(ctx context.Context, method string, params any, report job
 		select {
 		case <-ctx.Done():
 			// Read-only workers stop at checkpoints after their current I/O returns.
-			if strings.HasPrefix(method, "details.") || method == "ops.plan" {
+			if strings.HasPrefix(method, "details.") || method == "ops.plan" || method == "transfer.statistics" {
 				b.mu.Lock()
 				_ = json.NewEncoder(p.in).Encode(map[string]any{"cancelId": id})
 				b.mu.Unlock()

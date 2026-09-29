@@ -140,7 +140,7 @@ export type PlanItem = {
 
 export type Job = {
   accountId?: string;
-  transfer?: { phase: string; file: string; bytesDone: number; bytesTotal: number; bytesPerSecond: number; remainingSeconds?: number; cancelable: boolean; percent?: number; scope?: string; warning?: string; filesDone?: number; filesTotal?: number };
+  transfer?: { phase: string; file: string; bytesDone: number; bytesTotal: number; bytesPerSecond: number; remainingSeconds?: number; cancelable: boolean; percent?: number; scope?: string; warning?: string; filesDone?: number; filesTotal?: number; stage?: { bytesDone: number; bytesTotal: number; bytesPerSecond: number } };
   id: string;
   type: string;
   status: string;

@@ -116,7 +116,10 @@ func copyPath(ctx context.Context, src, dest string) error {
 		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 			return err
 		}
-		return os.Symlink(target, dest)
+		if err := os.Symlink(target, dest); err != nil {
+			return err
+		}
+		return jobs.Report(ctx, jobs.TransferProgress{Phase: "copy", File: filepath.Base(src), FileID: src, FileComplete: true, Cancelable: true})
 	}
 	if !info.Mode().IsRegular() {
 		return fmt.Errorf("不支持复制特殊文件：%s", src)
@@ -147,7 +150,7 @@ func copyFileContext(ctx context.Context, src, dest string, mode os.FileMode) er
 	if err != nil {
 		return err
 	}
-	progress := jobs.TransferProgress{Phase: "copy", File: filepath.Base(src), BytesTotal: info.Size(), Cancelable: true}
+	progress := jobs.TransferProgress{Phase: "copy", File: filepath.Base(src), FileID: src, BytesTotal: info.Size(), Cancelable: true}
 	if err := jobs.Report(ctx, progress); err != nil {
 		return err
 	}
@@ -207,5 +210,6 @@ func copyFileContext(ctx context.Context, src, dest string, mode os.FileMode) er
 	}
 	completed = true
 	cache.store.CopyLocal(context.WithoutCancel(ctx), cache.resolver, src, dest, current)
-	return nil
+	progress.FileComplete = true
+	return jobs.Report(ctx, progress)
 }

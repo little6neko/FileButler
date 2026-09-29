@@ -51,7 +51,7 @@ func movePath(ctx context.Context, src, dest string, rename func(string, string)
 		return err
 	}
 	if err := rename(src, dest); err == nil {
-		return nil
+		return jobs.Report(ctx, jobs.TransferProgress{Phase: "waiting", File: filepath.Base(src), AtomicMove: true, Cancelable: true})
 	} else if !errors.Is(err, syscall.EXDEV) {
 		return err
 	}

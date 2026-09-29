@@ -21,21 +21,20 @@ it("retains local extraction cancellation warnings until dismissed", () => {
   expect(screen.queryByRole("button", { name: "后台运行" })).not.toBeInTheDocument();
 });
 
-it("shows completed file counts beside folder byte progress while retaining the current file", () => {
+it("keeps only bytes beside task progress while retaining the current file", () => {
   const transfer = { ...job.transfer!, phase: "download", scope: "folder-1", file: "second.txt", bytesDone: 400, bytesTotal: 1000, percent: 40, filesDone: 22, filesTotal: 266 };
   const view = render(<TransferDetails job={{ ...job, transfer }} labels={strings["zh-CN"]} />);
   expect(screen.getByText("下载 · second.txt")).toBeInTheDocument();
   expect(screen.getByText(/400 B \/ 1000 B/)).toBeInTheDocument();
   expect(screen.getByText(/40%/)).toBeInTheDocument();
-  expect(screen.getByText(/文件夹剩余/)).toBeInTheDocument();
-  expect(screen.getByText("22/266")).toBeInTheDocument();
-  expect(screen.getByText("22/266").parentElement).toContainElement(screen.getByText(/400 B \/ 1000 B/));
+  expect(screen.getByText(/任务剩余/)).toBeInTheDocument();
+  expect(screen.queryByText("22/266")).not.toBeInTheDocument();
   view.rerender(<TransferDetails job={{ ...job, transfer: { ...transfer, bytesTotal: 0, percent: undefined, remainingSeconds: undefined } }} labels={strings["zh-CN"]} />);
   expect(screen.getByText(/400 B \/ —/)).toBeInTheDocument();
   expect(screen.queryByText(/40%/)).not.toBeInTheDocument();
-  expect(screen.getByText("22/266")).toBeInTheDocument();
+  expect(screen.queryByText("22/266")).not.toBeInTheDocument();
   view.rerender(<TransferDetails job={{ ...job, transfer: { ...transfer, bytesDone: 0, bytesTotal: 0, percent: 100, filesDone: 0, filesTotal: 0 } }} labels={strings["zh-CN"]} />);
-  expect(screen.getByText("0/0")).toBeInTheDocument();
+  expect(screen.queryByText("0/0")).not.toBeInTheDocument();
 });
 
 function setup() {
@@ -47,6 +46,18 @@ function setup() {
 }
 
 describe("transfer windows", () => {
+  it("shows unknown totals then batch file counts at the top, not top-level selection counts", () => {
+    const store = setup();
+    expect(screen.getByLabelText("文件数进度")).toHaveTextContent("-/- · --%");
+    act(() => store.handleChanged({ runtimeId: "r", cursor: 2, job: { ...job, eventVersion: 2, transfer: { ...job.transfer!, scope: "batch", filesDone: 22, filesTotal: 266 } } }));
+    expect(screen.getByLabelText("文件数进度")).toHaveTextContent("22/266 · 8.3%");
+    expect(screen.getAllByText(/22\/266/)).toHaveLength(1);
+  });
+  it("keeps top-level counts for moves within one 115 account", () => {
+    const store = setup();
+    act(() => store.handleChanged({ runtimeId: "r", cursor: 2, job: { ...job, type: "move", sourceRootId: "@115", destRootId: "@115", progressDone: 1, progressTotal: 3, eventVersion: 2 } }));
+    expect(screen.getByLabelText("文件数进度")).toHaveTextContent("1/3 · 33.3%");
+  });
   it("uses shared window controls and the X only hides progress", () => {
     const store = setup();
     const close = screen.getByRole("button", { name: strings["zh-CN"].closeWindow });

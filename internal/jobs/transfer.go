@@ -7,20 +7,31 @@ import (
 	"time"
 )
 
-// TransferProgress describes the current phase, not an estimate for later phases.
+// TransferProgress describes a phase or a batch's cumulative transfer. Optional
+// Stage progress (e.g. hashing) is separate from the batch's transferred bytes.
 type TransferProgress struct {
-	Scope            string   `json:"scope,omitempty"`
-	Warning          string   `json:"warning,omitempty"`
-	FilesDone        *int     `json:"filesDone,omitempty"`
-	FilesTotal       *int     `json:"filesTotal,omitempty"`
-	Percent          *float64 `json:"percent,omitempty"`
-	Phase            string   `json:"phase"`
-	File             string   `json:"file"`
-	BytesDone        int64    `json:"bytesDone"`
-	BytesTotal       int64    `json:"bytesTotal"`
-	BytesPerSecond   float64  `json:"bytesPerSecond"`
-	RemainingSeconds *int64   `json:"remainingSeconds,omitempty"`
-	Cancelable       bool     `json:"cancelable"`
+	Stage            *TransferStage `json:"stage,omitempty"`
+	FileID           string         `json:"fileId,omitempty"`
+	FileComplete     bool           `json:"fileComplete,omitempty"`
+	AtomicMove       bool           `json:"-"`
+	Scope            string         `json:"scope,omitempty"`
+	Warning          string         `json:"warning,omitempty"`
+	FilesDone        *int           `json:"filesDone,omitempty"`
+	FilesTotal       *int           `json:"filesTotal,omitempty"`
+	Percent          *float64       `json:"percent,omitempty"`
+	Phase            string         `json:"phase"`
+	File             string         `json:"file"`
+	BytesDone        int64          `json:"bytesDone"`
+	BytesTotal       int64          `json:"bytesTotal"`
+	BytesPerSecond   float64        `json:"bytesPerSecond"`
+	RemainingSeconds *int64         `json:"remainingSeconds,omitempty"`
+	Cancelable       bool           `json:"cancelable"`
+}
+
+type TransferStage struct {
+	BytesDone      int64   `json:"bytesDone"`
+	BytesTotal     int64   `json:"bytesTotal"`
+	BytesPerSecond float64 `json:"bytesPerSecond"`
 }
 
 type progressKey struct{}
@@ -61,7 +72,7 @@ func (s Store) ReportTransfer(ctx context.Context, id string, progress TransferP
 	}
 	now := s.state.currentTime()
 	previous := record.job.Transfer
-	reset := previous == nil || previous.Phase != progress.Phase || previous.Scope != progress.Scope || (progress.Scope == "" && previous.File != progress.File) || progress.BytesDone < previous.BytesDone
+	reset := previous == nil || (progress.Scope != "batch" && previous.Phase != progress.Phase) || previous.Scope != progress.Scope || (progress.Scope == "" && previous.File != progress.File) || progress.BytesDone < previous.BytesDone
 	if reset {
 		record.transferSampleAt, record.transferSampleBytes = now, progress.BytesDone
 		record.transferRate = 0
@@ -82,7 +93,8 @@ func (s Store) ReportTransfer(ctx context.Context, id string, progress TransferP
 	}
 	record.job.Transfer = &progress
 	record.job.UpdatedAtUnix = now.Unix()
-	if reset || now.Sub(record.lastProgressEventAt) >= progressEventInterval {
+	statisticsChanged := previous != nil && (previous.FilesTotal == nil) != (progress.FilesTotal == nil)
+	if reset || statisticsChanged || now.Sub(record.lastProgressEventAt) >= progressEventInterval {
 		record.lastProgressEventAt = now
 		s.state.emitLocked(record)
 	}

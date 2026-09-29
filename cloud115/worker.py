@@ -56,7 +56,7 @@ def serve(adapter, input_stream, storage=None):
                 raise Canceled()
             key = (value["phase"], value["file"], value["cancelable"])
             now = time.monotonic()
-            complete = value.get("bytesTotal", 0) > 0 and value["bytesDone"] == value["bytesTotal"] or value.get("percent") == 100
+            complete = value.get("fileComplete") or value.get("bytesTotal", 0) > 0 and value["bytesDone"] == value["bytesTotal"] or value.get("percent") == 100
             if key == last_key and now - last_at < 0.1 and not complete:
                 return
             last_key, last_at = key, now

@@ -8,7 +8,7 @@ import { activeJobStatuses, type JobEventsStore } from "../jobEvents";
 import { strings, type UIStrings } from "../i18n";
 import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
-import { hasTransferProgress, dismissCompletedProgress } from "../transferProgress";
+import { hasTransferProgress, dismissCompletedProgress, jobFileProgress } from "../transferProgress";
 
 function bytes(value: number) {
   const units = ["B", "KiB", "MiB", "GiB", "TiB"];
@@ -27,13 +27,13 @@ export function TransferDetails({ job, labels }: { job: Job; labels: UIStrings }
   const percent = transfer.percent ?? (transfer.bytesTotal > 0 ? Math.min(100, transfer.bytesDone / transfer.bytesTotal * 100) : null);
   return <div className="grid gap-1 text-xs">
     <span className="truncate" title={transfer.file}>{transfer.phase === "extract" && job.sourceRootId !== "@115" ? (zh ? "解压" : "Extracting") : phases[transfer.phase] ?? transfer.phase} · {transfer.file}</span>
-    <Progress aria-label={transfer.scope ? (zh ? "文件夹总进度" : "Folder progress") : (zh ? "阶段进度" : "Phase progress")} value={percent} />
+    <Progress aria-label={transfer.scope ? (zh ? "任务总进度" : "Task progress") : (zh ? "阶段进度" : "Phase progress")} value={percent} />
     <div className="flex flex-wrap items-center gap-x-3"><span>{transfer.scope
       ? `${bytes(transfer.bytesDone)} / ${transfer.bytesTotal > 0 || transfer.percent === 100 ? bytes(transfer.bytesTotal) : "—"}${percent !== null ? ` · ${Number(percent.toFixed(1))}%` : ""}`
       : transfer.percent !== undefined ? `${transfer.percent}%` : `${bytes(transfer.bytesDone)} / ${transfer.bytesTotal > 0 ? bytes(transfer.bytesTotal) : "—"}`}</span>
-      {transfer.filesDone !== undefined && transfer.filesTotal !== undefined ? <span aria-label={zh ? "文件数进度" : "File count progress"}>{transfer.filesDone}/{transfer.filesTotal}</span> : null}
     </div>
-    <span>{transfer.bytesPerSecond > 0 ? `${bytes(transfer.bytesPerSecond)}/s` : "—"} · {transfer.scope ? (zh ? "文件夹剩余" : "Folder remaining") : (zh ? "本阶段剩余" : "Phase remaining")} {transfer.remainingSeconds === undefined ? "—" : `${transfer.remainingSeconds}s`}</span>
+    <span>{transfer.bytesPerSecond > 0 ? `${bytes(transfer.bytesPerSecond)}/s` : "—"} · {transfer.scope ? (zh ? "任务剩余" : "Task remaining") : (zh ? "本阶段剩余" : "Phase remaining")} {transfer.remainingSeconds === undefined ? "—" : `${transfer.remainingSeconds}s`}</span>
+    {transfer.stage ? <span>{zh ? "校验" : "Checking"} · {bytes(transfer.stage.bytesDone)} / {bytes(transfer.stage.bytesTotal)} · {transfer.stage.bytesPerSecond > 0 ? `${bytes(transfer.stage.bytesPerSecond)}/s` : "—"}</span> : null}
     {transfer.warning ? <p role="status" className="whitespace-pre-wrap break-words text-amber-700">{transfer.warning}</p> : null}
   </div>;
 }
@@ -81,6 +81,7 @@ function TransferWindow({ job, store, labels, viewport, order, onFocus }: { job:
   const [error, setError] = useState("");
   const zh = labels === strings["zh-CN"];
   const active = activeJobStatuses.has(job.status);
+  const fileProgress = jobFileProgress(job);
   async function cancel() {
     setCanceling(true); setError("");
     try { await api.cancelJob(job.id); }
@@ -95,7 +96,7 @@ function TransferWindow({ job, store, labels, viewport, order, onFocus }: { job:
       </div>
     </div>
     <div className="grid gap-3 p-4">
-    <span className="text-xs">{job.progressDone}/{job.progressTotal}</span>
+    <span className="text-xs" aria-label={zh ? "文件数进度" : "File count progress"}>{fileProgress.count} · {fileProgress.percent ?? "--"}%</span>
     <span className="truncate text-xs text-muted-foreground">{job.sourceRootId === "@115" ? "115" : job.sourceRootId}{job.destRootId ? ` → ${job.destRootId === "@115" ? "115" : job.destRootId}` : ""}</span>
     <TransferDetails job={job} labels={labels} />
     {job.errorMessage || error ? <p role="alert" className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-destructive">{error || job.errorMessage}</p> : null}

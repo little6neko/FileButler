@@ -23,7 +23,7 @@ for (const mode of ["batch", "pending", "cloud-move"] as const) {
     await page.getByRole("button", { name: "View progress", exact: true }).click();
     const dialog = page.locator('[data-progress-job="transfer-test"]');
     const counter = dialog.getByLabel("File count progress");
-    await expect(counter).toHaveText(mode === "batch" ? "23/266 · 8.3%" : mode === "pending" ? "-/- · --%" : "2/3 · 33.3%");
+    await expect(counter).toHaveText(mode === "batch" ? "23/266" : mode === "pending" ? "-/-" : "2/3");
     if (mode === "batch") {
       const size = dialog.getByText("400 B / 1000 B · 40%", { exact: true });
       await expect(size).toBeVisible();

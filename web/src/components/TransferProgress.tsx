@@ -96,7 +96,7 @@ function TransferWindow({ job, store, labels, viewport, order, onFocus }: { job:
       </div>
     </div>
     <div className="grid gap-3 p-4">
-    <span className="text-xs" aria-label={zh ? "文件数进度" : "File count progress"}>{fileProgress.count} · {fileProgress.percent ?? "--"}%</span>
+    <span className="text-xs" aria-label={zh ? "文件数进度" : "File count progress"}>{fileProgress.count}</span>
     <span className="truncate text-xs text-muted-foreground">{job.sourceRootId === "@115" ? "115" : job.sourceRootId}{job.destRootId ? ` → ${job.destRootId === "@115" ? "115" : job.destRootId}` : ""}</span>
     <TransferDetails job={job} labels={labels} />
     {job.errorMessage || error ? <p role="alert" className="whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-sm text-destructive">{error || job.errorMessage}</p> : null}

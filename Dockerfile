@@ -1,4 +1,4 @@
-ARG VERSION=0.3.6
+ARG VERSION=0.3.7
 
 FROM node:25-alpine AS frontend
 ARG VERSION

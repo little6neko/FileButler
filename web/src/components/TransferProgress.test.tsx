@@ -59,13 +59,13 @@ describe("transfer windows", () => {
     const store = setup();
     expect(screen.getByLabelText("文件数进度")).toHaveTextContent("-/- · --%");
     act(() => store.handleChanged({ runtimeId: "r", cursor: 2, job: { ...job, eventVersion: 2, transfer: { ...job.transfer!, scope: "batch", filesDone: 22, filesTotal: 266 } } }));
-    expect(screen.getByLabelText("文件数进度")).toHaveTextContent("22/266 · 8.3%");
-    expect(screen.getAllByText(/22\/266/)).toHaveLength(1);
+    expect(screen.getByLabelText("文件数进度")).toHaveTextContent("23/266 · 8.3%");
+    expect(screen.getAllByText(/23\/266/)).toHaveLength(1);
   });
   it("keeps top-level counts for moves within one 115 account", () => {
     const store = setup();
     act(() => store.handleChanged({ runtimeId: "r", cursor: 2, job: { ...job, type: "move", sourceRootId: "@115", destRootId: "@115", progressDone: 1, progressTotal: 3, eventVersion: 2 } }));
-    expect(screen.getByLabelText("文件数进度")).toHaveTextContent("1/3 · 33.3%");
+    expect(screen.getByLabelText("文件数进度")).toHaveTextContent("2/3 · 33.3%");
   });
   it("uses shared window controls and the X only hides progress", () => {
     const store = setup();

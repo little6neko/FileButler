@@ -81,7 +81,7 @@ function TransferWindow({ job, store, labels, viewport, order, onFocus }: { job:
   const [error, setError] = useState("");
   const zh = labels === strings["zh-CN"];
   const active = activeJobStatuses.has(job.status);
-  const fileProgress = jobFileProgress(job);
+  const fileProgress = jobFileProgress(job, "current");
   async function cancel() {
     setCanceling(true); setError("");
     try { await api.cancelJob(job.id); }

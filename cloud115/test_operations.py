@@ -279,7 +279,7 @@ class OperationsTests(unittest.TestCase):
                 mkdir.assert_called_once()
 
     def test_extraction_invalid_parse_progress_stops_before_creating_folder(self):
-        for data in ({}, None, [], {"unzip_status": None}, {"unzip_status": True}, {"unzip_status": 4.5}, {"unzip_status": "invalid"}):
+        for data in ([], {"unzip_status": None}, {"unzip_status": True}, {"unzip_status": 4.5}, {"unzip_status": "invalid"}):
             with self.subTest(data=data):
                 operations = FakeOperations()
                 client = operations.client
@@ -299,6 +299,79 @@ class OperationsTests(unittest.TestCase):
                 self.assertFalse(client.extracted)
                 client.extract_push.assert_called_once()
                 client.extract_push_progress.assert_called_once()
+
+    def test_extraction_missing_query_status_recovers_without_resubmitting(self):
+        operations = FakeOperations()
+        client = operations.client
+        client.extract_push = Mock(return_value={"state": True, "data": {}})
+        client.extract_push_progress = Mock(side_effect=[
+            {"state": True}, {"state": True, "data": None},
+            {"state": True, "data": {}},
+            {"state": True, "data": {"unzip_status": 1}},
+            {"state": True, "data": {"unzip_status": 4}},
+        ])
+        progress = []
+        with patch("operations.time.sleep") as sleep, patch.object(operations, "mkdir", return_value="folder") as mkdir:
+            operations.extract({"is_dir": False, "name": "test.zip", "pickcode": "pick"}, "0", "", progress.append)
+        client.extract_push.assert_called_once()
+        self.assertEqual(client.extract_push_progress.call_count, 5)
+        self.assertEqual(sleep.call_count, 5)  # Four query delays plus final save progress.
+        self.assertTrue(all(call.args == (2,) for call in sleep.call_args_list))
+        self.assertTrue(any(p["phase"] == "extract-waiting" for p in progress))
+        self.assertEqual(progress[-1]["percent"], 100)
+        mkdir.assert_called_once()
+
+    def test_extraction_missing_query_status_has_separate_timeout(self):
+        operations = FakeOperations()
+        client = operations.client
+        client.extract_push = Mock(return_value={"state": True, "data": {}})
+        response = DiagnosticResponse(state=True, data={}, message="pending archive-secret cookie-secret")
+        response.request_secrets = ["cookie-secret"]
+        client.extract_push_progress = Mock(return_value=response)
+        with patch("operations.time.monotonic", side_effect=[0, 0, 2, 60]), patch("operations.time.sleep"), patch.object(operations, "mkdir") as mkdir:
+            with self.assertRaises(ProviderError) as raised:
+                operations.extract({"is_dir": False, "name": "test.zip", "pickcode": "pick"}, "0", "archive-secret", lambda p: None)
+        message = str(raised.exception)
+        self.assertIn("GET https://webapi.115.com/files/push_extract", message)
+        self.assertIn("60 秒", message)
+        self.assertIn("data.unzip_status", message)
+        self.assertIn("pending", message)
+        self.assertNotIn("archive-secret", message)
+        self.assertNotIn("cookie-secret", message)
+        client.extract_push.assert_called_once()
+        self.assertEqual(client.extract_push_progress.call_count, 2)
+        mkdir.assert_not_called()
+        self.assertFalse(client.extracted)
+
+    def test_extraction_valid_status_resets_missing_status_timeout(self):
+        operations = FakeOperations()
+        client = operations.client
+        client.extract_push = Mock(return_value={"state": True, "data": {}})
+        client.extract_push_progress = Mock(side_effect=[
+            {"state": True, "data": {}},
+            {"state": True, "data": {"unzip_status": 1}},
+            {"state": True, "data": {}},
+            {"state": True, "data": {}},
+            {"state": True, "data": {"unzip_status": 4}},
+        ])
+        # Normal parsing can take longer than 60s; separate missing-status
+        # intervals must not accumulate across a valid status response.
+        clock = iter([0, 0, 58, 120, 122, 180])
+        with patch("operations.time.monotonic", side_effect=lambda: next(clock, 182)), patch("operations.time.sleep"):
+            operations.extract({"is_dir": False, "name": "test.zip", "pickcode": "pick"}, "0", "", lambda p: None)
+        client.extract_push.assert_called_once()
+        self.assertTrue(client.extracted)
+
+    def test_extraction_query_missing_status_requires_explicit_success(self):
+        for response in ({}, {"data": {}}, {"state": True, "data": []}):
+            with self.subTest(response=response):
+                operations = FakeOperations()
+                operations.client.extract_push = Mock(return_value={"state": True})
+                operations.client.extract_push_progress = Mock(return_value=response)
+                with patch.object(operations, "mkdir") as mkdir, self.assertRaises(ProviderError):
+                    operations.extract({"is_dir": False, "name": "test.zip", "pickcode": "pick"}, "0", "", lambda p: None)
+                operations.client.extract_push_progress.assert_called_once()
+                mkdir.assert_not_called()
 
     def test_extraction_failed_status_reports_stage_and_does_not_continue(self):
         for from_query in (False, True):

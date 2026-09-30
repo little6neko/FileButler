@@ -406,8 +406,8 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
                 raise failure(result, endpoint, "115解压接口返回失败")
             data = result.get("data")
             if not isinstance(data, dict) or name not in data:
-                # Only an explicitly accepted submission may omit its initial
-                # status. Query once rather than guessing or submitting again.
+                # Explicit success may precede an available parsing status.
+                # Only the parsing loop opts into bounded missing-status retries.
                 if optional and result.get("state") in (True, 1) and (data is None or isinstance(data, dict)):
                     return missing_status
                 raise failure(result, endpoint, f"115解压响应缺少 data.{name}，或 data 不是对象")
@@ -420,8 +420,9 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
         result = client.extract_push({"pick_code": pickcode, "secret": password}, timeout=60)
         initial = True
         deadline = time.monotonic() + 6*3600
+        missing_since = None
         while True:
-            value = field(result, endpoint, "unzip_status", optional=initial)
+            value = field(result, endpoint, "unzip_status", optional=True)
             missing = value is missing_status
             if missing:
                 status = None
@@ -436,11 +437,21 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
                 break
             if status is not None and status not in (0, 1):
                 raise failure(result, endpoint, f"115压缩包解析失败，unzip_status={status}；请检查密码、格式、大小及账号权限")
-            if time.monotonic() > deadline:
+            now = time.monotonic()
+            if now > deadline:
                 raise ProviderError("云端解压等待超时；远端可能仍在执行，请在115确认状态")
-            if not missing:
+            if missing:
+                if missing_since is None:
+                    missing_since = now
+                if now - missing_since >= 60:
+                    raise failure(result, endpoint, "115解压响应连续 60 秒缺少 data.unzip_status；远端可能仍在进行云解压，请在115确认状态")
+            else:
+                missing_since = None
+            report(progress_value("extract-waiting" if missing else "extract", item["name"], cancelable=False))
+            # Query immediately after an accepted submission without status,
+            # but always pace subsequent queries to avoid hammering the API.
+            if not (initial and missing):
                 time.sleep(2)
-            report(progress_value("extract", item["name"], cancelable=False))
             endpoint = "GET https://webapi.115.com/files/push_extract"
             result = client.extract_push_progress(pickcode, timeout=30)
             initial = False

@@ -9,6 +9,15 @@ import { api } from "../api/client";
 vi.mock("../api/client", () => ({ api: { cancelJob: vi.fn().mockResolvedValue({}) } }));
 const job: Job = { id: "a", type: "copy", status: "running", actorId: 1, sourceRootId: "local", progressDone: 0, progressTotal: 1, failedCount: 0, cancelRequested: false, errorMessage: "", createdAtUnix: 1, updatedAtUnix: 1, eventVersion: 1, transfer: { phase: "copy", file: "a.txt", bytesDone: 100, bytesTotal: 1000, bytesPerSecond: 100, remainingSeconds: 9, cancelable: true } };
 
+it("labels missing cloud extraction status as waiting without inventing progress", () => {
+  const extraction: Job = { ...job, type: "extract", sourceRootId: "@115", transfer: { phase: "extract-waiting", file: "test.zip", bytesDone: 0, bytesTotal: 0, bytesPerSecond: 0, cancelable: false } };
+  const view = render(<TransferDetails job={extraction} labels={strings["zh-CN"]} />);
+  expect(screen.getByText("正在等待云端解压状态 · test.zip")).toBeInTheDocument();
+  expect(screen.getByRole("progressbar")).not.toHaveAttribute("aria-valuenow");
+  view.rerender(<TransferDetails job={extraction} labels={strings["en"]} />);
+  expect(screen.getByText("Waiting for cloud extraction status · test.zip")).toBeInTheDocument();
+});
+
 it("retains local extraction cancellation warnings until dismissed", () => {
   const store = new JobEventsStore();
   const extraction: Job = { ...job, type: "extract", transfer: { ...job.transfer!, phase: "extract" } };

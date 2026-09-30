@@ -40,7 +40,7 @@ COPY --from=archive-tool /download/License.txt /usr/share/doc/7zip/License.txt
 RUN 7zz i > /dev/null
 COPY cloud115/requirements.txt /app/cloud115/requirements.txt
 RUN pip install --no-cache-dir -r /app/cloud115/requirements.txt
-COPY cloud115/worker.py cloud115/accounts.py cloud115/operations.py cloud115/errors.py cloud115/batch.py cloud115/file_operations.py cloud115/private_storage.py cloud115/hash_cache.py cloud115/details.py cloud115/download_progress.py /app/cloud115/
+COPY cloud115/worker.py cloud115/accounts.py cloud115/operations.py cloud115/errors.py cloud115/batch.py cloud115/file_operations.py cloud115/private_storage.py cloud115/hash_cache.py cloud115/details.py cloud115/transfer_statistics.py /app/cloud115/
 ENV PYTHONDONTWRITEBYTECODE=1
 RUN PYTHONPATH=/app/cloud115 python -c "import worker"
 COPY --from=backend /out/filebutler /usr/local/bin/filebutler

@@ -24,6 +24,7 @@ import (
 type Service struct {
 	accounts          sync.Map
 	accountMu         sync.Mutex
+	deleteSlot        chan struct{}
 	Provider          Provider
 	Store             jobs.Store
 	Roots             roots.Resolver
@@ -32,7 +33,7 @@ type Service struct {
 }
 
 func NewService(provider Provider, store jobs.Store, resolver roots.Resolver) *Service {
-	return &Service{Provider: provider, Store: store, Roots: resolver, previews: make(map[string]batchPreview), operationPreviews: make(map[string]operationPreview)}
+	return &Service{Provider: provider, Store: store, Roots: resolver, deleteSlot: make(chan struct{}, 1), previews: make(map[string]batchPreview), operationPreviews: make(map[string]operationPreview)}
 }
 
 type Request struct {
@@ -285,6 +286,10 @@ func (s *Service) handle(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) run(id, method string, params map[string]any, items []map[string]any) {
+	if method == "delete" {
+		s.runDelete(id, params, items)
+		return
+	}
 	ctx := context.Background()
 	// Each job runs independently; HTTP requests and SSE never own this context.
 	_ = s.Store.MarkRunning(ctx, id)

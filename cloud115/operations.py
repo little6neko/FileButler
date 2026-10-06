@@ -1,6 +1,7 @@
 """115 operations; no HTTP server, browser state, or local authentication here."""
 import hashlib
 import os
+import re
 import stat
 import time
 import uuid
@@ -113,6 +114,8 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
 
     def operation(self, method, params, report):
         client = self.load()
+        if method == "delete":
+            return self.delete_batch(params, report)
         if method == "transfer.statistics":
             from transfer_statistics import transfer_statistics
             return transfer_statistics(self, params, report)
@@ -233,12 +236,32 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
                 self.find_child(dest, name)
             if method == "copy" and not item["is_dir"]:
                 report({**progress_value("copy", name, int(item["size"]), int(item["size"])), "fileId": str(item["id"]), "fileComplete": True})
-        elif method == "delete":
-            self.invalidate_cloud()
-            self.checked(client.fs_delete(item["id"], timeout=30))
         else:
             raise ProviderError("不支持的115操作")
         return {"ok": True}
+
+    def delete_batch(self, params, report):
+        ids = params.get("ids", [params.get("id")])
+        if not isinstance(ids, list) or not ids or any(not isinstance(value, str) or not re.fullmatch(r"[1-9][0-9]{0,19}", value) for value in ids):
+            raise ProviderError("请选择有效的115文件或文件夹")
+        ids = list(dict.fromkeys(ids))
+        deadline = time.monotonic() + 60
+        client = self.load()
+        self.invalidate_cloud()
+        while True:
+            report(progress_value("waiting", f"删除 {len(ids)} 项", cancelable=False))
+            # A timeout has an uncertain outcome: only an explicit busy response
+            # permits resubmission, never an exception or a malformed response.
+            result = client.fs_delete(ids, timeout=30)
+            if isinstance(result, dict) and result.get("state") in (True, 1):
+                return {"submitted": True}
+            busy = isinstance(result, dict) and result.get("state") in (False, 0) and str(result.get("errno")) == "990009"
+            if not busy or time.monotonic() >= deadline:
+                raise ProviderError(response_error(result) if isinstance(result, dict) else "115删除接口返回了非对象响应；结果不确定，请刷新后确认")
+            report(progress_value("waiting", "115删除操作忙碌，等待重试", cancelable=True))
+            time.sleep(2)
+            if time.monotonic() >= deadline:
+                raise ProviderError(response_error(result))
 
     def copy_directory(self, item, dest, report):
         target = self.mkdir(dest, item["name"])

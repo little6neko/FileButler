@@ -270,7 +270,7 @@ class OperationsTests(unittest.TestCase):
                 with patch("operations.time.sleep"), patch.object(operations, "mkdir", return_value="folder") as mkdir:
                     def query(*args, **kwargs):
                         mkdir.assert_not_called()
-                        return {"state": True, "data": {"unzip_status": "4" if client.extract_push_progress.call_count == 2 else "1"}}
+                        return {"state": True, "data": {"extract_status": {"unzip_status": "4" if client.extract_push_progress.call_count == 2 else "1"}}}
                     client.extract_push_progress.side_effect = query
                     operations.extract({"is_dir": False, "name": "test.zip", "pickcode": "pick"}, "0", "password", progress.append)
                 client.extract_push.assert_called_once_with({"pick_code": "pick", "secret": "password"}, timeout=60)
@@ -278,20 +278,68 @@ class OperationsTests(unittest.TestCase):
                 self.assertEqual(progress[-1]["percent"], 100)
                 mkdir.assert_called_once()
 
+    def test_extraction_nested_cloud_progress_waits_for_ready_status_then_saves(self):
+        operations = FakeOperations()
+        client = operations.client
+        client.extract_push = Mock(return_value={"state": True})
+        progress = []
+        responses = iter([
+            {"unzip_status": 0, "progress": 0},
+            {"unzip_status": 1, "progress": 5},
+            {"unzip_status": 1, "progress": "100"},
+            {"unzip_status": 4, "progress": 100},
+        ])
+        with patch.object(operations, "mkdir", return_value="folder") as mkdir, patch("operations.time.sleep"), patch("operations.time.monotonic", side_effect=range(0, 1000, 30)):
+            def query(*args, **kwargs):
+                mkdir.assert_not_called()
+                self.assertFalse(client.extracted)
+                return {"state": True, "message": "", "code": "", "data": {"extract_status": next(responses)}}
+            client.extract_push_progress = Mock(side_effect=query)
+            operations.extract({"is_dir": False, "name": "test.zip", "pickcode": "pick"}, "0", "", progress.append)
+        client.extract_push.assert_called_once()
+        self.assertEqual(client.extract_push_progress.call_count, 4)
+        self.assertEqual([p["percent"] for p in progress if p["phase"] == "extract-parsing" and "percent" in p], [0, 5, 100])
+        saved = [p for p in progress if p["phase"] == "extract-saving"]
+        self.assertNotIn("percent", saved[0])  # Clear parsing 100% before saving starts.
+        self.assertEqual([p["percent"] for p in saved if "percent" in p], [50, 100])
+        mkdir.assert_called_once()
+
+    def test_extraction_prepared_archive_skips_cloud_queries_but_waits_for_save(self):
+        operations = FakeOperations()
+        operations.client.extract_push_progress = Mock()
+        progress = []
+        with patch("operations.time.sleep"):
+            operations.extract({"is_dir": False, "name": "test.zip", "pickcode": "pick"}, "0", "", progress.append)
+        operations.client.extract_push_progress.assert_not_called()
+        self.assertEqual(operations.client.progress_calls, 2)
+        self.assertEqual(progress[-1]["phase"], "extract-saving")
+        self.assertEqual(progress[-1]["percent"], 100)
+
+    def test_extraction_invalid_nested_progress_does_not_create_destination(self):
+        for value in (None, True, "invalid", "NaN", "Infinity", -1, 101):
+            with self.subTest(value=value):
+                operations = FakeOperations()
+                operations.client.extract_push = Mock(return_value={"state": True})
+                operations.client.extract_push_progress = Mock(return_value={"state": True, "data": {"extract_status": {"unzip_status": 1, "progress": value}}})
+                with patch.object(operations, "mkdir") as mkdir, self.assertRaisesRegex(ProviderError, "data.extract_status.progress"):
+                    operations.extract({"is_dir": False, "name": "test.zip", "pickcode": "pick"}, "0", "", lambda p: None)
+                mkdir.assert_not_called()
+                self.assertFalse(operations.client.extracted)
+
     def test_extraction_invalid_parse_progress_stops_before_creating_folder(self):
         for data in ([], {"unzip_status": None}, {"unzip_status": True}, {"unzip_status": 4.5}, {"unzip_status": "invalid"}):
             with self.subTest(data=data):
                 operations = FakeOperations()
                 client = operations.client
                 client.extract_push = Mock(return_value={"state": True, "data": {}})
-                response = DiagnosticResponse(state=True, data=data, message="parse reply archive-secret cookie-secret")
+                response = DiagnosticResponse(state=True, data={"extract_status": data}, message="parse reply archive-secret cookie-secret")
                 response.request_secrets = ["cookie-secret"]
                 client.extract_push_progress = Mock(return_value=response)
                 with patch("operations.time.sleep"), patch.object(operations, "mkdir") as mkdir, self.assertRaises(ProviderError) as raised:
                     operations.extract({"is_dir": False, "name": "test.zip", "pickcode": "pick"}, "0", "archive-secret", lambda p: None)
                 message = str(raised.exception)
                 self.assertIn("GET https://webapi.115.com/files/push_extract", message)
-                self.assertIn("data.unzip_status", message)
+                self.assertIn("data.extract_status.unzip_status", message)
                 self.assertIn("parse reply", message)
                 self.assertNotIn("archive-secret", message)
                 self.assertNotIn("cookie-secret", message)
@@ -306,9 +354,9 @@ class OperationsTests(unittest.TestCase):
         client.extract_push = Mock(return_value={"state": True, "data": {}})
         client.extract_push_progress = Mock(side_effect=[
             {"state": True}, {"state": True, "data": None},
-            {"state": True, "data": {}},
-            {"state": True, "data": {"unzip_status": 1}},
-            {"state": True, "data": {"unzip_status": 4}},
+            {"state": True, "data": {"extract_status": {}}},
+            {"state": True, "data": {"extract_status": {"unzip_status": 1}}},
+            {"state": True, "data": {"extract_status": {"unzip_status": 4}}},
         ])
         progress = []
         with patch("operations.time.sleep") as sleep, patch.object(operations, "mkdir", return_value="folder") as mkdir:
@@ -334,7 +382,7 @@ class OperationsTests(unittest.TestCase):
         message = str(raised.exception)
         self.assertIn("GET https://webapi.115.com/files/push_extract", message)
         self.assertIn("60 秒", message)
-        self.assertIn("data.unzip_status", message)
+        self.assertIn("data.extract_status.unzip_status", message)
         self.assertIn("pending", message)
         self.assertNotIn("archive-secret", message)
         self.assertNotIn("cookie-secret", message)
@@ -349,10 +397,10 @@ class OperationsTests(unittest.TestCase):
         client.extract_push = Mock(return_value={"state": True, "data": {}})
         client.extract_push_progress = Mock(side_effect=[
             {"state": True, "data": {}},
-            {"state": True, "data": {"unzip_status": 1}},
+            {"state": True, "data": {"extract_status": {"unzip_status": 1}}},
             {"state": True, "data": {}},
             {"state": True, "data": {}},
-            {"state": True, "data": {"unzip_status": 4}},
+            {"state": True, "data": {"extract_status": {"unzip_status": 4}}},
         ])
         # Normal parsing can take longer than 60s; separate missing-status
         # intervals must not accumulate across a valid status response.
@@ -363,7 +411,9 @@ class OperationsTests(unittest.TestCase):
         self.assertTrue(client.extracted)
 
     def test_extraction_query_missing_status_requires_explicit_success(self):
-        for response in ({}, {"data": {}}, {"state": True, "data": []}):
+        for response in ({}, {"data": {}}, {"state": True, "data": []},
+                         {"state": True, "data": {"extract_status": None}},
+                         {"state": True, "data": {"extract_status": "invalid"}}):
             with self.subTest(response=response):
                 operations = FakeOperations()
                 operations.client.extract_push = Mock(return_value={"state": True})
@@ -378,7 +428,7 @@ class OperationsTests(unittest.TestCase):
             operations = FakeOperations()
             failed = {"state": True, "data": {"unzip_status": 6}, "msg": "wrong password archive-secret"}
             operations.client.extract_push = Mock(return_value={"state": True, "data": {"unzip_status": 1}} if from_query else failed)
-            operations.client.extract_push_progress = Mock(return_value=failed)
+            operations.client.extract_push_progress = Mock(return_value={**failed, "data": {"extract_status": failed["data"]}})
             with patch("operations.time.sleep"), patch.object(operations, "mkdir") as mkdir, self.assertRaises(ProviderError) as raised:
                 operations.extract({"is_dir": False, "name": "test.zip", "pickcode": "pick"}, "0", "archive-secret", lambda p: None)
             self.assertIn(("GET" if from_query else "POST") + " https://webapi.115.com/files/push_extract", str(raised.exception))
@@ -418,7 +468,7 @@ class OperationsTests(unittest.TestCase):
     def test_extraction_pending_parse_timeout_does_not_create_folder(self):
         operations = FakeOperations()
         operations.client.extract_push = Mock(return_value={"state": True, "data": {"unzip_status": 0}})
-        operations.client.extract_push_progress = Mock(return_value={"state": True, "data": {"unzip_status": 1}})
+        operations.client.extract_push_progress = Mock(return_value={"state": True, "data": {"extract_status": {"unzip_status": 1}}})
         with patch("operations.time.monotonic", side_effect=[0, 1, 21601]), patch("operations.time.sleep"), patch.object(operations, "mkdir") as mkdir:
             with self.assertRaisesRegex(ProviderError, "等待超时"):
                 operations.extract({"is_dir": False, "name": "test.zip", "pickcode": "pick"}, "0", "", lambda p: None)

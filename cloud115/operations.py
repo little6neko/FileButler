@@ -405,24 +405,42 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
             if result.get("state") in (False, 0):
                 raise failure(result, endpoint, "115解压接口返回失败")
             data = result.get("data")
-            if not isinstance(data, dict) or name not in data:
-                # Explicit success may precede an available parsing status.
-                # Only the parsing loop opts into bounded missing-status retries.
-                if optional and result.get("state") in (True, 1) and (data is None or isinstance(data, dict)):
-                    return missing_status
-                raise failure(result, endpoint, f"115解压响应缺少 data.{name}，或 data 不是对象")
-            return data[name]
+            for index, key in enumerate(name.split(".")):
+                if not isinstance(data, dict) or key not in data:
+                    # Missing keys (or an absent root data object) may be
+                    # transient, but malformed nested objects are not statuses.
+                    if optional and result.get("state") in (True, 1) and (isinstance(data, dict) or (index == 0 and data is None)):
+                        return missing_status
+                    raise failure(result, endpoint, f"115解压响应缺少 data.{name}，或字段所在对象无效")
+                data = data[key]
+            return data
+
+        def percentage(result, endpoint, name, optional=False):
+            value = field(result, endpoint, name, optional=optional)
+            if value is missing_status:
+                return None
+            try:
+                if type(value) not in (str, int, float):
+                    raise ValueError()
+                percent = float(value)
+                if not 0 <= percent <= 100:
+                    raise ValueError()
+                return percent
+            except (ValueError, TypeError, OverflowError):
+                raise failure(result, endpoint, f"115解压响应 data.{name} 不是有效进度（0–100）") from None
 
         client = self.load()
         pickcode = item["pickcode"]
-        report(progress_value("extract", item["name"], cancelable=False))
+        report(progress_value("extract-parsing", item["name"], cancelable=False))
         endpoint = "POST https://webapi.115.com/files/push_extract"
         result = client.extract_push({"pick_code": pickcode, "secret": password}, timeout=60)
         initial = True
         deadline = time.monotonic() + 6*3600
         missing_since = None
         while True:
-            value = field(result, endpoint, "unzip_status", optional=True)
+            # Submission and progress queries use different response schemas.
+            status_field = "unzip_status" if initial else "extract_status.unzip_status"
+            value = field(result, endpoint, status_field, optional=True)
             missing = value is missing_status
             if missing:
                 status = None
@@ -432,7 +450,7 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
                         raise ValueError()
                     status = int(value)
                 except (ValueError, TypeError):
-                    raise failure(result, endpoint, "115解压响应 data.unzip_status 不是有效整数") from None
+                    raise failure(result, endpoint, f"115解压响应 data.{status_field} 不是有效整数") from None
             if status == 4:
                 break
             if status is not None and status not in (0, 1):
@@ -444,10 +462,11 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
                 if missing_since is None:
                     missing_since = now
                 if now - missing_since >= 60:
-                    raise failure(result, endpoint, "115解压响应连续 60 秒缺少 data.unzip_status；远端可能仍在进行云解压，请在115确认状态")
+                    raise failure(result, endpoint, f"115解压响应连续 60 秒缺少 data.{status_field}；远端可能仍在进行云解压，请在115确认状态")
             else:
                 missing_since = None
-            report(progress_value("extract-waiting" if missing else "extract", item["name"], cancelable=False))
+            percent = percentage(result, endpoint, "extract_status.progress", optional=True) if not initial and not missing else None
+            report(progress_value("extract-waiting" if missing else "extract-parsing", item["name"], cancelable=False, percent=percent))
             # Query immediately after an accepted submission without status,
             # but always pace subsequent queries to avoid hammering the API.
             if not (initial and missing):
@@ -456,6 +475,7 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
             result = client.extract_push_progress(pickcode, timeout=30)
             initial = False
         # Isolate extraction from existing names; never silently merge/overwrite.
+        report(progress_value("extract-saving", item["name"], cancelable=False))
         folder = self.mkdir(dest, os.path.splitext(item["name"])[0])
         endpoint = "POST https://webapi.115.com/files/add_extract_file"
         result = client.extract_file(pickcode, to_pid=folder, timeout=60)
@@ -465,16 +485,8 @@ class CloudOperations(BatchOperations, SharedFileOperations, HashCache, FileDeta
         while time.monotonic() < deadline:
             endpoint = "GET https://webapi.115.com/files/add_extract_file"
             result = client.extract_progress(task_id, timeout=30)
-            value = field(result, endpoint, "percent")
-            try:
-                if type(value) not in (str, int, float):
-                    raise ValueError()
-                percent = float(value)
-                if not 0 <= percent <= 100:
-                    raise ValueError()
-            except (ValueError, TypeError, OverflowError):
-                raise failure(result, endpoint, "115解压响应 data.percent 不是有效进度（0–100）") from None
-            report(progress_value("extract", item["name"], cancelable=False, percent=percent))
+            percent = percentage(result, endpoint, "percent")
+            report(progress_value("extract-saving", item["name"], cancelable=False, percent=percent))
             if percent == 100:
                 return
             time.sleep(2)

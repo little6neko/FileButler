@@ -18,6 +18,25 @@ it("labels missing cloud extraction status as waiting without inventing progress
   expect(screen.getByText("Waiting for cloud extraction status · test.zip")).toBeInTheDocument();
 });
 
+it("shows separate parsing and saving progress and clears the previous stage percentage", () => {
+  const extraction: Job = { ...job, type: "extract", sourceRootId: "@115", transfer: { phase: "extract-parsing", file: "test.zip", percent: 5, bytesDone: 0, bytesTotal: 0, bytesPerSecond: 0, cancelable: false } };
+  const view = render(<TransferDetails job={extraction} labels={strings["zh-CN"]} />);
+  expect(screen.getByText("云端解压 · test.zip")).toBeInTheDocument();
+  expect(screen.getByText("5%")).toBeInTheDocument();
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "5");
+  view.rerender(<TransferDetails job={{ ...extraction, transfer: { ...extraction.transfer!, phase: "extract-saving", percent: undefined } }} labels={strings["zh-CN"]} />);
+  expect(screen.getByText("保存解压文件 · test.zip")).toBeInTheDocument();
+  expect(screen.queryByText("5%")).not.toBeInTheDocument();
+  expect(screen.getByRole("progressbar")).not.toHaveAttribute("aria-valuenow");
+  view.rerender(<TransferDetails job={{ ...extraction, transfer: { ...extraction.transfer!, phase: "extract-saving", percent: 50 } }} labels={strings["zh-CN"]} />);
+  expect(screen.getByText("50%")).toBeInTheDocument();
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "50");
+  view.rerender(<TransferDetails job={extraction} labels={strings.en} />);
+  expect(screen.getByText("Parsing cloud archive · test.zip")).toBeInTheDocument();
+  view.rerender(<TransferDetails job={{ ...extraction, transfer: { ...extraction.transfer!, phase: "extract-saving", percent: 50 } }} labels={strings.en} />);
+  expect(screen.getByText("Saving extracted files · test.zip")).toBeInTheDocument();
+});
+
 it("retains local extraction cancellation warnings until dismissed", () => {
   const store = new JobEventsStore();
   const extraction: Job = { ...job, type: "extract", transfer: { ...job.transfer!, phase: "extract" } };

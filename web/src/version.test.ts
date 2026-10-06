@@ -2,8 +2,8 @@ import { expect, it } from "vitest";
 import { formatAppVersion } from "./version";
 
 it.each<[string | undefined, string]>([
-  ["v0.3.7", "v0.3.7"],
-  ["0.3.7", "v0.3.7"],
+  ["v0.3.8", "v0.3.8"],
+  ["0.3.8", "v0.3.8"],
   [" 1.2.3-beta.1 ", "v1.2.3-beta.1"],
   ["", "dev"],
   ["   ", "dev"],

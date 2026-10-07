@@ -3,11 +3,22 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 from urllib.error import HTTPError
 
-from errors import ProviderError, describe_error, install_request_diagnostics, response_error
+from errors import APIRejection, ProviderError, describe_error, install_request_diagnostics, response_error
 from accounts import checked
 
 
 class DiagnosticTests(unittest.TestCase):
+    def test_only_explicit_api_rejections_have_business_error_type(self):
+        for state in (False, 0):
+            with self.subTest(state=state), self.assertRaises(APIRejection) as raised:
+                checked({"state": state, "message": "任务已存在，请勿输入重复的链接地址"})
+            self.assertIn("任务已存在", describe_error(raised.exception))
+        for response in (None, [], "Bad Gateway"):
+            with self.subTest(response=response), self.assertRaises(ProviderError) as raised:
+                checked(response)
+            self.assertNotIsInstance(raised.exception, APIRejection)
+        self.assertEqual(checked({"state": True, "data": {}}), {"state": True, "data": {}})
+
     def test_http_error_includes_endpoint_and_status_without_credentials(self):
         url = "https://user:password@webapi.115.com/files/get_info?token=private#secret"
         client = SimpleNamespace(request=Mock(side_effect=HTTPError(url, 405, "Method Not Allowed", {"Set-Cookie": "private"}, None)))

@@ -49,7 +49,7 @@ func (s *Service) detailsHandler(w http.ResponseWriter, r *http.Request) {
 		// Bind URL generation to the expected account inside the worker lock.
 		data, e := s.Provider.Call(ctx, "details.url", map[string]any{"ids": req.IDs, "accountId": req.AccountID, "userAgent": r.UserAgent()}, nil)
 		if e != nil {
-			respond(w, 502, nil, e.Error())
+			respondProviderError(w, e)
 			return
 		}
 		var link struct {
@@ -68,7 +68,7 @@ func (s *Service) detailsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	data, e := s.Provider.Call(ctx, method, req, nil)
 	if e != nil {
-		respond(w, 502, nil, e.Error())
+		respondProviderError(w, e)
 		return
 	}
 	respond(w, 200, data, "")

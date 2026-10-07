@@ -8,13 +8,15 @@ import time
 from pathlib import Path
 from urllib.parse import urlsplit
 
-from errors import ProviderError, install_request_diagnostics, response_error
+from errors import APIRejection, ProviderError, install_request_diagnostics, response_error
 from operations import CloudOperations
 
 
 def checked(result):
-    if not isinstance(result, dict) or result.get("state") is False:
-        raise ProviderError(response_error(result) if isinstance(result, dict) else "115接口返回了非对象响应")
+    if not isinstance(result, dict):
+        raise ProviderError("115接口返回了非对象响应")
+    if result.get("state") in (False, 0):
+        raise APIRejection(response_error(result))
     return result
 
 

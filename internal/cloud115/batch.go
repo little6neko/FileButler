@@ -147,7 +147,7 @@ func (s *Service) batchHandler(w http.ResponseWriter, r *http.Request, method st
 	defer cancel()
 	raw, err := s.Provider.Call(ctx, "batch.scan", params, nil)
 	if err != nil {
-		respond(w, 502, nil, err.Error())
+		respondProviderError(w, err)
 		return
 	}
 	var scan cloudScan

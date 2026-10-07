@@ -11,6 +11,13 @@ for line in sys.stdin:
         continue
     if request.get("ack"):
         continue
+    if request["method"] == "offline.add":
+        rejected = request["params"]["url"].endswith("/rejected")
+        message = {"id": request["id"], "error": "POST https://clouddownload.115.com/web/\n115 API unknown: 任务已存在，请勿输入重复的链接地址"}
+        if rejected:
+            message["errorKind"] = "api_rejection"
+        print(json.dumps(message), flush=True)
+        continue
     if request["method"] in ("ops.plan", "transfer.statistics"):
         print(json.dumps({"id": request["id"], "progress": {"phase": "scan", "file": "", "bytesTotal": 0, "bytesDone": 0, "cancelable": True}}), flush=True)
         continue

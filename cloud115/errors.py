@@ -10,6 +10,10 @@ class ProviderError(Exception):
     pass
 
 
+class APIRejection(ProviderError):
+    """115 explicitly rejected a request, rather than failing to respond."""
+
+
 class DiagnosticResponse(dict):
     """Private request context; never added to JSON response fields."""
 

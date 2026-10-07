@@ -45,7 +45,7 @@ func (s *Service) textPreviewHandler(w http.ResponseWriter, r *http.Request) {
 	// supplied by the browser. Slow downloads do not hold the account browse lock.
 	data, err := s.Provider.Call(ctx, "preview.url", map[string]any{"accountId": req.AccountID, "id": req.ID, "userAgent": r.UserAgent()}, nil)
 	if err != nil {
-		respond(w, 502, nil, err.Error())
+		respondProviderError(w, err)
 		return
 	}
 	var link struct {

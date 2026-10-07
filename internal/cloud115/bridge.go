@@ -31,6 +31,7 @@ type message struct {
 	Ready     int                    `json:"ready,omitempty"`
 	Data      json.RawMessage        `json:"data,omitempty"`
 	Error     string                 `json:"error,omitempty"`
+	ErrorKind string                 `json:"errorKind,omitempty"`
 	Canceled  bool                   `json:"canceled,omitempty"`
 	Progress  *jobs.TransferProgress `json:"progress,omitempty"`
 }
@@ -188,6 +189,9 @@ func (b *Bridge) Call(ctx context.Context, method string, params any, report job
 				return nil, context.Canceled
 			}
 			if msg.Error != "" {
+				if msg.ErrorKind == "api_rejection" {
+					return nil, apiRejectionError(msg.Error)
+				}
 				return nil, errors.New(msg.Error)
 			}
 			return msg.Data, nil

@@ -8,7 +8,7 @@ import queue
 import sys
 import threading
 import time
-from errors import Canceled, ProviderError, describe_error
+from errors import APIRejection, Canceled, ProviderError, describe_error
 from private_storage import PrivateStorage
 
 PROTOCOL_OUTPUT = sys.stdout
@@ -73,7 +73,10 @@ def serve(adapter, input_stream, storage=None):
         except Canceled:
             emit({"id": task_id, "canceled": True})
         except Exception as error:
-            emit({"id": task_id, "error": describe_error(error)})
+            reply = {"id": task_id, "error": describe_error(error)}
+            if isinstance(error, APIRejection):
+                reply["errorKind"] = "api_rejection"
+            emit(reply)
         finally:
             with state_lock:
                 acknowledgements.pop(task_id, None)

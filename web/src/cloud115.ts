@@ -31,8 +31,31 @@ export function isCloudArchive(entry: CloudEntry | undefined) {
 }
 
 export async function cloudCall<T>(method: string, params: CloudRequest & Partial<import("./api/types").OpsRequest> = {}, signal?: AbortSignal): Promise<T> {
-  const response = await fetch(`/api/cloud115/${method}`, { method: "POST", credentials: "include", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params), signal });
-  const body = await response.json();
-  if (!response.ok) throw new APIError(body.error?.code ?? "cloud115_error", body.error?.message ?? response.statusText, response.status);
+  const path = `/api/cloud115/${method}`;
+  const response = await fetch(path, { method: "POST", credentials: "include", cache: "no-store", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params), signal });
+  const text = await response.text();
+  let body: Record<string, unknown> | undefined;
+  try {
+    const value: unknown = JSON.parse(text);
+    if (value && typeof value === "object" && !Array.isArray(value)) body = value as Record<string, unknown>;
+  } catch { /* Proxies may replace JSON errors with an HTML error page. */ }
+  const error = body?.error;
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string") {
+    throw new APIError("code" in error && typeof error.code === "string" ? error.code : "cloud115_error", error.message, response.status);
+  }
+  if (!response.ok || !body || !("data" in body)) {
+    const type = response.headers.get("content-type") || "未知响应类型";
+    const html = /text\/html/i.test(type) || /^\s*(?:<!doctype\s+html|<html\b)/i.test(text);
+    // Extract a small, inert page title only; never render a proxy's HTML/body.
+    const sample = text.slice(0, 16384);
+    let heading = sample || "服务器返回了空响应";
+    if (html) heading = sample.match(/<(title|h1)\b[^>]*>([\s\S]*?)<\/\1\s*>/i)?.[2] || "服务器返回了 HTML 页面，而非 JSON";
+    else if (body || /json/i.test(type)) heading = "服务器返回了无效的 JSON 响应";
+    const summary = heading.replace(/<[^>]*>/g, " ")
+      .replace(/(?:https?:\/\/|magnet:|ed2k:|ftp:\/\/)[^\s<>"']+/gi, "[链接已省略]")
+      .replace(/\b(?:cookie|authorization|uid|cid|seid|kid|token|password|sign|signature)\b["']?\s*[:=].*/gi, "[敏感信息已省略]")
+      .replace(/\s+/g, " ").trim().slice(0, 300);
+    throw new APIError(response.ok ? "invalid_response" : "http_error", `POST ${path}\nHTTP ${response.status} ${response.statusText}\n${type}\n${summary}`.trim(), response.status);
+  }
   return body.data as T;
 }

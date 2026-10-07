@@ -138,7 +138,7 @@ func (s *Service) operationHandler(w http.ResponseWriter, r *http.Request, metho
 			err = json.Unmarshal(data, &fresh)
 		}
 		if err != nil {
-			respond(w, 502, nil, err.Error())
+			respondProviderError(w, err)
 			return
 		}
 		if fresh.HasConflict || fresh.Revision != preview.Plan.Revision {
@@ -171,7 +171,7 @@ func (s *Service) operationHandler(w http.ResponseWriter, r *http.Request, metho
 	}
 	data, err := s.Provider.Call(ctx, "ops.plan", params, nil)
 	if err != nil {
-		respond(w, 502, nil, err.Error())
+		respondProviderError(w, err)
 		return
 	}
 	var plan operationPlan

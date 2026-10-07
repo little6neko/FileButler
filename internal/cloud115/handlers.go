@@ -210,7 +210,7 @@ func (s *Service) handle(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		data, err := s.Provider.Call(ctx, method, params, nil)
 		if err != nil {
-			respond(w, 502, nil, err.Error())
+			respondProviderError(w, err)
 			return
 		}
 		if method == "logout" {

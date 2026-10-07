@@ -5,6 +5,8 @@ import unittest
 from unittest.mock import patch
 
 from worker import serve
+from accounts import checked
+from errors import ProviderError
 
 
 class Input:
@@ -14,6 +16,35 @@ class Input:
 
 
 class WorkerConcurrencyTests(unittest.TestCase):
+    def test_only_explicit_business_rejection_is_tagged_in_protocol(self):
+        stream, results = Input(), queue.Queue()
+        class Adapter:
+            def call(self, method, params, progress):
+                if method == "rejected":
+                    checked({"state": False, "message": "任务已存在，请勿输入重复的链接地址"})
+                if method == "timeout":
+                    raise TimeoutError("upstream timeout")
+                raise ProviderError("115返回了无效响应")
+        def emit(message):
+            if "id" in message: results.put(message)
+        with patch("worker.emit", side_effect=emit):
+            thread = threading.Thread(target=serve, args=(Adapter(), stream))
+            thread.start()
+            try:
+                for index, method in enumerate(("rejected", "timeout", "malformed")):
+                    stream.send({"id": index, "method": method})
+                    reply = results.get(timeout=2)
+                    self.assertEqual(reply["id"], index)
+                    if method == "rejected":
+                        self.assertEqual(reply["errorKind"], "api_rejection")
+                        self.assertIn("任务已存在", reply["error"])
+                    else:
+                        self.assertNotIn("errorKind", reply)
+            finally:
+                stream.lines.put(b"")
+                thread.join(timeout=3)
+            self.assertFalse(thread.is_alive())
+
     def test_preview_cancellation_stops_checkpoints_without_progress_messages(self):
         stream, results = Input(), queue.Queue()
         started, release = threading.Event(), threading.Event()

@@ -94,6 +94,15 @@ func (p *deleteBlockingProvider) Call(ctx context.Context, method string, args a
 	if method == "account" {
 		return json.RawMessage(`{}`), nil
 	}
+	if method == "ops.plan" {
+		params := args.(map[string]any)
+		entries := params["sources"].([]map[string]any)
+		items := make([]map[string]any, len(entries))
+		for i := range entries {
+			items[i] = map[string]any{"sourcePath": entries[i]["id"], "conflict": false}
+		}
+		return json.Marshal(map[string]any{"items": items, "entries": entries, "revision": "unchanged", "hasConflict": false})
+	}
 	p.started <- deleteCall{method, args.(map[string]any)}
 	<-p.release
 	return json.RawMessage(`{"submitted":true}`), nil
@@ -112,6 +121,30 @@ func TestDeleteSerializesOnlySameAccountAndQueuedJobsCanCancel(t *testing.T) {
 		t.Helper()
 		response := httptest.NewRecorder()
 		ctx := auth.ContextWithUser(context.Background(), auth.User{ID: 1})
+		if method == "ops.create" {
+			router.ServeHTTP(response, httptest.NewRequest("POST", "/ops.preview", strings.NewReader(body)).WithContext(ctx))
+			if response.Code != 200 {
+				t.Fatalf("preview %d: %s", response.Code, response.Body.String())
+			}
+			var preview struct {
+				Data struct {
+					PreviewToken string `json:"previewToken"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(response.Body.Bytes(), &preview); err != nil {
+				t.Fatal(err)
+			}
+			var request map[string]any
+			if err := json.Unmarshal([]byte(body), &request); err != nil {
+				t.Fatal(err)
+			}
+			confirmation, err := json.Marshal(map[string]any{"accountId": request["accountId"], "previewToken": preview.Data.PreviewToken})
+			if err != nil {
+				t.Fatal(err)
+			}
+			body = string(confirmation)
+			response = httptest.NewRecorder()
+		}
 		router.ServeHTTP(response, httptest.NewRequest("POST", "/"+method, strings.NewReader(body)).WithContext(ctx))
 		if response.Code != 201 {
 			t.Fatalf("%d: %s", response.Code, response.Body.String())
@@ -136,8 +169,8 @@ func TestDeleteSerializesOnlySameAccountAndQueuedJobsCanCancel(t *testing.T) {
 			return deleteCall{}
 		}
 	}
-	first := submit("delete", `{"accountId":"7","ids":["1","2"]}`)
-	if call := waitCall(); call.method != "delete" || call.args["accountId"] != "7" {
+	first := submit("ops.create", `{"type":"delete","sourceRoot":"@115","sources":["1","9223372036854775808"],"accountId":"7","sourceAccountId":"7"}`)
+	if call := waitCall(); call.method != "delete" || call.args["accountId"] != "7" || !reflect.DeepEqual(call.args["ids"], []string{"1", "9223372036854775808"}) {
 		t.Fatal(call)
 	}
 	queued := submit("delete", `{"accountId":"7","ids":["3"]}`)
@@ -157,7 +190,7 @@ func TestDeleteSerializesOnlySameAccountAndQueuedJobsCanCancel(t *testing.T) {
 		}
 	}
 	waitStatus(queued, jobs.StatusCanceled)
-	next := submit("delete", `{"accountId":"7","ids":["5"]}`)
+	next := submit("ops.create", `{"type":"delete","sourceRoot":"@115","sources":["5"],"accountId":"7","sourceAccountId":"7"}`)
 	release.Do(func() { close(provider.release) })
 	if call := waitCall(); call.method != "delete" || !reflect.DeepEqual(call.args["ids"], []string{"5"}) {
 		t.Fatal(call)

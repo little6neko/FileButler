@@ -154,7 +154,13 @@ func (s *Service) operationHandler(w http.ResponseWriter, r *http.Request, metho
 			return
 		}
 		delete(s.operationPreviews, req.PreviewToken)
-		go s.run(id, "ops.execute", map[string]any{}, fresh.Entries)
+		if preview.Request.Type == "delete" {
+			// The entire selection has passed preview revalidation. Submit it
+			// together through the same per-account queue as direct deletes.
+			go s.run(id, "delete", map[string]any{"accountId": preview.Request.AccountID}, fresh.Entries)
+		} else {
+			go s.run(id, "ops.execute", map[string]any{}, fresh.Entries)
+		}
 		respond(w, 201, map[string]string{"id": id}, "")
 		return
 	}

@@ -335,7 +335,7 @@ test("mobile menu back dismisses only the menu and window switching retains scro
 });
 
 for (const initialize of [false, true]) {
-  test(`mobile authentication stays within viewport (${initialize ? "initialize" : "login"})`, async ({ page }) => {
+  test(`authentication card is centered with an embedded language selector (${initialize ? "initialize" : "login"})`, async ({ page }) => {
     await page.setViewportSize({ width: 360, height: 640 });
     await page.addInitScript(() => Object.defineProperty(navigator, "languages", { get: () => ["en-US"] }));
     await page.route("**/api/**", route => {
@@ -346,10 +346,33 @@ for (const initialize of [false, true]) {
     });
     await page.goto("/");
     await expect(page.getByRole("heading", { name: initialize ? "Initialize administrator" : "Administrator login" })).toBeVisible();
+    await expect(page.getByText("Keep file work under control", { exact: true })).toHaveCount(0);
+    for (const width of [360, 390, 768, 1280]) {
+      await page.setViewportSize({ width, height: 844 });
+      const card = page.locator('[data-slot="card"]');
+      await expect(card.getByRole("combobox", { name: "Language" })).toBeVisible();
+      await expect.poll(async () => {
+        const bounds = await card.boundingBox();
+        return bounds!.y + bounds!.height / 2;
+      }).toBeCloseTo(422, 0);
+      const bounds = await card.boundingBox();
+      expect(bounds!.x + bounds!.width / 2).toBeCloseTo(width / 2, 0);
+      expect(bounds!.y + bounds!.height / 2).toBeCloseTo(422, 0);
+      const language = await card.getByRole("combobox", { name: "Language" }).boundingBox();
+      expect(language!.x).toBeGreaterThan(bounds!.x + bounds!.width / 2);
+      expect(language!.x + language!.width).toBeLessThan(bounds!.x + bounds!.width);
+      expect(language!.y).toBeLessThan(bounds!.y + 50);
+      await noHorizontalOverflow(page);
+      if (width === 390 || width === 1280) await page.screenshot({ path: `/tmp/filebutler-auth-${initialize ? "initialize" : "login"}-${width}.png` });
+    }
     await page.getByLabel("Username", { exact: true }).fill("mobile-test");
     await noHorizontalOverflow(page);
+    await page.getByRole("combobox", { name: "Language" }).click();
+    await page.getByRole("option", { name: "简体中文", exact: true }).click();
+    await expect(page.getByRole("heading", { name: initialize ? "初始化管理员" : "管理员登录", exact: true })).toBeVisible();
+    await expect(page.getByLabel("用户名", { exact: true })).toHaveValue("mobile-test");
     await page.setViewportSize({ width: 360, height: 400 });
-    await page.getByLabel("Password", { exact: true }).fill("test-password");
+    await page.getByLabel("密码", { exact: true }).fill("test-password");
     await noHorizontalOverflow(page);
   });
 }

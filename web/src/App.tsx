@@ -48,15 +48,12 @@ export default function App() {
   }
 
   return (
-    <div className="auth-screen relative h-dvh min-w-0 overflow-auto md:min-w-[1024px] md:overflow-hidden">
-      <div className="absolute right-4 top-4 z-20">
-        <LanguageSelect value={languageMode} onChange={setLanguageMode} labels={t} />
-      </div>
+    <div className="auth-screen relative h-dvh min-w-0 overflow-auto">
       {state === "loading" ? (
         <main className="grid h-full place-items-center bg-slate-50 text-sm text-slate-500">{t.loadingWorkspace}</main>
       ) : null}
-      {state === "init" ? <InitScreen labels={t} onInitialized={() => setState("ready")} /> : null}
-      {state === "login" ? <LoginScreen labels={t} onLoggedIn={() => setState("ready")} /> : null}
+      {state === "init" ? <InitScreen labels={t} languageControl={<LanguageSelect value={languageMode} onChange={setLanguageMode} labels={t} />} onInitialized={() => setState("ready")} /> : null}
+      {state === "login" ? <LoginScreen labels={t} languageControl={<LanguageSelect value={languageMode} onChange={setLanguageMode} labels={t} />} onLoggedIn={() => setState("ready")} /> : null}
     </div>
   );
 }

@@ -10,8 +10,6 @@ export type UIStrings = {
   languageEnglish: string;
   languageChinese: string;
   loadingWorkspace: string;
-  authTagline: string;
-  authDescription: string;
   administratorLogin: string;
   loginDescription: string;
   initializeAdministrator: string;
@@ -264,8 +262,6 @@ export const strings: Record<Language, UIStrings> = {
     languageEnglish: "English",
     languageChinese: "简体中文",
     loadingWorkspace: "Loading workspace",
-    authTagline: "Keep file work under control",
-    authDescription: "A secure, self-hosted dual-pane file workspace.",
     administratorLogin: "Administrator login",
     loginDescription: "Sign in to continue to FileButler.",
     initializeAdministrator: "Initialize administrator",
@@ -566,8 +562,6 @@ export const strings: Record<Language, UIStrings> = {
     languageEnglish: "English",
     languageChinese: "简体中文",
     loadingWorkspace: "正在加载工作区",
-    authTagline: "让文件整理更从容",
-    authDescription: "安全、自托管的双栏文件工作台。",
     administratorLogin: "管理员登录",
     loginDescription: "登录以进入 FileButler。",
     initializeAdministrator: "初始化管理员",

@@ -120,6 +120,7 @@ test("mobile preview opens in the foreground without selecting it from the windo
   await expect(page.getByTestId("media-preview-content")).toBeVisible();
   await expect(page.locator(".file-pane:visible")).toHaveCount(0);
   await page.getByRole("button", { name: "Windows", exact: true }).click();
+  await expect(page.locator(".mobile-window-switcher")).toHaveCSS("transform", "none");
   const rows = page.locator(".mobile-window-row");
   await expect(rows).toHaveCount(2);
   const first = await rows.nth(0).boundingBox();
@@ -170,6 +171,7 @@ for (const compact of [false, true]) {
     await expect(page.getByRole("dialog", { name: "Jobs", exact: true })).not.toBeVisible();
     const switcher = page.locator(".mobile-window-switcher");
     await expect(switcher).toBeVisible();
+    await expect(switcher).toHaveCSS("transform", "none");
     const bounds = await switcher.boundingBox();
     const navigationBounds = await navigation.boundingBox();
     expect(bounds!.y + bounds!.height).toBeCloseTo(navigationBounds!.y, 0);
@@ -182,6 +184,44 @@ for (const compact of [false, true]) {
     await expect(pane.getByText("sample-0.txt", { exact: true })).toBeVisible();
   });
 }
+
+test("mobile window switcher fades in with a short upward motion and respects reduced motion", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await setup(page);
+  await page.locator(".mobile-bottom-navigation button").last().click();
+  const jobs = page.getByRole("dialog", { name: "Jobs", exact: true });
+  const motion = await jobs.evaluate(node => {
+    const style = getComputedStyle(node);
+    return { duration: style.transitionDuration, easing: style.transitionTimingFunction };
+  });
+  await jobs.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(jobs).toHaveCount(0);
+  await page.getByRole("button", { name: "Windows", exact: true }).click();
+  const switcher = page.locator(".mobile-window-switcher");
+  await expect(switcher).toHaveCSS("animation-name", "mobile-window-slide-in");
+  await expect(switcher).toHaveCSS("animation-duration", "0.2s");
+  await expect(switcher).toHaveCSS("animation-duration", motion.duration);
+  await expect(switcher).toHaveCSS("animation-timing-function", motion.easing);
+  const frames = await switcher.evaluate(node => {
+    const animation = node.getAnimations()[0];
+    return (animation?.effect as KeyframeEffect | null)?.getKeyframes();
+  });
+  expect(frames?.[0]).toMatchObject({ transform: "translateY(40px)", opacity: "0" });
+  expect(frames?.at(-1)).toMatchObject({ transform: "translateY(0px)", opacity: "1" });
+  await expect(switcher).toHaveCSS("transform", "none");
+  await page.getByRole("button", { name: "Windows", exact: true }).click();
+  await expect(switcher).toHaveAttribute("data-closing", "true");
+  await expect(switcher).toHaveCSS("animation-name", "mobile-window-slide-out");
+  await expect(switcher).toHaveCSS("animation-timing-function", motion.easing);
+  await expect(switcher).toHaveAttribute("inert", "");
+  await expect(switcher).toHaveCount(0);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Windows", exact: true }).click();
+  await expect(switcher).toHaveCSS("animation-name", "none");
+  await page.getByRole("button", { name: "Windows", exact: true }).click();
+  await expect(switcher).toHaveCount(0);
+});
 
 test("compact preference can open 115 on mobile and retain the account through rotation", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

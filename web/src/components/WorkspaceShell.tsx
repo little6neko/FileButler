@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode, type SetStateAction } from "react";
 import { useWorkspaceViewport } from "../workspaceViewport";
 import { useMobileBack } from "../mobileBack";
 import { Cloud, Columns2, FileCode2, FileImage, FileVideo, Files, Info, Languages, ListChecks, MonitorUp, ScanText, WandSparkles } from "lucide-react";
@@ -56,7 +56,19 @@ export function WorkspaceShell({
   onMobileCloud?(): void;
 }) {
   const { mobile } = useWorkspaceViewport();
-  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const [switcherOpen, updateSwitcherOpen] = useState(false);
+  const [switcherClosing, setSwitcherClosing] = useState(false);
+  function setSwitcherOpen(value: SetStateAction<boolean>) {
+    const open = typeof value === "function" ? value(switcherOpen) : value;
+    setSwitcherClosing(!open && switcherOpen && mobile && !window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    updateSwitcherOpen(open);
+  }
+  useEffect(() => {
+    if (!switcherClosing) return;
+    // Also finish if an animation is canceled by viewport or motion-preference changes.
+    const timeout = window.setTimeout(() => setSwitcherClosing(false), 250);
+    return () => window.clearTimeout(timeout);
+  }, [switcherClosing]);
   useMobileBack(switcherOpen, () => setSwitcherOpen(false));
   return (
     <main className="workspace-shell" data-workspace-mode={mode} data-mobile={mobile}>
@@ -119,7 +131,8 @@ export function WorkspaceShell({
       </header>
       <section className="workspace-shell-content" inert={mobile && (switcherOpen || jobsOpen)} aria-hidden={mobile && (switcherOpen || jobsOpen) ? true : undefined}>{children}</section>
       {mobile ? <>
-        {switcherOpen ? <section className="mobile-window-switcher" aria-label={labels.taskbar}>
+        {switcherOpen || switcherClosing ? <section className="mobile-window-switcher" data-closing={switcherClosing} inert={switcherClosing} aria-hidden={switcherClosing || undefined} aria-label={labels.taskbar}
+          onAnimationEnd={event => { if (event.target === event.currentTarget && event.animationName === "mobile-window-slide-out") setSwitcherClosing(false); }}>
           <header><strong>{labels.mobileWindows}</strong><Button variant="outline" onClick={() => setSwitcherOpen(false)}>{labels.cancel}</Button></header>
           {mode === "compact" ? <div className="mobile-pane-switcher">
             {(["left", "right"] as const).map(pane => <Button key={pane} variant="outline" aria-pressed={activeCompactPane === pane} onClick={() => { onCompactPaneChange?.(pane); setSwitcherOpen(false); }}>{pane === "left" ? labels.leftPane : labels.rightPane}</Button>)}

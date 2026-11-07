@@ -6,6 +6,9 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
+  --panel-motion-duration: 200ms;
+  --panel-motion-easing: cubic-bezier(0.4, 0, 0.2, 1);
+  --panel-motion-distance: 2.5rem;
   --mobile-navigation-height: calc(53px + env(safe-area-inset-bottom, 0px));
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -1807,9 +1810,23 @@ body {
 .compact-details-windows > .desktop-window { pointer-events: auto; }
 
 /* Mobile shell changes presentation, never window identities or saved geometry. */
-.mobile-bottom-navigation { display: flex; height: var(--mobile-navigation-height); justify-content: space-around; align-items: center; background: #f8fafc; border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); z-index: 60; }
+.mobile-bottom-navigation { display: flex; height: var(--mobile-navigation-height); justify-content: space-around; align-items: center; background: #f8fafc; border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); z-index: 70; }
 .mobile-bottom-navigation button { min-height: 52px; flex: 1; }
-.mobile-window-switcher { position: absolute; inset: 0 0 var(--mobile-navigation-height); background: var(--background); z-index: 65; overflow: auto; padding: 16px; }
+.mobile-window-switcher { position: absolute; inset: 0 0 var(--mobile-navigation-height); background: var(--background); z-index: 65; overflow: auto; padding: 16px; animation: mobile-window-slide-in var(--panel-motion-duration) var(--panel-motion-easing); }
+[data-slot="sheet-content"] { transition-duration: var(--panel-motion-duration); transition-timing-function: var(--panel-motion-easing); }
+@keyframes mobile-window-slide-in {
+  from { transform: translateY(var(--panel-motion-distance)); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+.mobile-window-switcher[data-closing="true"] { animation: mobile-window-slide-out var(--panel-motion-duration) var(--panel-motion-easing) forwards; pointer-events: none; }
+@keyframes mobile-window-slide-out {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(var(--panel-motion-distance)); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mobile-window-switcher, .mobile-window-switcher[data-closing="true"] { animation: none; }
+  [data-slot="sheet-content"] { transition-duration: 0s; }
+}
 .mobile-window-switcher header, .mobile-window-switcher footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; }
 .mobile-window-choice { display: flex; flex: 1; min-width: 0; justify-content: flex-start; min-height: 48px; white-space: normal; overflow-wrap: anywhere; text-align: left; }
 .mobile-window-list { display: grid; gap: 10px; margin: 12px 0; }

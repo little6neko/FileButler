@@ -53,7 +53,7 @@ export function OperationPreview({ request, operationChoices, onJobCreated, onCl
       <DialogContent
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
-        className="flex max-h-[calc(100vh-2rem)] flex-col sm:max-w-3xl"
+        className="mobile-fullscreen-dialog flex max-h-[calc(100vh-2rem)] flex-col sm:max-w-3xl"
         showCloseButton={false}
       >
         <OperationPreviewContent
@@ -213,8 +213,8 @@ export function OperationPreviewContent({
             <TableBody>
               {items.map((item) => (
                 <TableRow key={`${item.sourcePath}-${item.destPath ?? item.targetPath ?? ""}`}>
-                  {showSourceColumn ? <TableCell>{displaySource(item, activeRequest)}</TableCell> : null}
-                  {showDestinationColumn ? <TableCell>{displayDestination(item, activeRequest)}</TableCell> : null}
+                  {showSourceColumn ? <TableCell data-label={labels.source}>{displaySource(item, activeRequest)}</TableCell> : null}
+                  {showDestinationColumn ? <TableCell data-label={labels.destination}>{displayDestination(item, activeRequest)}</TableCell> : null}
                   <TableCell className={`whitespace-pre-wrap break-words ${item.conflict ? "text-destructive" : "text-emerald-700"}`}>
                     {item.conflict ? item.errorText || item.errorCode : labels.ready}
                   </TableCell>

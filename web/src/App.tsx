@@ -7,10 +7,12 @@ import { LanguageSelect } from "./components/LanguageSelect";
 import { LoginScreen } from "./components/LoginScreen";
 import { resolveLanguage, strings } from "./i18n";
 import type { LanguageMode } from "./i18n";
+import { useMobileViewportHeight } from "./workspaceViewport";
 
 type AppState = "loading" | "init" | "login" | "ready";
 
 export default function App() {
+  useMobileViewportHeight();
   const [state, setState] = useState<AppState>("loading");
   const [languageMode, setLanguageMode] = useState<LanguageMode>("auto");
   const t = strings[resolveLanguage(languageMode)];

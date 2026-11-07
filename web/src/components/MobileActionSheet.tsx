@@ -1,4 +1,4 @@
-import { Fragment } from "react";
+import { Fragment, useLayoutEffect, useRef } from "react";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "./ui/sheet";
 import type { FileAction, FileContextAction } from "./fileActions";
 
@@ -10,13 +10,21 @@ export function MobileActionSheet({ open, title, actions, onClose, onRun }: {
   onClose(): void;
   onRun?(action: FileAction): void;
 }) {
+  const trigger = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (open) trigger.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  }, [open]);
+  function restoreFocus() {
+    if (!trigger.current?.isConnected || trigger.current.closest("[hidden]")) return false;
+    return trigger.current;
+  }
   function command(action: FileAction) {
     if (action.disabled) return;
     if (onRun) onRun(action);
     else { onClose(); action.run(); }
   }
   return <Sheet open={open} onOpenChange={value => { if (!value) onClose(); }}>
-    <SheetContent side="bottom" className="mobile-action-sheet" finalFocus={false}>
+    <SheetContent side="bottom" className="mobile-action-sheet" finalFocus={restoreFocus} onClick={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()}>
       <SheetHeader><SheetTitle>{title}</SheetTitle></SheetHeader>
       <div className="mobile-action-sheet-items">
         {actions.map(action => <Fragment key={action.id}>

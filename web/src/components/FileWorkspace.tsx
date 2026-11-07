@@ -286,6 +286,7 @@ export function FileWorkspace({
     right: createBrowserSession("right", { kind: "directory", rootId: "", path: "." }),
   }), []);
   const { mobile } = useWorkspaceViewport();
+  const [mobileCompactWindows, setMobileCompactWindows] = useState<ReadonlySet<string>>(() => new Set());
   const [sessions, setSessionsState] = useState<Record<string, BrowserSession>>(initialSessionMap);
   const sessionsRef = useRef(sessions);
   const [compactBindings, setCompactBindings] = useState<CompactBindings>({ left: "left", right: "right" });
@@ -302,6 +303,7 @@ export function FileWorkspace({
   const [mkdirSessionId, setMkdirSessionId] = useState<string | null>(null);
   const [extractTarget, setExtractTarget] = useState<ExtractTarget | null>(null);
   const [singleRenameSessionId, setSingleRenameSessionId] = useState<string | null>(null);
+  const [compactRenamePaths, setCompactRenamePaths] = useState<string[]>([]);
   const [windowDialogs, setWindowDialogsState] = useState<WindowDialogs>({});
   const windowDialogsRef = useRef(windowDialogs);
   const [powerRenameSessionId, setPowerRenameSessionId] = useState<string | null>(null);
@@ -487,10 +489,16 @@ export function FileWorkspace({
   }, [compactBindings, mode, windowState.windows]);
 
   const activeWindow = windowState.windows.find((window) => window.id === windowState.activeWindowId);
-  const activeSessionId = mode === "compact"
+  useLayoutEffect(() => {
+    if (!mobile || mode !== "compact") return;
+    // Keep mobile-only sessions mounted when rotating back to the desktop layout.
+    setMobileCompactWindows(current => windowState.windows.every(window => current.has(window.id))
+      ? current : new Set([...current, ...windowState.windows.map(window => window.id)]));
+  }, [mobile, mode, windowState.windows]);
+  const activeSessionId = mode === "compact" && (!mobile || !activeWindow)
     ? compactBindings[activeCompactPane]
     : activeWindow && isFileWindow(activeWindow) ? activeWindow.sessionId : null;
-  const activeFileWindowId = mode === "desktop" && activeWindow && isFileWindow(activeWindow)
+  const activeFileWindowId = (mode === "desktop" || mobile) && activeWindow && isFileWindow(activeWindow)
     ? activeWindow.id
     : null;
 
@@ -792,14 +800,16 @@ export function FileWorkspace({
           jobsOpen={jobsOpen}
           onModeChange={switchWorkspaceMode}
           onWindowActivate={activateTaskbarWindow}
+          onWindowClose={closeDesktopWindow}
+          onMobileCloud={() => openCloud115DesktopWindow()}
           onJobsToggle={() => setJobsOpen((current) => !current)}
           onMobileHome={() => commitWindowState(current => ({ ...current, activeWindowId: null }))}
           activeCompactPane={activeCompactPane}
-          onCompactPaneChange={setActiveCompactPane}
+          onCompactPaneChange={pane => { setActiveCompactPane(pane); commitWindowState(current => ({ ...current, activeWindowId: null })); }}
           languageControl={<LanguageSelect value={languageMode} onChange={onLanguageModeChange} labels={labels} />}
         >
           {mode === "compact" ? renderCompactWorkspace() : renderDesktopWorkspace()}
-          {mode === "compact" ? <div className="compact-details-windows">{windowState.windows.filter((window) => window.kind === "details" && window.status !== "minimized").map(renderDesktopWindow)}</div> : null}
+          {mode === "compact" ? <div className="compact-details-windows">{windowState.windows.filter((window) => (window.kind === "details" || mobile || mobileCompactWindows.has(window.id)) && (window.status !== "minimized" || window.kind === "cloud115")).map(renderDesktopWindow)}</div> : null}
         </WorkspaceShell>
         <DragOverlay dropAnimation={null}>
           {dragSource ? <FileDragOverlay source={dragSource} feedback={dropFeedback} labels={labels} /> : null}
@@ -1373,7 +1383,7 @@ export function FileWorkspace({
 
   function renderSingleRenameDialog(sessionId: string) {
     const session = sessions[sessionId];
-    const path = session?.selectionStore.getOrderedPaths()[0];
+    const path = compactRenamePaths[0];
     if (!session || session.location.kind !== "directory" || !path) return null;
     const entry = session.entries.find((item) => item.relativePath === path);
     return (
@@ -1398,7 +1408,7 @@ export function FileWorkspace({
     return (
       <RenameDialog
         rootId={session.location.rootId}
-        paths={session.selectionStore.getOrderedPaths()}
+        paths={compactRenamePaths}
         initialOptions={powerRenameOptions}
         labels={labels}
         onClose={() => setPowerRenameSessionId(null)}
@@ -1679,11 +1689,17 @@ export function FileWorkspace({
       },
       onRename: () => {
         if (mode === "desktop" && windowId) openSingleRenameWindowDialog(windowId, sessionId);
-        else setSingleRenameSessionId(sessionId);
+        else {
+          setCompactRenamePaths([...(sessionsRef.current[sessionId]?.selectionStore.getOrderedPaths() ?? [])]);
+          setSingleRenameSessionId(sessionId);
+        }
       },
       onPowerRename: () => {
         if (mode === "desktop") openPowerRenameForSession(sessionId);
-        else setPowerRenameSessionId(sessionId);
+        else {
+          setCompactRenamePaths([...(sessionsRef.current[sessionId]?.selectionStore.getOrderedPaths() ?? [])]);
+          setPowerRenameSessionId(sessionId);
+        }
       },
       onSuperRename: () => {
         const session = sessionsRef.current[sessionId];

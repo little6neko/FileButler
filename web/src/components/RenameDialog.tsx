@@ -13,6 +13,7 @@ import type { UIStrings } from "../i18n";
 import { confirmDialogOnEnter } from "./dialogConfirm";
 import { ErrorBanner } from "./ErrorBanner";
 import { defaultRenameOptions } from "./powerRenameOptions";
+import { useWorkspaceViewport } from "../workspaceViewport";
 
 type RenameDialogProps = {
   rootId: string;
@@ -57,7 +58,7 @@ export function RenameDialog({
   return (
     <Dialog open onOpenChange={(open) => { if (!open && !submitting) onClose(); }}>
       <DialogContent
-        className="flex h-[min(760px,90vh)] flex-col sm:max-w-6xl"
+        className="mobile-fullscreen-dialog flex h-[min(760px,90vh)] flex-col sm:max-w-6xl"
         showCloseButton={false}
       >
         <DialogHeader className="sr-only">
@@ -134,6 +135,8 @@ export function PowerRenameContent({
     };
   }, [labels.previewFailed, rootId, paths, options, preview]);
 
+  const { mobile } = useWorkspaceViewport();
+  const [mobileTab, setMobileTab] = useState<"rules" | "preview">("rules");
   const changedCount = items.filter((item) => item.changed).length;
   const canSubmit = previewedOptions === options && !hasConflict && !submitting && (rootId !== "@115" || changedCount > 0);
 
@@ -148,8 +151,12 @@ export function PowerRenameContent({
         <p className="text-sm text-muted-foreground">{labels.renamePreviewSummary(changedCount, items.length)}</p>
       </header>
       <ErrorBanner message={previewError ?? submitError} />
-      <div className="grid min-h-0 flex-1 grid-cols-[340px_minmax(0,1fr)] gap-4">
-        <section data-testid="rename-options-column" className="min-h-0 space-y-4 overflow-auto border-r pr-4 pl-1">
+      {mobile ? <div className="mobile-tool-tabs" role="tablist" aria-label={labels.powerRename}>
+        <Button role="tab" aria-selected={mobileTab === "rules"} variant={mobileTab === "rules" ? "secondary" : "ghost"} onClick={() => setMobileTab("rules")}>{labels.mobileRules}</Button>
+        <Button role="tab" aria-selected={mobileTab === "preview"} variant={mobileTab === "preview" ? "secondary" : "ghost"} onClick={() => setMobileTab("preview")}>{labels.livePreview}</Button>
+      </div> : null}
+      <div className="power-rename-columns grid min-h-0 flex-1 grid-cols-[340px_minmax(0,1fr)] gap-4">
+        <section hidden={mobile && mobileTab !== "rules"} data-testid="rename-options-column" className="min-h-0 space-y-4 overflow-auto border-r pr-4 pl-1">
           <div className="grid gap-2">
             <Label id={id("search-label")} htmlFor={id("search")}>{labels.search}</Label>
             <PresetInput
@@ -199,7 +206,7 @@ export function PowerRenameContent({
             <CheckOption id={id("randomize")} checked={options.randomizeItems} label={labels.randomizeItems} onCheckedChange={(checked) => update({ randomizeItems: checked })} />
           </div>
         </section>
-        <section data-testid="rename-preview-column" className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border">
+        <section hidden={mobile && mobileTab !== "preview"} data-testid="rename-preview-column" className="flex min-h-0 min-w-0 flex-col overflow-hidden rounded-md border">
           <div className="border-b bg-muted/40 px-3 py-2">
             <p className="text-xs font-semibold">{labels.livePreview}</p>
           </div>
@@ -215,8 +222,8 @@ export function PowerRenameContent({
               <TableBody>
                 {items.map((item) => (
                   <TableRow key={item.sourcePath} className={item.changed ? "bg-blue-50" : undefined}>
-                    <TableCell className="py-1.5 text-xs">{item.oldName}</TableCell>
-                    <TableCell className={item.changed ? "py-1.5 text-xs font-medium text-blue-700" : "py-1.5 text-xs"}>{item.newName}</TableCell>
+                    <TableCell data-label={labels.old} className="py-1.5 text-xs">{item.oldName}</TableCell>
+                    <TableCell data-label={labels.new} className={item.changed ? "py-1.5 text-xs font-medium text-blue-700" : "py-1.5 text-xs"}>{item.newName}</TableCell>
                     <TableCell className={item.conflict ? "py-1.5 text-xs text-destructive" : "py-1.5 text-xs text-emerald-700"}>
                       {item.conflict ? item.errorText || item.errorCode : labels.ready}
                     </TableCell>

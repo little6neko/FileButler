@@ -1,4 +1,5 @@
-import { forwardRef, memo, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { forwardRef, memo, useCallback, useContext, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
 import type { CSSProperties, KeyboardEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { ArrowLeft, ArrowRight, ArrowUp, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
@@ -33,6 +34,7 @@ import { PaneStatusBar } from "./PaneStatusBar";
 import { useWorkspaceViewport } from "../workspaceViewport";
 import { MobileActionSheet } from "./MobileActionSheet";
 import { useAppClipboard, clearAppClipboard } from "../appClipboard";
+import { MobilePageActive, useMobileBack } from "../mobileBack";
 
 type FilePaneProps = {
   accountId?: string;
@@ -140,11 +142,14 @@ export function FilePane({
   loading = false,
   error = null,
 }: FilePaneProps) {
-  const { mobile } = useWorkspaceViewport();
+  const { mobile, coarsePointer } = useWorkspaceViewport();
+  const pageActive = useContext(MobilePageActive);
   const clipboard = useAppClipboard();
   const [selecting, setSelecting] = useState(false);
   const [mobileMenu, setMobileMenu] = useState<string | null>(null);
   const savedSelection = useRef<string[] | null>(null);
+  useMobileBack(isActive && Boolean(navigation?.backTarget), () => navigation?.onBack(), 10, currentPath);
+  useMobileBack(isActive && selecting, () => { setSelecting(false); onSelectAll(false); }, 15);
   const [pathDraft, setPathDraft] = useState(displayPath(currentPath));
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
   const [sortState, setSortState] = useState<FilePaneSortState>(() => initialViewState?.sortState ?? { column: "name", direction: "asc" });
@@ -164,6 +169,13 @@ export function FilePane({
   }
   const selection = selectionStore ?? fallbackSelectionStoreRef.current;
   const selectionSummary = useSyncExternalStore(selection.subscribeSummary, selection.getSummary, selection.getSummary);
+  const openMobileRowMenu = useCallback((entry: Entry) => {
+    savedSelection.current = [...selection.getSelected()];
+    selection.replace([entry.relativePath]);
+    onContextTarget(entry.relativePath);
+    refreshContextActions(version => version + 1);
+    setMobileMenu(entry.name);
+  }, [selection, onContextTarget]);
   const dragSelectionCleanupRef = useRef<((clearVisual?: boolean) => void) | null>(null);
   const dragSelectionBoxRef = useRef<DragSelectionBoxHandle>(null);
   const pathSegmentsContentRef = useRef<HTMLDivElement>(null);
@@ -509,7 +521,7 @@ export function FilePane({
             data-testid={`file-list-${paneKey}`}
             ref={setFileListNode}
             aria-busy={loading}
-            onMouseDown={mobile ? undefined : startDragSelection}
+            onMouseDown={mobile || coarsePointer ? undefined : startDragSelection}
             onContextMenuCapture={(event) => {
               onActivate();
               const element = event.target instanceof Element ? event.target : null;
@@ -557,14 +569,9 @@ export function FilePane({
               <FileRow
                 key={entry.relativePath}
                 mobile={mobile}
+                touchInput={coarsePointer}
                 selecting={selecting}
-                onMore={entry => {
-                  savedSelection.current = [...selection.getSelected()];
-                  selection.replace([entry.relativePath]);
-                  onContextTarget(entry.relativePath);
-                  refreshContextActions(version => version + 1);
-                  setMobileMenu(entry.name);
-                }}
+                onMore={mobile ? openMobileRowMenu : undefined}
                 provider={provider}
                 accountId={accountId}
                 ancestorIds={ancestorIds}
@@ -610,10 +617,10 @@ export function FilePane({
         {mobileActions.filter(action => action.kind === "command" && action.id === "clipboardPaste").map(action => action.kind === "command" ? <Button key={action.id} variant="outline" disabled={action.disabled} onClick={action.run}>{action.label}</Button> : null)}
         <Button variant="ghost" onClick={() => clearAppClipboard(clipboard)}>{labels.cancel}</Button>
       </div> : null}
-      {mobile && selecting ? <nav className="mobile-selection-actions" aria-label={labels.selectionSummary(selectionSummary.selectedCount)}>
+      {mobile && selecting && isActive && pageActive ? createPortal(<nav className="mobile-selection-actions" aria-label={labels.selectionSummary(selectionSummary.selectedCount)}>
         {mobileActions.filter(action => action.kind === "command" && ["clipboardCopy", "clipboardCut", "delete"].includes(action.id)).map(action => action.kind === "command" ? <Button key={action.id} variant="ghost" disabled={action.disabled} onClick={() => { action.run(); if (action.id !== "delete") setSelecting(false); }}><action.icon />{action.label}</Button> : null)}
         <Button variant="ghost" onClick={() => setMobileMenu(labels.fileActions)}>{labels.moreActions}</Button>
-      </nav> : null}
+      </nav>, document.body) : null}
       <MobileActionSheet open={mobile && mobileMenu !== null} title={mobileMenu ?? labels.fileActions} actions={savedSelection.current ? contextActions : mobileActions} onClose={closeMobileMenu} onRun={action => { action.run(); closeMobileMenu(); if (action.id === "clipboardCopy" || action.id === "clipboardCut") setSelecting(false); }} />
     </section>
   );

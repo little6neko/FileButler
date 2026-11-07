@@ -155,7 +155,7 @@ function DirectoryRows(props: DirectoryRowsProps) {
 
   return (
     <>
-      <TableRow className={tones.row} data-testid={`super-rename-group-${node.path}`}>
+      <TableRow className={`super-rename-group-header ${tones.row}`} data-testid={`super-rename-group-${node.path}`}>
         <TableCell className="py-2 font-medium" style={{ paddingLeft: directoryIndent(node.depth) }}>
           <div className="flex min-w-0 items-center gap-2">
             <button
@@ -181,7 +181,7 @@ function DirectoryRows(props: DirectoryRowsProps) {
             {node.loadState === "loading"
               ? <LoaderCircle className="size-4 shrink-0 animate-spin text-blue-600" />
               : <Folder className="size-4 shrink-0 text-blue-600" />}
-            <span className="truncate" title={node.path}>{node.name}</span>
+            <details className="super-rename-directory-name"><summary title={node.path}>{node.name}</summary><span>{node.path}{node.error ? ` · ${node.error}` : ""}</span></details>
           </div>
         </TableCell>
         <TableCell className="text-xs text-muted-foreground">

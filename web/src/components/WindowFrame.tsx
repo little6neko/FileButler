@@ -4,6 +4,7 @@ import { Files, Maximize2, Minus, Shrink, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { bindPointerGesture } from "../pointerGesture";
 import { useWorkspaceViewport } from "../workspaceViewport";
+import { MobilePageActive, useMobileBack } from "../mobileBack";
 import type { UIStrings } from "../i18n";
 import {
   renderedWindowRect,
@@ -50,6 +51,7 @@ export function WindowFrame({
 }) {
   const gestureCleanupRef = useRef<(() => void) | null>(null);
   const { mobile } = useWorkspaceViewport();
+  useMobileBack(active && window.status !== "minimized", () => { if (!closeDisabled) onClose(); }, 0);
   const rect = renderedWindowRect(window, bounds);
   const style = {
     left: rect.x,
@@ -119,8 +121,10 @@ export function WindowFrame({
         </div>
       </div>
       <div className="desktop-window-content">
+        <MobilePageActive value={active}>
         {children}
         {childDialog}
+        </MobilePageActive>
       </div>
       {!mobile && window.status === "normal" ? resizeDirections.map((direction) => (
         <span

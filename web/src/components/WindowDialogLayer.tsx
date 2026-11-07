@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { cn } from "@/lib/utils";
+import { useMobileBack } from "../mobileBack";
 
 type Props = {
   labelledBy: string;
@@ -20,6 +21,7 @@ export function WindowDialogLayer({
   children,
 }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
+  useMobileBack(true, onClose);
 
   useEffect(() => {
     const panel = panelRef.current;

@@ -22,6 +22,7 @@ const cloudNameWarning = '文件名包含违规字符：“\\ / : * ? " < > |”
 
 type Props = {
   mobile?: boolean;
+  touchInput?: boolean;
   selecting?: boolean;
   onMore?(entry: Entry): void;
   accountId?: string;
@@ -47,6 +48,7 @@ type Props = {
 
 export const FileRow = memo(function FileRow({
   mobile = false,
+  touchInput = false,
   selecting = false,
   onMore,
   accountId,
@@ -96,7 +98,7 @@ export const FileRow = memo(function FileRow({
     id: fileDragId(paneKey, entry.relativePath),
     data: providedDragData ?? dragData,
     attributes: { role: "button", tabIndex: -1 },
-    disabled: dropDisabled || mobile,
+    disabled: dropDisabled || mobile || touchInput,
   });
   const directoryTarget = useMemo<FileDropData>(() => ({
     accountId,
@@ -168,10 +170,16 @@ export const FileRow = memo(function FileRow({
         <span className="file-name-content">
           <span
             ref={setActivatorNodeRef}
-            {...dragAttributes}
-            {...dragListeners}
+            {...(mobile || touchInput ? { role: "button", tabIndex: 0, "aria-label": entry.name } : dragAttributes)}
+            {...(mobile || touchInput ? {} : dragListeners)}
             className="file-drag-handle"
             data-file-drag-handle="true"
+            onKeyDown={mobile ? event => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                if (selecting) onToggleSelection(entry.relativePath); else onOpen(entry);
+              }
+            } : undefined}
             onClick={(event) => {
               if (suppressSelectionClickRef.current) {
                 suppressSelectionClickRef.current = false;

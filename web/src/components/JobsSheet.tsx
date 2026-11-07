@@ -11,6 +11,8 @@ import { activeJobStatuses, JobEventsStore } from "../jobEvents";
 import { useOptionalJobEventsStore } from "../jobEventsContext";
 import { TransferDetails } from "./TransferProgress";
 import { hasTransferProgress, jobFileProgress } from "../transferProgress";
+import { useWorkspaceViewport } from "../workspaceViewport";
+import { useMobileBack } from "../mobileBack";
 
 type Filter = "all" | "running" | "completed";
 
@@ -27,6 +29,8 @@ export function JobsSheet({
   eventsStore?: JobEventsStore;
   labels?: UIStrings;
 }) {
+  const { mobile } = useWorkspaceViewport();
+  const [detailId, setDetailId] = useState<string | null>(null);
   const contextEventsStore = useOptionalJobEventsStore();
   const [fallbackEventsStore] = useState(() => new JobEventsStore());
   const jobEvents = eventsStore ?? contextEventsStore ?? fallbackEventsStore;
@@ -35,6 +39,8 @@ export function JobsSheet({
   const [cancelingJobIDs, setCancelingJobIDs] = useState(() => new Set<string>());
   const [cancelErrors, setCancelErrors] = useState<Record<string, string>>({});
   const jobs = eventState.jobs;
+  const detail = mobile ? jobs.find(job => job.id === detailId && activeJobStatuses.has(job.status)) : undefined;
+  useMobileBack(open && Boolean(detail), () => setDetailId(null), 25, detail?.id);
 
   useEffect(() => {
     onActiveCountChange?.(eventState.activeCount);
@@ -76,7 +82,18 @@ export function JobsSheet({
           </SheetDescription>
         </SheetHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+        {detail ? <div className="min-h-0 flex-1 overflow-auto p-4 space-y-4">
+          <Button variant="ghost" onClick={() => setDetailId(null)}>{labels.back}</Button>
+          <h2>{labels.operationType(detail.type)} · {labels.jobStatus(detail.status)}</h2>
+          <p>{jobFileProgress(detail, "current").count}</p>
+          <TransferDetails job={detail} labels={labels} />
+          {cancelErrors[detail.id] ? <p role="alert">{cancelErrors[detail.id]}</p> : null}
+          <div className="flex gap-2">
+            <Button variant="outline" disabled={cancelingJobIDs.has(detail.id) || detail.status === "cancel_requested" || detail.transfer?.cancelable === false} onClick={() => requestCancel(detail)}>{labels.cancel}</Button>
+            <Button onClick={() => { setDetailId(null); onOpenChange(false); }}>{labels === strings["zh-CN"] ? "后台运行" : "Run in background"}</Button>
+          </div>
+        </div> : null}
+        <div hidden={Boolean(detail)} className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
           <div className="mt-4 flex gap-1 rounded-md bg-slate-100 p-1">
             {(["all", "running", "completed"] as const).map((value) => (
               <Button
@@ -121,7 +138,7 @@ export function JobsSheet({
                         </span>
                         {summaryError ? <p className="mt-1 whitespace-pre-wrap break-words [overflow-wrap:anywhere] text-[11px] text-destructive">{summaryError}</p> : null}
                         <TransferDetails job={job} labels={labels} />
-                        {hasTransferProgress(job) && !["completed", "canceled"].includes(job.status) ? <Button size="sm" variant="ghost" onClick={() => { jobEvents.openProgress(job.id); onOpenChange(false); }}>{labels === strings["zh-CN"] ? "查看进度" : "View progress"}</Button> : null}
+                        {hasTransferProgress(job) && !["completed", "canceled"].includes(job.status) ? <Button size="sm" variant="ghost" onClick={() => { if (mobile) setDetailId(job.id); else { jobEvents.openProgress(job.id); onOpenChange(false); } }}>{labels === strings["zh-CN"] ? "查看进度" : "View progress"}</Button> : null}
                       </article>
                       {active ? (
                         <button

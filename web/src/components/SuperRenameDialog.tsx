@@ -40,7 +40,7 @@ export function SuperRenameDialog({
       }}
     >
       <DialogContent
-        className="flex h-[min(860px,92vh)] flex-col sm:max-w-[min(1400px,96vw)]"
+        className="mobile-fullscreen-dialog flex h-[min(860px,92vh)] flex-col sm:max-w-[min(1400px,96vw)]"
         showCloseButton={false}
       >
         <DialogHeader className="sr-only">

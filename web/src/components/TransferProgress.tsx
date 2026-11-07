@@ -9,6 +9,7 @@ import { strings, type UIStrings } from "../i18n";
 import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
 import { hasTransferProgress, dismissCompletedProgress, jobFileProgress } from "../transferProgress";
+import { useWorkspaceViewport } from "../workspaceViewport";
 
 function bytes(value: number) {
   const units = ["B", "KiB", "MiB", "GiB", "TiB"];
@@ -39,6 +40,7 @@ export function TransferDetails({ job, labels }: { job: Job; labels: UIStrings }
 }
 
 export function TransferProgressWindows({ store, labels }: { store: JobEventsStore; labels: UIStrings }) {
+  const { mobile } = useWorkspaceViewport();
   const state = useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
   const visible = state.jobs.filter((job) => state.progressJobIDs.includes(job.id) && hasTransferProgress(job) && !dismissCompletedProgress(job));
   const [orders, setOrders] = useState<Record<string, number>>({});
@@ -53,7 +55,7 @@ export function TransferProgressWindows({ store, labels }: { store: JobEventsSto
     window.addEventListener("resize", resize);
     return () => window.removeEventListener("resize", resize);
   }, []);
-  return visible.map((job, index) => {
+  return mobile ? null : visible.map((job, index) => {
     return <TransferWindow key={job.id} job={job} store={store} labels={labels} viewport={viewport} order={orders[job.id] ?? 100 + index}
       onFocus={() => {
         setOrders((current) => ({ ...current, [job.id]: Math.max(100, ...Object.values(current)) + 1 }));

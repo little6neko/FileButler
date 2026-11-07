@@ -61,6 +61,21 @@ for (const width of [360, 390, 430]) {
       expect(Math.abs(child!.y + child!.height / 2 - (title!.y + title!.height / 2))).toBeLessThanOrEqual(1);
     }
     await noHorizontalOverflow(page);
+    expect((await pane.locator(".pane-header .pane-location-trigger").boundingBox())!.width).toBeLessThanOrEqual(132);
+    const sortMenu = pane.locator(".mobile-sort-controls .pane-location-trigger");
+    await expect(pane.locator(".mobile-sort-controls select")).toHaveCount(0);
+    await sortMenu.click();
+    const popup = page.getByRole("menu", { name: "Name / Modified", exact: true });
+    await popup.getByRole("menuitem", { name: "Size", exact: true }).click();
+    await expect(sortMenu).toHaveText("Size");
+    await sortMenu.click();
+    await popup.getByRole("menuitem", { name: "Name", exact: true }).click();
+    await expect(sortMenu).toHaveText("Name");
+    const controlsBounds = await pane.locator(".mobile-list-controls").boundingBox();
+    expect(controlsBounds!.height).toBe(40);
+    expect((await pane.locator(".pane-header").boundingBox())!.height).toBe(80);
+    expect((await pane.locator(".path-segments").boundingBox())!.height).toBe(40);
+    expect((await pane.locator(".file-table tbody tr").first().boundingBox())!.height).toBe(52);
     await pane.getByRole("button", { name: "Folder", exact: true }).click();
     await expect(pane).toHaveAttribute("data-directory-path", "Folder");
     await page.goBack();
@@ -68,6 +83,7 @@ for (const width of [360, 390, 430]) {
     await pane.getByRole("button", { name: "Select", exact: true }).click();
     await noHorizontalOverflow(page);
     await expect(pane.locator(".mobile-list-controls")).toHaveCSS("border-bottom-width", "1px");
+    expect((await pane.locator(".file-table tbody tr").first().boundingBox())!.height).toBe(52);
     for (const button of await pane.locator(".mobile-list-controls button").all()) {
       await expect(button).toHaveCSS("border-top-width", "1px");
     }

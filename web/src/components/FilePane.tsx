@@ -510,10 +510,14 @@ export function FilePane({
         <Button variant="outline" onClick={() => { setSelecting(value => !value); if (selecting) onSelectAll(false); }}>{selecting ? labels.cancel : labels.mobileSelect}</Button>
         {selecting ? <Button variant="outline" onClick={() => onSelectAll(!selectionSummary.allVisibleSelected)}>{labels.selectAllVisible}</Button> : null}
         <div className="mobile-sort-controls">
-        <select aria-label={labels.name + " / " + labels.modified} value={sortState?.column ?? "name"} onChange={event => toggleSort(event.target.value as SortKey)}>
-          <option value="name">{labels.name}</option><option value="type">{labels.type}</option><option value="size">{labels.size}</option><option value="modified">{labels.modified}</option>
-        </select>
-        <Button variant="outline" aria-label={sortState?.direction === "desc" ? "Descending" : "Ascending"} onClick={() => toggleSort(sortState?.column ?? "name")}>{sortState?.direction === "desc" ? <ChevronDown /> : <ChevronUp />}</Button>
+        <LocationMenu
+          label={labels.name + " / " + labels.modified}
+          name={labels[sortState?.column ?? "name"]}
+          value={sortState?.column ?? "name"}
+          items={(["name", "type", "size", "modified"] as const).map(id => ({ id, name: labels[id] }))}
+          onSelect={id => toggleSort(id as SortKey)}
+        />
+        <Button variant="outline" className="mobile-sort-direction" aria-label={sortState?.direction === "desc" ? "Descending" : "Ascending"} onClick={() => toggleSort(sortState?.column ?? "name")}>{sortState?.direction === "desc" ? <ChevronDown /> : <ChevronUp />}</Button>
         </div>
       </div> : null}
       <PaneContextMenu actions={contextActions} label={labels.fileActions}>

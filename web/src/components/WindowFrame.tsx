@@ -3,6 +3,7 @@ import type { CSSProperties, PointerEvent as ReactPointerEvent, ReactNode } from
 import { Files, Maximize2, Minus, Shrink, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { bindPointerGesture } from "../pointerGesture";
+import { useWorkspaceViewport } from "../workspaceViewport";
 import type { UIStrings } from "../i18n";
 import {
   renderedWindowRect,
@@ -48,6 +49,7 @@ export function WindowFrame({
   children: ReactNode;
 }) {
   const gestureCleanupRef = useRef<(() => void) | null>(null);
+  const { mobile } = useWorkspaceViewport();
   const rect = renderedWindowRect(window, bounds);
   const style = {
     left: rect.x,
@@ -58,7 +60,7 @@ export function WindowFrame({
   } as CSSProperties;
 
   function beginMove(event: ReactPointerEvent<HTMLDivElement>) {
-    if (event.button !== 0 || window.status !== "normal") return;
+    if (mobile || event.button !== 0 || window.status !== "normal") return;
     if (event.target instanceof Element && event.target.closest("button")) return;
     event.preventDefault();
     onFocus();
@@ -69,7 +71,7 @@ export function WindowFrame({
   }
 
   function beginResize(direction: ResizeDirection, event: ReactPointerEvent<HTMLSpanElement>) {
-    if (event.button !== 0 || window.status !== "normal") return;
+    if (mobile || event.button !== 0 || window.status !== "normal") return;
     event.preventDefault();
     event.stopPropagation();
     onFocus();
@@ -85,6 +87,7 @@ export function WindowFrame({
     <section
       className="desktop-window"
       style={style}
+      hidden={mobile && (!active || window.status === "minimized")}
       aria-label={title}
       aria-current={active ? "true" : undefined}
       data-active={active ? "true" : "false"}
@@ -93,14 +96,15 @@ export function WindowFrame({
       data-window-id={window.id}
       onPointerDown={onFocus}
     >
-      <div className="desktop-window-titlebar" onPointerDown={beginMove} onDoubleClick={onToggleMaximize}>
+      <div className="desktop-window-titlebar" onPointerDown={beginMove} onDoubleClick={mobile ? undefined : onToggleMaximize}>
         {icon ?? <Files aria-hidden="true" />}
         <strong title={title}>{title}</strong>
         <div className="desktop-window-controls">
-          <Button size="icon-sm" variant="ghost" aria-label={labels.minimizeWindow} title={labels.minimizeWindow} onClick={onMinimize}>
+          <Button hidden={mobile} size="icon-sm" variant="ghost" aria-label={labels.minimizeWindow} title={labels.minimizeWindow} onClick={onMinimize}>
             <Minus />
           </Button>
           <Button
+            hidden={mobile}
             size="icon-sm"
             variant="ghost"
             aria-label={window.status === "maximized" ? labels.restoreWindow : labels.maximizeWindow}
@@ -118,7 +122,7 @@ export function WindowFrame({
         {children}
         {childDialog}
       </div>
-      {window.status === "normal" ? resizeDirections.map((direction) => (
+      {!mobile && window.status === "normal" ? resizeDirections.map((direction) => (
         <span
           key={direction}
           className="desktop-window-resize-handle"

@@ -46,7 +46,7 @@ export default function App() {
   }
 
   return (
-    <div className="relative h-screen min-w-[1024px] overflow-hidden">
+    <div className="auth-screen relative h-dvh min-w-0 overflow-auto md:min-w-[1024px] md:overflow-hidden">
       <div className="absolute right-4 top-4 z-20">
         <LanguageSelect value={languageMode} onChange={setLanguageMode} labels={t} />
       </div>

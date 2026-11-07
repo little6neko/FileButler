@@ -66,6 +66,7 @@ import { strings } from "../i18n";
 import type { LanguageMode, UIStrings } from "../i18n";
 import { JobEventsStore } from "../jobEvents";
 import { useOptionalJobEventsStore } from "../jobEventsContext";
+import { useWorkspaceViewport } from "../workspaceViewport";
 import {
   buildLinkSourceRequest,
   buildLinkRequest,
@@ -284,6 +285,7 @@ export function FileWorkspace({
     left: createBrowserSession("left", { kind: "directory", rootId: "", path: "." }),
     right: createBrowserSession("right", { kind: "directory", rootId: "", path: "." }),
   }), []);
+  const { mobile } = useWorkspaceViewport();
   const [sessions, setSessionsState] = useState<Record<string, BrowserSession>>(initialSessionMap);
   const sessionsRef = useRef(sessions);
   const [compactBindings, setCompactBindings] = useState<CompactBindings>({ left: "left", right: "right" });
@@ -543,6 +545,7 @@ export function FileWorkspace({
   }, [mode, persistMode]);
 
   useLayoutEffect(() => {
+    if (mobile) return;
     const desktop = desktopRef.current;
     function measure() {
       const next = {
@@ -564,7 +567,7 @@ export function FileWorkspace({
     const observer = new ResizeObserver(measure);
     observer.observe(desktop);
     return () => observer.disconnect();
-  }, [mode]);
+  }, [mode, mobile]);
 
   const requestVisibleRefresh = useCallback(() => {
     const refresh = refreshStateRef.current;
@@ -790,6 +793,9 @@ export function FileWorkspace({
           onModeChange={switchWorkspaceMode}
           onWindowActivate={activateTaskbarWindow}
           onJobsToggle={() => setJobsOpen((current) => !current)}
+          onMobileHome={() => commitWindowState(current => ({ ...current, activeWindowId: null }))}
+          activeCompactPane={activeCompactPane}
+          onCompactPaneChange={setActiveCompactPane}
           languageControl={<LanguageSelect value={languageMode} onChange={onLanguageModeChange} labels={labels} />}
         >
           {mode === "compact" ? renderCompactWorkspace() : renderDesktopWorkspace()}

@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { useWorkspaceViewport } from "../workspaceViewport";
 import { Cloud, Columns2, FileCode2, FileImage, FileVideo, Files, Info, Languages, ListChecks, MonitorUp, ScanText, WandSparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { UIStrings } from "../i18n";
@@ -29,6 +30,9 @@ export function WorkspaceShell({
   languageControl,
   version = appVersion,
   children,
+  onMobileHome,
+  activeCompactPane = "left",
+  onCompactPaneChange,
 }: {
   labels: UIStrings;
   mode: WorkspaceMode;
@@ -42,10 +46,15 @@ export function WorkspaceShell({
   languageControl: ReactNode;
   version?: string;
   children: ReactNode;
+  onMobileHome?(): void;
+  activeCompactPane?: "left" | "right";
+  onCompactPaneChange?(pane: "left" | "right"): void;
 }) {
+  const { mobile } = useWorkspaceViewport();
+  const [switcherOpen, setSwitcherOpen] = useState(false);
   return (
-    <main className="workspace-shell" data-workspace-mode={mode}>
-      <header className="system-taskbar">
+    <main className="workspace-shell" data-workspace-mode={mode} data-mobile={mobile}>
+      <header className="system-taskbar" hidden={mobile}>
         <div className="taskbar-brand" title="FileButler" aria-hidden="true">F</div>
         <h1 className="sr-only">FileButler</h1>
         <nav aria-label={labels.taskbar} className="taskbar-windows">
@@ -102,7 +111,22 @@ export function WorkspaceShell({
         {languageControl}
         <span className="taskbar-version" title={`FileButler ${version}`}>{version}</span>
       </header>
-      <section className="workspace-shell-content">{children}</section>
+      <section className="workspace-shell-content" inert={mobile && switcherOpen}>{children}</section>
+      {mobile ? <>
+        {switcherOpen ? <section className="mobile-window-switcher" aria-label={labels.taskbar}>
+          <header><strong>{labels.mobileWindows}</strong><Button variant="ghost" onClick={() => setSwitcherOpen(false)}>{labels.cancel}</Button></header>
+          {mode === "compact" ? <div className="mobile-pane-switcher">
+            {(["left", "right"] as const).map(pane => <Button key={pane} variant="outline" aria-pressed={activeCompactPane === pane} onClick={() => { onCompactPaneChange?.(pane); setSwitcherOpen(false); }}>{pane === "left" ? labels.leftPane : labels.rightPane}</Button>)}
+          </div> : null}
+          {windows.map(window => <Button key={window.id} variant="ghost" className="mobile-window-choice" aria-current={window.id === activeWindowId ? "page" : undefined} onClick={() => { if (window.id !== activeWindowId || window.status === "minimized") onWindowActivate(window.id); setSwitcherOpen(false); }}>{window.title}</Button>)}
+          <footer>{languageControl}<small>FileButler {version}</small></footer>
+        </section> : null}
+        <nav className="mobile-bottom-navigation" aria-label={labels.workspaceNavigation}>
+          <Button variant="ghost" onClick={() => { setSwitcherOpen(false); onMobileHome?.(); }}><Files />{labels.fileManager}</Button>
+          <Button variant="ghost" aria-expanded={switcherOpen} onClick={() => setSwitcherOpen(open => !open)}><Columns2 />{labels.mobileWindows}</Button>
+          <Button variant="ghost" aria-expanded={jobsOpen} onClick={() => { setSwitcherOpen(false); onJobsToggle(); }}><ListChecks />{labels.activeJobs(activeJobCount)}</Button>
+        </nav>
+      </> : null}
     </main>
   );
 }

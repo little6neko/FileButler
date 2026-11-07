@@ -10,7 +10,7 @@ it("loads Tailwind and shadcn theme variables", () => {
   expect(css).toContain("--primary:");
 });
 
-it("keeps the application desktop-only and pane scrolling internal", () => {
+it("retains desktop workspace minimum and pane scrolling internal", () => {
   expect(css).toContain("min-width: 1024px;");
   expect(rule(".workspace")).toContain("overflow: hidden;");
   expect(rule(".file-pane")).toContain("overflow: hidden;");

@@ -88,7 +88,7 @@ body,
 #root {
   width: 100%;
   height: 100%;
-  min-width: 1024px;
+  min-width: 0;
 }
 
 body {
@@ -1804,3 +1804,23 @@ body {
 .file-details [role="alert"] { margin-top: 16px; }
 .compact-details-windows { position: fixed; inset: 44px 0 0; pointer-events: none; z-index: 40; }
 .compact-details-windows > .desktop-window { pointer-events: auto; }
+
+/* Mobile shell changes presentation, never window identities or saved geometry. */
+.mobile-bottom-navigation { display: flex; justify-content: space-around; align-items: center; background: #f8fafc; border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); z-index: 60; }
+.mobile-bottom-navigation button { min-height: 52px; flex: 1; }
+.mobile-window-switcher { position: absolute; inset: 0 0 calc(56px + env(safe-area-inset-bottom)); background: var(--background); z-index: 65; overflow: auto; padding: 16px; }
+.mobile-window-switcher header, .mobile-window-switcher footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; }
+.mobile-window-choice { display: flex; width: 100%; justify-content: flex-start; min-height: 48px; white-space: normal; text-align: left; }
+.mobile-pane-switcher { display: flex; gap: 12px; }
+@media (max-width: 767px) {
+  .workspace-shell[data-mobile="true"] { min-width: 0; grid-template-rows: minmax(0, 1fr) auto; position: relative; }
+  .system-taskbar[hidden], .desktop-window[hidden], .desktop-window-controls button[hidden] { display: none; }
+  .workspace-shell[data-mobile="true"] .desktop-window:not([hidden]) { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; border-radius: 0; box-shadow: none; }
+  .workspace-shell[data-mobile="true"] .desktop-window-titlebar { touch-action: auto; min-height: 48px; }
+  .workspace-shell[data-mobile="true"] .desktop-window-controls button { min-height: 44px; min-width: 44px; }
+  .workspace-shell[data-mobile="true"] .workspace { grid-template-columns: minmax(0, 1fr) !important; }
+  .workspace-shell[data-mobile="true"] .pane-divider { display: none; }
+  .workspace-shell[data-mobile="true"] .workspace[data-active-pane="left"] > .file-pane:last-child,
+  .workspace-shell[data-mobile="true"] .workspace[data-active-pane="right"] > .file-pane:first-child { display: none; }
+  .jobs-sheet-content[data-side="right"] { top: 0; width: 100%; max-width: 100%; height: 100dvh; }
+}

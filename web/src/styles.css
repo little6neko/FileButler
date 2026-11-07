@@ -1809,7 +1809,7 @@ body {
 /* Mobile shell changes presentation, never window identities or saved geometry. */
 .mobile-bottom-navigation { display: flex; height: var(--mobile-navigation-height); justify-content: space-around; align-items: center; background: #f8fafc; border-top: 1px solid var(--border); padding-bottom: env(safe-area-inset-bottom); z-index: 60; }
 .mobile-bottom-navigation button { min-height: 52px; flex: 1; }
-.mobile-window-switcher { position: absolute; inset: 0 0 calc(56px + env(safe-area-inset-bottom)); background: var(--background); z-index: 65; overflow: auto; padding: 16px; }
+.mobile-window-switcher { position: absolute; inset: 0 0 var(--mobile-navigation-height); background: var(--background); z-index: 65; overflow: auto; padding: 16px; }
 .mobile-window-switcher header, .mobile-window-switcher footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; }
 .mobile-window-choice { display: flex; flex: 1; min-width: 0; justify-content: flex-start; min-height: 48px; white-space: normal; overflow-wrap: anywhere; text-align: left; }
 .mobile-pane-switcher { display: flex; gap: 12px; }

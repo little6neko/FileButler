@@ -96,6 +96,29 @@ test("mobile preview opens in the foreground without selecting it from the windo
   await expect(page.locator(".file-pane:visible")).toHaveCount(0);
 });
 
+test("mobile jobs panel stays above its backdrop and can be closed", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page);
+  await page.locator(".mobile-bottom-navigation button").last().click();
+  const panel = page.getByRole("dialog", { name: "Jobs", exact: true });
+  await expect(panel).toBeVisible();
+  const panelLayer = await panel.evaluate(node => Number(getComputedStyle(node).zIndex));
+  const overlayLayer = await page.locator('[data-slot="sheet-overlay"]').evaluate(node => Number(getComputedStyle(node).zIndex));
+  expect(panelLayer).toBeGreaterThan(overlayLayer);
+  const navigation = await page.locator(".mobile-bottom-navigation").boundingBox();
+  const panelBounds = await panel.boundingBox();
+  const overlayBounds = await page.locator('[data-slot="sheet-overlay"]').boundingBox();
+  expect(panelBounds!.y + panelBounds!.height).toBeCloseTo(navigation!.y, 0);
+  expect(overlayBounds!.y + overlayBounds!.height).toBeCloseTo(navigation!.y, 0);
+  expect(await panel.evaluate(node => {
+    const bounds = node.getBoundingClientRect();
+    return node.contains(document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2));
+  })).toBe(true);
+  await panel.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(panel).not.toBeVisible();
+  await expect(page.locator('[data-slot="sheet-overlay"]')).toHaveCount(0);
+});
+
 test("compact preference can open 115 on mobile and retain the account through rotation", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await setup(page, true);

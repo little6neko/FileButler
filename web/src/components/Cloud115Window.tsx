@@ -237,7 +237,7 @@ function Cloud115Files({ accountId, onSwitch, onAdd, onTitle, windowId, layer, o
 
   return <div className="file-window-layout relative" data-no-file-drop={prompt || offlineTarget || operationOpen ? "" : undefined}>
     <ActionToolbar actions={[...baseActions(), { kind: "command", id: "logout", label: "退出登录", icon: LogOut, separatorBefore: true, disabled: busy || operationOpen, run: () => void logout() }]} moreActions={menuActions()} selectedCount={summary.selectedCount} labels={labels} />
-    <div className="relative min-h-0 [&>.file-pane]:h-full" aria-label="115文件列表">
+    <div className="relative min-h-0 min-w-0 [&>.file-pane]:h-full" aria-label="115文件列表">
       <FilePane paneKey={windowId} provider="cloud115" directoryId={parent.id} title="115网盘" roots={[]} selectedRootId="@115" currentPath={currentPath}
         accountId={profile.accountId} ancestorIds={trail.map((part) => part.id)} dropFeedback={dropFeedback}
         cutPaths={clipboard?.operation === "move" && clipboard.sourceRootId === "@115" && clipboard.accountId === profile.accountId && clipboard.sourceParentPath === parent.id ? new Set(clipboard.paths) : undefined}

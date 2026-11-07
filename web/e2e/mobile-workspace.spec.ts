@@ -238,6 +238,34 @@ test("compact preference can open 115 on mobile and retain the account through r
   expect(await page.evaluate(() => localStorage.getItem("filebutler.workspace-mode"))).toBe("compact");
 });
 
+for (const width of [360, 390, 430]) {
+  test(`mobile 115 long filenames do not widen the pane (${width})`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await setup(page);
+    const longName = "long-file-name-".repeat(30) + ".txt";
+    await page.route("**/api/cloud115/browse", route => {
+      const parentId = route.request().postDataJSON().parentId;
+      const entries = parentId === "0"
+        ? [{ id: "1", parentId: "0", name: "Cloud folder", size: 0, isDirectory: true }]
+        : [{ id: "2", parentId: "1", name: longName, size: 1024, isDirectory: false }];
+      return route.fulfill({ json: { data: { entries, total: entries.length, offset: 0 } } });
+    });
+    await page.getByRole("button", { name: "Windows", exact: true }).click();
+    await page.getByRole("button", { name: "115网盘", exact: true }).click();
+    await page.getByRole("button", { name: /Cloud tester/ }).click();
+    await page.getByRole("button", { name: "Cloud folder", exact: true }).click();
+    const pane = page.locator(".file-pane:visible");
+    await expect(pane.getByText(longName, { exact: true })).toBeVisible();
+    const bounds = await pane.boundingBox();
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+    const more = await page.locator(".mobile-action-toolbar:visible").getByRole("button", { name: "More", exact: true }).boundingBox();
+    expect(more!.x + more!.width).toBeLessThanOrEqual(width);
+    await noHorizontalOverflow(page);
+    await pane.getByRole("button", { name: "Select", exact: true }).click();
+    await noHorizontalOverflow(page);
+  });
+}
+
 test("compact mobile row menus snapshot the rename target without changing prior selection", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await setup(page, true);

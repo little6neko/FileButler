@@ -23,6 +23,7 @@ async function setup(page: Page, compact = false) {
     else if (path === "/api/browse") data = names.map((name, i) => ({ name, relativePath: name, type: i === 1 ? "directory" : "file", size: 42, modifiedUnix: 1, mode: "", isSymlink: false }));
     else if (path === "/api/cloud115/accounts") data = [{ accountId: "7", name: "测试账号", avatar: "", usedBytes: 1, totalBytes: 2 }];
     else if (path === "/api/cloud115/status") data = { loggedIn: true };
+    else if (path === "/api/cloud115/offline.quota") data = { total: 3000, remaining: 2666 };
     else if (path === "/api/cloud115/profile") data = { accountId: "7", name: "测试账号" };
     else if (path === "/api/cloud115/browse") data = { entries: names.map((name, i) => ({ id: String(i + 1), parentId: "0", name, size: 42, isDirectory: i === 1 })), offset: 0, total: 3 };
     else if (path.includes("super") && path.endsWith("preview")) data = { rootId: path.includes("cloud115") ? "@115" : "a", directoryPath: ".", generatedAtUnix: 1, revision: "groups", groups };
@@ -41,11 +42,12 @@ async function fullFooter(container: Locator) {
   const footer = container.locator('[data-slot="dialog-footer"]');
   await expect(footer).toBeVisible();
   await container.evaluate((el) => Promise.all(el.getAnimations().map((animation) => animation.finished)));
-  const outer = (await container.boundingBox())!;
-  const bar = (await footer.boundingBox())!;
-  expect(Math.abs(bar.x - outer.x)).toBeLessThan(2);
-  expect(Math.abs(bar.width - outer.width)).toBeLessThan(2);
-  expect(Math.abs(bar.y + bar.height - outer.y - outer.height)).toBeLessThan(2);
+  // Read both rectangles in the same frame; resizing can move the parent window.
+  await expect.poll(() => container.evaluate(el => {
+    const outer = el.getBoundingClientRect();
+    const bar = el.querySelector('[data-slot="dialog-footer"]')!.getBoundingClientRect();
+    return Math.max(Math.abs(bar.x - outer.x), Math.abs(bar.width - outer.width), Math.abs(bar.bottom - outer.bottom));
+  })).toBeLessThan(2);
   const style = await footer.evaluate((el) => {
     const s = getComputedStyle(el);
     return { background: s.backgroundColor, border: s.borderTopWidth, shadow: s.boxShadow };
@@ -98,14 +100,15 @@ test("115 shares name dialogs and uses matching full-width footers and input sty
   expect(await links.evaluate((el) => getComputedStyle(el).borderRadius)).toBe(standard.radius);
   await fullFooter(dialog);
   await links.fill(Array.from({ length: 30 }, (_, i) => `https://example.com/${i}`).join("\n"));
-  await dialog.getByRole("button", { name: "提交", exact: true }).click();
-  await expect(dialog.getByText("已提交到115", { exact: true })).toHaveCount(30);
   await fullFooter(dialog);
-  await expect(dialog.getByRole("button", { name: "关闭", exact: true })).toBeInViewport();
+  await expect(dialog.getByRole("button", { name: "提交", exact: true })).toBeInViewport();
   await page.screenshot({ path: "/tmp/filebutler-unified-offline.png" });
   await page.setViewportSize({ width: 900, height: 450 });
   await fullFooter(dialog);
-  await expect(dialog.getByRole("button", { name: "关闭", exact: true })).toBeInViewport();
+  await expect(dialog.getByRole("button", { name: "提交", exact: true })).toBeInViewport();
+  await dialog.getByRole("button", { name: "提交", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  expect(calls.filter(call => call.path.endsWith("/offline.add"))).toHaveLength(30);
 });
 
 for (const compact of [false, true]) {

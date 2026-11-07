@@ -220,19 +220,18 @@ test("folder download shows cumulative bytes, completed file counts and current 
   const folder = page.locator('[data-progress-job="folder"]');
   await expect(folder.getByText("Downloading · second.txt")).toBeVisible();
   await expect(folder.getByText("400 B / 1000 B · 40%")).toBeVisible();
-  await expect(folder.getByLabel("File count progress")).toHaveText("22/266");
+  await expect(folder.getByLabel("File count progress")).toHaveText("23/266");
   const byteBox = (await folder.getByText("400 B / 1000 B · 40%").boundingBox())!;
   const countBox = (await folder.getByLabel("File count progress").boundingBox())!;
-  expect(countBox.x).toBeGreaterThan(byteBox.x + byteBox.width);
-  expect(Math.abs(countBox.y - byteBox.y)).toBeLessThan(2);
-  await expect(folder.getByText("100 B/s · Folder remaining 6s")).toBeVisible();
+  expect(countBox.y).toBeLessThan(byteBox.y);
+  await expect(folder.getByText("100 B/s · Task remaining 6s")).toBeVisible();
   await folder.getByRole("button", { name: "Run in background" }).click();
   await page.getByRole("button", { name: "Jobs", exact: true }).click();
   await page.getByRole("button", { name: "View progress", exact: true }).first().click();
   const unknown = page.locator('[data-progress-job="unknown"]');
   await expect(unknown.getByText("600 B / —")).toBeVisible();
-  await expect(unknown.getByText("100 B/s · Folder remaining —")).toBeVisible();
-  await expect(unknown.getByLabel("File count progress")).toHaveText("1/3");
+  await expect(unknown.getByText("100 B/s · Task remaining —")).toBeVisible();
+  await expect(unknown.getByLabel("File count progress")).toHaveText("2/3");
   await expect(unknown.getByRole("status")).toContainText("扫描后文件大小发生变化");
 });
 

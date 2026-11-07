@@ -31,7 +31,8 @@ export function Cloud115OfflineDialog({ target, onClose, onSubmitted }: { target
     setBusy(false);
     if (!failed.length) {
       onClose();
-      onSubmitted?.();
+      // Keep the refresh scheduled even after closing unmounts this dialog.
+      if (onSubmitted) window.setTimeout(onSubmitted, 200);
       return;
     }
     setQuotaRevision((revision) => revision + 1);

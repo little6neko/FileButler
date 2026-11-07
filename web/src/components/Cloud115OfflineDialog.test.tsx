@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cloudCall } from "../cloud115";
 import { Cloud115OfflineDialog } from "./Cloud115OfflineDialog";
 
@@ -7,6 +7,7 @@ vi.mock("../cloud115", () => ({ cloudCall: vi.fn() }));
 const target = { id: "7", name: "账号 / 文件夹", accountId: "1" };
 const quota = { used: 128, total: 2000, remaining: 1872 };
 const quotaCalls = () => vi.mocked(cloudCall).mock.calls.filter(([method]) => method === "offline.quota");
+afterEach(() => vi.useRealTimers());
 beforeEach(() => {
   vi.mocked(cloudCall).mockReset();
   vi.mocked(cloudCall).mockImplementation(async (method) => method === "offline.quota" ? quota : { submitted: true });
@@ -60,15 +61,23 @@ it.each(["pending", "failed"])("closes only after the whole batch is accepted ev
     if (params?.url === "https://example.com/b") return new Promise((resolve) => { finishLast = resolve; });
     return { submitted: true };
   });
-  render(<Cloud115OfflineDialog target={target} onClose={onClose} onSubmitted={onSubmitted} />);
+  const view = render(<Cloud115OfflineDialog target={target} onClose={onClose} onSubmitted={onSubmitted} />);
   if (state === "failed") await screen.findByText("配额获取失败");
   fireEvent.change(screen.getByRole("textbox", { name: "下载链接" }), { target: { value: "https://example.com/a\nhttps://example.com/b" } });
   fireEvent.click(screen.getByRole("button", { name: "提交" }));
   await waitFor(() => expect(finishLast).toBeTypeOf("function"));
   expect(onClose).not.toHaveBeenCalled();
   expect(onSubmitted).not.toHaveBeenCalled();
+  vi.useFakeTimers();
   await act(async () => finishLast({ submitted: true }));
   expect(onClose).toHaveBeenCalledTimes(1);
+  expect(onSubmitted).not.toHaveBeenCalled();
+  view.unmount();
+  await act(async () => { await vi.advanceTimersByTimeAsync(199); });
+  expect(onSubmitted).not.toHaveBeenCalled();
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+  expect(onSubmitted).toHaveBeenCalledTimes(1);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
   expect(onSubmitted).toHaveBeenCalledTimes(1);
   expect(quotaCalls()).toHaveLength(1);
 });

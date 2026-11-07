@@ -94,6 +94,17 @@ test("mobile preview opens in the foreground without selecting it from the windo
   await page.locator(".file-pane:visible").getByRole("button", { name: "preview.png", exact: true }).click();
   await expect(page.getByTestId("media-preview-content")).toBeVisible();
   await expect(page.locator(".file-pane:visible")).toHaveCount(0);
+  await page.getByRole("button", { name: "Windows", exact: true }).click();
+  const rows = page.locator(".mobile-window-row");
+  await expect(rows).toHaveCount(2);
+  const first = await rows.nth(0).boundingBox();
+  const second = await rows.nth(1).boundingBox();
+  expect(second!.y - first!.y - first!.height).toBeCloseTo(10, 0);
+  const choice = await rows.first().locator(".mobile-window-choice").boundingBox();
+  const close = await rows.first().getByRole("button", { name: /^Close window:/ }).boundingBox();
+  expect(close!.width).toBe(44);
+  expect(close!.x - choice!.x - choice!.width).toBeCloseTo(12, 0);
+  await noHorizontalOverflow(page);
 });
 
 test("mobile jobs panel stays above its backdrop and can be closed", async ({ page }) => {

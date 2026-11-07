@@ -125,10 +125,12 @@ export function WorkspaceShell({
             {(["left", "right"] as const).map(pane => <Button key={pane} variant="outline" aria-pressed={activeCompactPane === pane} onClick={() => { onCompactPaneChange?.(pane); setSwitcherOpen(false); }}>{pane === "left" ? labels.leftPane : labels.rightPane}</Button>)}
           </div> : null}
           {onMobileCloud ? <Button variant="outline" onClick={() => { onMobileCloud(); setSwitcherOpen(false); }}><Cloud />115网盘</Button> : null}
-          {windows.map(window => <div key={window.id} className="flex items-center gap-2">
+          <div className="mobile-window-list">
+          {windows.map(window => <div key={window.id} className="mobile-window-row">
             <Button variant="outline" className="mobile-window-choice" aria-current={window.id === activeWindowId ? "page" : undefined} onClick={() => { if (window.id !== activeWindowId || window.status === "minimized") onWindowActivate(window.id); setSwitcherOpen(false); }}>{window.title}</Button>
             {onWindowClose ? <Button variant="ghost" aria-label={`${labels.closeWindow}: ${window.title}`} onClick={() => { onWindowClose(window.id); setSwitcherOpen(false); }}>×</Button> : null}
           </div>)}
+          </div>
           <footer>{languageControl}<small>FileButler {version}</small></footer>
         </section> : null}
         <nav className="mobile-bottom-navigation" aria-label={labels.workspaceNavigation}>

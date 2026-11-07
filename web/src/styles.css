@@ -1812,6 +1812,10 @@ body {
 .mobile-window-switcher { position: absolute; inset: 0 0 var(--mobile-navigation-height); background: var(--background); z-index: 65; overflow: auto; padding: 16px; }
 .mobile-window-switcher header, .mobile-window-switcher footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; }
 .mobile-window-choice { display: flex; flex: 1; min-width: 0; justify-content: flex-start; min-height: 48px; white-space: normal; overflow-wrap: anywhere; text-align: left; }
+.mobile-window-list { display: grid; gap: 10px; margin: 12px 0; }
+.mobile-window-list:empty { display: none; }
+.mobile-window-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.mobile-window-row > button:not(.mobile-window-choice) { flex: 0 0 44px; width: 44px; height: 44px; }
 .mobile-pane-switcher { display: flex; gap: 12px; }
 .mobile-file-name-block { min-width: 0; display: contents; }
 .mobile-action-toolbar, .mobile-list-controls, .mobile-clipboard-bar { display: flex; align-items: center; gap: 6px; padding: 0 8px; min-width: 0; }

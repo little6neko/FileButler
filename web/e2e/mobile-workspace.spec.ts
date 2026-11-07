@@ -57,6 +57,13 @@ for (const width of [360, 390, 430]) {
     await page.goBack();
     await expect(pane).toHaveAttribute("data-directory-path", ".");
     await pane.getByRole("button", { name: "Select", exact: true }).click();
+    await noHorizontalOverflow(page);
+    await expect(pane.locator(".mobile-list-controls")).toHaveCSS("border-bottom-width", "1px");
+    for (const button of await pane.locator(".mobile-list-controls button").all()) {
+      await expect(button).toHaveCSS("border-top-width", "1px");
+    }
+    await expect(pane.locator("td.select-cell").first()).toHaveCSS("border-right-width", "0px");
+    await expect(pane.locator("td.select-cell").first()).toHaveCSS("border-bottom-width", "0px");
     await pane.getByText("sample-0.txt", { exact: true }).click();
     await expect(pane.getByRole("checkbox", { name: "Select sample-0.txt", exact: true })).toBeChecked();
     await page.locator(".mobile-selection-actions").getByRole("button", { name: "More", exact: true }).click();
@@ -152,6 +159,11 @@ test("mobile menu back dismisses only the menu and window switching retains scro
   await expect(page.getByRole("dialog")).not.toBeVisible();
   await expect(list).toBeVisible();
   await page.getByRole("button", { name: "Windows", exact: true }).click();
+  const switcher = page.locator(".mobile-window-switcher");
+  await expect(switcher.getByRole("button", { name: "Cancel", exact: true })).toHaveCSS("border-top-width", "1px");
+  for (const button of await switcher.locator(".mobile-window-choice").all()) {
+    await expect(button).toHaveCSS("border-top-width", "1px");
+  }
   await page.locator(".mobile-window-switcher").getByRole("button", { name: "Test A", exact: true }).click();
   expect(await list.evaluate(node => node.scrollTop)).toBe(scroll);
   await page.screenshot({ path: "/tmp/filebutler-mobile-files.png" });

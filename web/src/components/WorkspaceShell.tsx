@@ -120,13 +120,13 @@ export function WorkspaceShell({
       <section className="workspace-shell-content" inert={mobile && switcherOpen} aria-hidden={mobile && switcherOpen ? true : undefined}>{children}</section>
       {mobile ? <>
         {switcherOpen ? <section className="mobile-window-switcher" aria-label={labels.taskbar}>
-          <header><strong>{labels.mobileWindows}</strong><Button variant="ghost" onClick={() => setSwitcherOpen(false)}>{labels.cancel}</Button></header>
+          <header><strong>{labels.mobileWindows}</strong><Button variant="outline" onClick={() => setSwitcherOpen(false)}>{labels.cancel}</Button></header>
           {mode === "compact" ? <div className="mobile-pane-switcher">
             {(["left", "right"] as const).map(pane => <Button key={pane} variant="outline" aria-pressed={activeCompactPane === pane} onClick={() => { onCompactPaneChange?.(pane); setSwitcherOpen(false); }}>{pane === "left" ? labels.leftPane : labels.rightPane}</Button>)}
           </div> : null}
           {onMobileCloud ? <Button variant="outline" onClick={() => { onMobileCloud(); setSwitcherOpen(false); }}><Cloud />115网盘</Button> : null}
           {windows.map(window => <div key={window.id} className="flex items-center gap-2">
-            <Button variant="ghost" className="mobile-window-choice" aria-current={window.id === activeWindowId ? "page" : undefined} onClick={() => { if (window.id !== activeWindowId || window.status === "minimized") onWindowActivate(window.id); setSwitcherOpen(false); }}>{window.title}</Button>
+            <Button variant="outline" className="mobile-window-choice" aria-current={window.id === activeWindowId ? "page" : undefined} onClick={() => { if (window.id !== activeWindowId || window.status === "minimized") onWindowActivate(window.id); setSwitcherOpen(false); }}>{window.title}</Button>
             {onWindowClose ? <Button variant="ghost" aria-label={`${labels.closeWindow}: ${window.title}`} onClick={() => { onWindowClose(window.id); setSwitcherOpen(false); }}>×</Button> : null}
           </div>)}
           <footer>{languageControl}<small>FileButler {version}</small></footer>

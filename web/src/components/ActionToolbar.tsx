@@ -32,7 +32,7 @@ export function ActionToolbar({ actions, selectedCount, labels, moreActions = []
     const allActions = [...moreActions, ...actions.filter(action => !moreActions.some(other => other.id === action.id))];
     return <nav className="mobile-action-toolbar" aria-label={labels.fileActions}>
       <span>{labels.selectionSummary(selectedCount)}</span>
-      <Button variant="ghost" disabled={disabled} onClick={() => setMobileMenu(true)}><Ellipsis />{labels.moreActions}</Button>
+      <Button variant="outline" disabled={disabled} onClick={() => setMobileMenu(true)}><Ellipsis />{labels.moreActions}</Button>
       <MobileActionSheet open={mobileMenu} title={labels.fileActions} actions={allActions} onClose={() => setMobileMenu(false)} />
     </nav>;
   }

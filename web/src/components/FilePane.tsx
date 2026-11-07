@@ -507,12 +507,14 @@ export function FilePane({
         </div>
       </nav>
       {mobile ? <div className="mobile-list-controls">
-        <Button variant="ghost" onClick={() => { setSelecting(value => !value); if (selecting) onSelectAll(false); }}>{selecting ? labels.cancel : labels.mobileSelect}</Button>
-        {selecting ? <Button variant="ghost" onClick={() => onSelectAll(!selectionSummary.allVisibleSelected)}>{labels.selectAllVisible}</Button> : null}
+        <Button variant="outline" onClick={() => { setSelecting(value => !value); if (selecting) onSelectAll(false); }}>{selecting ? labels.cancel : labels.mobileSelect}</Button>
+        {selecting ? <Button variant="outline" onClick={() => onSelectAll(!selectionSummary.allVisibleSelected)}>{labels.selectAllVisible}</Button> : null}
+        <div className="mobile-sort-controls">
         <select aria-label={labels.name + " / " + labels.modified} value={sortState?.column ?? "name"} onChange={event => toggleSort(event.target.value as SortKey)}>
           <option value="name">{labels.name}</option><option value="type">{labels.type}</option><option value="size">{labels.size}</option><option value="modified">{labels.modified}</option>
         </select>
-        <Button variant="ghost" aria-label={sortState?.direction === "desc" ? "Descending" : "Ascending"} onClick={() => toggleSort(sortState?.column ?? "name")}>{sortState?.direction === "desc" ? <ChevronDown /> : <ChevronUp />}</Button>
+        <Button variant="outline" aria-label={sortState?.direction === "desc" ? "Descending" : "Ascending"} onClick={() => toggleSort(sortState?.column ?? "name")}>{sortState?.direction === "desc" ? <ChevronDown /> : <ChevronUp />}</Button>
+        </div>
       </div> : null}
       <PaneContextMenu actions={contextActions} label={labels.fileActions}>
         <div className="file-list-frame" data-drop-state={paneDropState}>

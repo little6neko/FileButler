@@ -6,6 +6,7 @@ import type { FileDropData, FileDropFeedback } from "../fileDrag";
 import type { UIStrings } from "../i18n";
 import type { FileContextAction } from "./fileActions";
 import { PaneContextMenu } from "./PaneContextMenu";
+import { useWorkspaceViewport } from "../workspaceViewport";
 
 export function VirtualRootView({
   roots,
@@ -90,6 +91,7 @@ function RootCard({
   actions: FileContextAction[];
   dropLayer: number;
 }) {
+  const { mobile } = useWorkspaceViewport();
   const target: FileDropData = {
     id: `drop:${surfaceId}:root:${encodeURIComponent(root.id)}`,
     kind: "current-directory",
@@ -116,9 +118,9 @@ function RootCard({
         data-drop-disabled={dropDisabled ? "true" : undefined}
         data-drop-state={feedback ? (feedback.valid ? "valid" : "invalid") : undefined}
         onClick={(event) => {
-          if (event.detail === 0) onOpen();
+          if (mobile || event.detail === 0) onOpen();
         }}
-        onDoubleClick={onOpen}
+        onDoubleClick={mobile ? undefined : onOpen}
       >
         <span className="virtual-root-icon"><HardDrive aria-hidden="true" /></span>
         <span><strong>{root.name}</strong><small>/</small></span>

@@ -9,6 +9,7 @@ import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Dialog, DialogContent, DialogFooter } from "./ui/dialog";
 import { ErrorBanner } from "./ErrorBanner";
+import { useWorkspaceViewport } from "../workspaceViewport";
 
 type Props = {
   target: ExtractTarget;
@@ -28,6 +29,7 @@ export function ExtractDialog(props: Props) {
 }
 
 export function ExtractContent({ target, roots, labels, titleId, onClose, onSubmit }: Props & { titleId: string }) {
+  const { mobile } = useWorkspaceViewport();
   const zh = labels === strings["zh-CN"];
   const [destRoot, setRoot] = useState(target.destRoot);
   const [destPath, setPath] = useState(target.destPath);
@@ -107,8 +109,8 @@ export function ExtractContent({ target, roots, labels, titleId, onClose, onSubm
         {loading ? <p className="px-2 text-sm text-muted-foreground">{zh ? "加载中…" : "Loading…"}</p> : folders.map((folder) => <button key={folder.relativePath} type="button"
           className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-sm outline-none select-none hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-inset data-[selected=true]:bg-blue-50 data-[selected=true]:ring-2 data-[selected=true]:ring-blue-500 data-[selected=true]:ring-inset disabled:opacity-50"
           data-selected={selectedFolder === folder.relativePath} aria-pressed={selectedFolder === folder.relativePath} disabled={busy}
-          onClick={() => setSelectedFolder(folder.relativePath)}
-          onDoubleClick={() => void navigate(folder.relativePath)}
+          onClick={() => { if (mobile) void navigate(folder.relativePath); else setSelectedFolder(folder.relativePath); }}
+          onDoubleClick={mobile ? undefined : () => void navigate(folder.relativePath)}
           onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void navigate(folder.relativePath); } }}>
           <Folder className="size-4 shrink-0" /><span className="truncate">{folder.name}</span>
         </button>)}

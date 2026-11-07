@@ -261,6 +261,7 @@ function Cloud115Files({ accountId, onSwitch, onAdd, onTitle, windowId, layer, o
         onRefresh={() => { void refresh(); void refreshProfile(); }}
         onActivate={() => {}} onContextTarget={(path) => { selection.selectContextTarget(path); setContextPath(path); }}
         actionsForSelection={() => menuActions(true)}
+        mobileActionsForSelection={() => menuActions()}
         dragData={(entry) => ({ kind: "file-entry", pane: windowId, rootId: "@115", parentPath: parent.id, accountId: profile.accountId, entry, get entries() { const ids = selection.isSelected(entry.relativePath) ? selection.getOrderedPaths() : [entry.relativePath]; return ids.flatMap((id) => entries.filter((item) => item.relativePath === id)); } })}
         navigation={{
           backTarget: history.index > 0 ? history.locations[history.index - 1].at(-1)!.name : null,

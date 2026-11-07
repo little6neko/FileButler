@@ -1,4 +1,6 @@
-import { Fragment } from "react";
+import { Fragment, useState } from "react";
+import { useWorkspaceViewport } from "../workspaceViewport";
+import { MobileActionSheet } from "./MobileActionSheet";
 import { Ellipsis } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -16,6 +18,8 @@ type Props = {
 };
 
 export function ActionToolbar({ actions, selectedCount, labels, moreActions = [], disabled = false }: Props) {
+  const { mobile } = useWorkspaceViewport();
+  const [mobileMenu, setMobileMenu] = useState(false);
   const hiddenActions: FileContextAction[] = [];
   let boundary = false;
   for (const action of moreActions) {
@@ -23,6 +27,14 @@ export function ActionToolbar({ actions, selectedCount, labels, moreActions = []
     if (actions.some((shown) => shown.id === action.id)) continue;
     hiddenActions.push({ ...action, separatorBefore: hiddenActions.length > 0 && boundary });
     boundary = false;
+  }
+  if (mobile) {
+    const allActions = [...moreActions, ...actions.filter(action => !moreActions.some(other => other.id === action.id))];
+    return <nav className="mobile-action-toolbar" aria-label={labels.fileActions}>
+      <span>{labels.selectionSummary(selectedCount)}</span>
+      <Button variant="ghost" disabled={disabled} onClick={() => setMobileMenu(true)}><Ellipsis />{labels.moreActions}</Button>
+      <MobileActionSheet open={mobileMenu} title={labels.fileActions} actions={allActions} onClose={() => setMobileMenu(false)} />
+    </nav>;
   }
   return (
     <nav aria-label={labels.fileActions} className="flex h-[42px] items-center gap-1.5 border-b bg-slate-50 px-3">

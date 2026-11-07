@@ -916,6 +916,7 @@ export function FileWorkspace({
             labels={labels}
             {...filePaneProps(compactBindings.left, left, () => setActiveCompactPane("left"), 0)}
             actionsForSelection={(selectedCount) => contextActions(compactBindings.left, selectedCount, "left")}
+            mobileActionsForSelection={(selectedCount) => contextActions(compactBindings.left, selectedCount, "left", undefined, true)}
           />
           <div
             className="pane-divider"
@@ -929,6 +930,7 @@ export function FileWorkspace({
             labels={labels}
             {...filePaneProps(compactBindings.right, right, () => setActiveCompactPane("right"), 0)}
             actionsForSelection={(selectedCount) => contextActions(compactBindings.right, selectedCount, "right")}
+            mobileActionsForSelection={(selectedCount) => contextActions(compactBindings.right, selectedCount, "right", undefined, true)}
           />
         </section>
       </div>
@@ -1144,6 +1146,7 @@ export function FileWorkspace({
             rootCatalogLabel={labels.allLocations}
             onOpenRootCatalog={() => setSessionLocation(session.id, { kind: "virtual-root" })}
             actionsForSelection={(selectedCount) => contextActions(session.id, selectedCount, undefined, window.id)}
+            mobileActionsForSelection={(selectedCount) => contextActions(session.id, selectedCount, undefined, window.id, true)}
           />
         )}
       </div>

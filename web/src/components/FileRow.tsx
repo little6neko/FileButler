@@ -1,6 +1,6 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
-import { Link2 } from "lucide-react";
+import { Link2, Ellipsis } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Entry } from "../api/types";
 import type { FileSelectionModifiers } from "../fileSelection";
@@ -21,6 +21,9 @@ import { FileIcon } from "./FileIcon";
 const cloudNameWarning = '文件名包含违规字符：“\\ / : * ? " < > |”';
 
 type Props = {
+  mobile?: boolean;
+  selecting?: boolean;
+  onMore?(entry: Entry): void;
   accountId?: string;
   ancestorIds?: string[];
   provider?: "cloud115";
@@ -43,6 +46,9 @@ type Props = {
 };
 
 export const FileRow = memo(function FileRow({
+  mobile = false,
+  selecting = false,
+  onMore,
   accountId,
   ancestorIds,
   provider,
@@ -90,7 +96,7 @@ export const FileRow = memo(function FileRow({
     id: fileDragId(paneKey, entry.relativePath),
     data: providedDragData ?? dragData,
     attributes: { role: "button", tabIndex: -1 },
-    disabled: dropDisabled,
+    disabled: dropDisabled || mobile,
   });
   const directoryTarget = useMemo<FileDropData>(() => ({
     accountId,
@@ -108,7 +114,7 @@ export const FileRow = memo(function FileRow({
   const drop = useDroppable({
     id: directoryTarget.id,
     data: directoryTarget,
-    disabled: dropDisabled || entry.type !== "directory",
+    disabled: mobile || dropDisabled || entry.type !== "directory",
   });
   const setDropNodeRef = drop.setNodeRef;
   const setNodeRef = useCallback((node: HTMLTableRowElement | null) => {
@@ -148,9 +154,9 @@ export const FileRow = memo(function FileRow({
       data-drop-state={feedback ? (feedback.valid ? "valid" : "invalid") : undefined}
       aria-selected={selected}
       className={entry.type === "directory" ? "directory-row" : undefined}
-      onDoubleClick={() => onOpen(entry)}
+      onDoubleClick={mobile ? undefined : () => onOpen(entry)}
     >
-      <td className="select-cell">
+      <td className="select-cell" hidden={mobile && !selecting}>
         <Checkbox
           aria-label={labels.selectEntry(entry.name)}
           checked={selected}
@@ -173,11 +179,16 @@ export const FileRow = memo(function FileRow({
                 event.stopPropagation();
                 return;
               }
-              onSelect(entry.relativePath, { ctrlKey: event.ctrlKey, shiftKey: event.shiftKey });
+              if (mobile) {
+                if (selecting) onToggleSelection(entry.relativePath);
+                else onOpen(entry);
+              } else onSelect(entry.relativePath, { ctrlKey: event.ctrlKey, shiftKey: event.shiftKey });
             }}
           >
             <FileIcon name={entry.name} type={entry.type} />
-            <span className="file-entry-name truncate font-medium text-slate-700">{entry.name}</span>
+            <span className="mobile-file-name-block"><span className="file-entry-name truncate font-medium text-slate-700">{entry.name}</span>
+              {mobile ? <small>{entry.type === "directory" ? entryTypeLabel(entry, labels) : formatBytes(entry.size)}{entry.modifiedUnix ? ` · ${new Date(entry.modifiedUnix * 1000).toLocaleDateString()}` : ""}</small> : null}
+            </span>
           </span>
           {entry.isSymlink && entry.symlinkTarget ? (
             <small className="truncate text-slate-400">{" -> "}{entry.symlinkTarget}</small>
@@ -188,6 +199,7 @@ export const FileRow = memo(function FileRow({
             </span>
           ) : null}
         </span>
+        {mobile && !selecting ? <button type="button" className="mobile-row-more" aria-label={`${labels.moreActions}: ${entry.name}`} onClick={() => onMore?.(entry)}><Ellipsis size={20} /></button> : null}
       </td>
       <td>{entryTypeLabel(entry, labels)}</td>
       <td>{formatBytes(entry.size)}</td>

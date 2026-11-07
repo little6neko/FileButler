@@ -30,6 +30,9 @@ import type { FileContextAction } from "./fileActions";
 import { FileRow } from "./FileRow";
 import { PaneContextMenu } from "./PaneContextMenu";
 import { PaneStatusBar } from "./PaneStatusBar";
+import { useWorkspaceViewport } from "../workspaceViewport";
+import { MobileActionSheet } from "./MobileActionSheet";
+import { useAppClipboard, clearAppClipboard } from "../appClipboard";
 
 type FilePaneProps = {
   accountId?: string;
@@ -44,6 +47,7 @@ type FilePaneProps = {
   dropDisabled?: boolean;
   actions?: FileContextAction[];
   actionsForSelection?(selectedCount: number): FileContextAction[];
+  mobileActionsForSelection?(selectedCount: number): FileContextAction[];
   onContextTarget?(path: string | null): void;
   dropFeedback?: FileDropFeedback | null;
   title: string;
@@ -101,6 +105,7 @@ export function FilePane({
   dropDisabled = false,
   actions = [],
   actionsForSelection,
+  mobileActionsForSelection,
   onContextTarget = () => undefined,
   dropFeedback = null,
   title,
@@ -135,6 +140,11 @@ export function FilePane({
   loading = false,
   error = null,
 }: FilePaneProps) {
+  const { mobile } = useWorkspaceViewport();
+  const clipboard = useAppClipboard();
+  const [selecting, setSelecting] = useState(false);
+  const [mobileMenu, setMobileMenu] = useState<string | null>(null);
+  const savedSelection = useRef<string[] | null>(null);
   const [pathDraft, setPathDraft] = useState(displayPath(currentPath));
   const [highlightedSuggestion, setHighlightedSuggestion] = useState(-1);
   const [sortState, setSortState] = useState<FilePaneSortState>(() => initialViewState?.sortState ?? { column: "name", direction: "asc" });
@@ -153,6 +163,7 @@ export function FilePane({
     fallbackSelectionStoreRef.current = createFileSelectionStore(entries, selectedPaths ?? []);
   }
   const selection = selectionStore ?? fallbackSelectionStoreRef.current;
+  const selectionSummary = useSyncExternalStore(selection.subscribeSummary, selection.getSummary, selection.getSummary);
   const dragSelectionCleanupRef = useRef<((clearVisual?: boolean) => void) | null>(null);
   const dragSelectionBoxRef = useRef<DragSelectionBoxHandle>(null);
   const pathSegmentsContentRef = useRef<HTMLDivElement>(null);
@@ -163,6 +174,7 @@ export function FilePane({
   const visibleOrderCallbackRef = useRef(onVisibleOrderChange);
   const visibleEntries = useMemo(() => sortEntries(entries, sortState, labels), [entries, labels, sortState]);
   const contextActions = actionsForSelection?.(selection.getSummary().selectedCount) ?? actions;
+  const mobileActions = mobileActionsForSelection?.(selectionSummary.selectedCount) ?? contextActions;
   const suggestions = useMemo(
     () =>
       entries
@@ -337,6 +349,7 @@ export function FilePane({
       ref={paneRef}
       className="file-pane"
       data-provider={provider}
+      data-mobile-selecting={selecting}
       data-pane-key={paneKey}
       data-root-id={selectedRootId}
       data-directory-path={directoryId ?? currentPath}
@@ -481,6 +494,14 @@ export function FilePane({
           <span data-path-measure="ellipsis">…</span>
         </div>
       </nav>
+      {mobile ? <div className="mobile-list-controls">
+        <Button variant="ghost" onClick={() => { setSelecting(value => !value); if (selecting) onSelectAll(false); }}>{selecting ? labels.cancel : labels.mobileSelect}</Button>
+        {selecting ? <Button variant="ghost" onClick={() => onSelectAll(!selectionSummary.allVisibleSelected)}>{labels.selectAllVisible}</Button> : null}
+        <select aria-label={labels.name + " / " + labels.modified} value={sortState?.column ?? "name"} onChange={event => toggleSort(event.target.value as SortKey)}>
+          <option value="name">{labels.name}</option><option value="type">{labels.type}</option><option value="size">{labels.size}</option><option value="modified">{labels.modified}</option>
+        </select>
+        <Button variant="ghost" aria-label={sortState?.direction === "desc" ? "Descending" : "Ascending"} onClick={() => toggleSort(sortState?.column ?? "name")}>{sortState?.direction === "desc" ? <ChevronDown /> : <ChevronUp />}</Button>
+      </div> : null}
       <PaneContextMenu actions={contextActions} label={labels.fileActions}>
         <div className="file-list-frame" data-drop-state={paneDropState}>
           <div
@@ -488,7 +509,7 @@ export function FilePane({
             data-testid={`file-list-${paneKey}`}
             ref={setFileListNode}
             aria-busy={loading}
-            onMouseDown={startDragSelection}
+            onMouseDown={mobile ? undefined : startDragSelection}
             onContextMenuCapture={(event) => {
               onActivate();
               const element = event.target instanceof Element ? event.target : null;
@@ -535,6 +556,15 @@ export function FilePane({
             {visibleEntries.map((entry) => (
               <FileRow
                 key={entry.relativePath}
+                mobile={mobile}
+                selecting={selecting}
+                onMore={entry => {
+                  savedSelection.current = [...selection.getSelected()];
+                  selection.replace([entry.relativePath]);
+                  onContextTarget(entry.relativePath);
+                  refreshContextActions(version => version + 1);
+                  setMobileMenu(entry.name);
+                }}
                 provider={provider}
                 accountId={accountId}
                 ancestorIds={ancestorIds}
@@ -575,8 +605,23 @@ export function FilePane({
         visibleCount={visibleEntries.length}
         labels={labels}
       />
+      {mobile && clipboard && !selecting ? <div className="mobile-clipboard-bar">
+        <span title={clipboard.sourceParentPath}>{clipboard.entries[0]?.name}{clipboard.paths.length > 1 ? ` (+${clipboard.paths.length - 1})` : ""}</span>
+        {mobileActions.filter(action => action.kind === "command" && action.id === "clipboardPaste").map(action => action.kind === "command" ? <Button key={action.id} variant="outline" disabled={action.disabled} onClick={action.run}>{action.label}</Button> : null)}
+        <Button variant="ghost" onClick={() => clearAppClipboard(clipboard)}>{labels.cancel}</Button>
+      </div> : null}
+      {mobile && selecting ? <nav className="mobile-selection-actions" aria-label={labels.selectionSummary(selectionSummary.selectedCount)}>
+        {mobileActions.filter(action => action.kind === "command" && ["clipboardCopy", "clipboardCut", "delete"].includes(action.id)).map(action => action.kind === "command" ? <Button key={action.id} variant="ghost" disabled={action.disabled} onClick={() => { action.run(); if (action.id !== "delete") setSelecting(false); }}><action.icon />{action.label}</Button> : null)}
+        <Button variant="ghost" onClick={() => setMobileMenu(labels.fileActions)}>{labels.moreActions}</Button>
+      </nav> : null}
+      <MobileActionSheet open={mobile && mobileMenu !== null} title={mobileMenu ?? labels.fileActions} actions={savedSelection.current ? contextActions : mobileActions} onClose={closeMobileMenu} onRun={action => { action.run(); closeMobileMenu(); if (action.id === "clipboardCopy" || action.id === "clipboardCut") setSelecting(false); }} />
     </section>
   );
+
+  function closeMobileMenu() {
+    setMobileMenu(null);
+    if (savedSelection.current) { selection.replace(savedSelection.current); savedSelection.current = null; }
+  }
 
   function SortableHeader({ column, label }: { column: SortKey; label: string }) {
     const active = sortState?.column === column;

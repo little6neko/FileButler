@@ -6,6 +6,7 @@ import { Cloud115LoginDialog } from "./Cloud115LoginDialog";
 import { ActionToolbar } from "./ActionToolbar";
 import { createClipboardActions, createWindowFileActions } from "./fileActions";
 import { strings, type UIStrings } from "../i18n";
+import { useWorkspaceViewport } from "../workspaceViewport";
 
 const noop = () => {};
 
@@ -19,6 +20,7 @@ function capacity(value: number | null) {
 }
 
 export function Cloud115Accounts({ onOpen, labels = strings["zh-CN"] }: { onOpen(accountId: string): void; labels?: UIStrings }) {
+  const { mobile } = useWorkspaceViewport();
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
@@ -66,7 +68,7 @@ export function Cloud115Accounts({ onOpen, labels = strings["zh-CN"] }: { onOpen
     <section className="virtual-root" aria-label="115网盘账号">
     <header className="justify-between"><div><strong>115网盘账号</strong><span>选择账号或添加新账号</span></div><Button size="sm" variant="outline" aria-label="刷新账号" disabled={loading} onClick={() => void refresh()}><RefreshCw size={16} /></Button></header>
     <div className="virtual-root-grid">
-      {accounts.map((account) => <button key={account.accountId} type="button" className="virtual-root-card" title={account.invalid ? "登录已失效，双击重新登录" : account.error} onClick={(event) => { if (event.detail === 0) open(account); }} onDoubleClick={() => open(account)}>
+      {accounts.map((account) => <button key={account.accountId} type="button" className="virtual-root-card" title={account.invalid ? "登录已失效，请重新登录" : account.error} onClick={(event) => { if (mobile || event.detail === 0) open(account); }} onDoubleClick={mobile ? undefined : () => open(account)}>
         {account.avatar ? <img className="h-[43px] w-[43px] rounded-lg object-cover" src={account.avatar} alt="" referrerPolicy="no-referrer" onError={() => { setAccounts((items) => items.map((a) => a.accountId === account.accountId ? { ...a, avatar: "" } : a)); }} /> : <span className="virtual-root-icon"><Cloud /></span>}
         <span className="min-w-0 flex-1"><strong className={account.invalid || account.error ? "text-destructive" : undefined}>{account.name || account.accountId}{account.invalid ? "（登录失效）" : ""}</strong>
           <span role="progressbar" aria-label={`${account.name || account.accountId}空间占用`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={account.usedBytes !== null && account.totalBytes && account.totalBytes > 0 ? Math.min(100, Math.max(0, account.usedBytes / account.totalBytes * 100)) : undefined} className="my-0.5 block h-1 overflow-hidden rounded-full bg-muted">

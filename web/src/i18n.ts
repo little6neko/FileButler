@@ -30,6 +30,8 @@ export type UIStrings = {
   workspaceNavigation: string;
   taskbar: string;
   mobileWindows: string;
+  mobileSelect: string;
+  mobileRules: string;
   desktopMode: string;
   compactMode: string;
   switchToDesktop: string;
@@ -282,6 +284,8 @@ export const strings: Record<Language, UIStrings> = {
     workspaceNavigation: "Workspace navigation",
     taskbar: "System taskbar",
     mobileWindows: "Windows",
+    mobileSelect: "Select",
+    mobileRules: "Rules",
     desktopMode: "Full mode",
     compactMode: "Compact mode",
     switchToDesktop: "Switch to full mode",
@@ -582,6 +586,8 @@ export const strings: Record<Language, UIStrings> = {
     workspaceNavigation: "工作区导航",
     taskbar: "系统任务栏",
     mobileWindows: "窗口",
+    mobileSelect: "选择",
+    mobileRules: "规则",
     desktopMode: "完整模式",
     compactMode: "精简模式",
     switchToDesktop: "切换到完整模式",

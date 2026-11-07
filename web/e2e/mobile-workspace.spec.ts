@@ -38,9 +38,9 @@ async function setup(page: Page, compact = false) {
 }
 
 async function noHorizontalOverflow(page: Page) {
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   const pane = page.locator(".file-pane:visible").first();
-  if (await pane.count()) expect(await pane.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
+  if (await pane.count()) await expect.poll(() => pane.evaluate(node => node.scrollWidth <= node.clientWidth + 1)).toBe(true);
 }
 
 for (const width of [360, 390, 430]) {

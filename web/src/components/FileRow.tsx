@@ -177,6 +177,7 @@ export const FileRow = memo(function FileRow({
             onKeyDown={mobile ? event => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
+                event.stopPropagation();
                 if (selecting) onToggleSelection(entry.relativePath); else onOpen(entry);
               }
             } : undefined}
@@ -188,6 +189,9 @@ export const FileRow = memo(function FileRow({
                 return;
               }
               if (mobile) {
+                // Activation happens on pointer-down, before opening the new window.
+                // Do not bubble a later click that would reactivate the source pane.
+                event.stopPropagation();
                 if (selecting) onToggleSelection(entry.relativePath);
                 else onOpen(entry);
               } else onSelect(entry.relativePath, { ctrlKey: event.ctrlKey, shiftKey: event.shiftKey });

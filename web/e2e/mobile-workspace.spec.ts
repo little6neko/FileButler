@@ -15,7 +15,7 @@ async function setup(page: Page, compact = false) {
     else if (path === "/api/jobs/events") return route.fulfill({ contentType: "text/event-stream", body: 'event: jobs.snapshot\ndata: {"runtimeId":"mobile","cursor":0,"reset":false,"jobs":[]}\n\n' });
     else if (path === "/api/browse") {
       const parent = url.searchParams.get("path");
-      data = ["Folder", ...Array.from({ length: 60 }, (_, i) => `sample-${i}.txt`)].map(name => ({ name, relativePath: parent && parent !== "." ? `${parent}/${name}` : name, type: name === "Folder" ? "directory" : "file", size: 1024, mode: "0644", modifiedUnix: 1, isSymlink: false }));
+      data = ["Folder", "preview.png", ...Array.from({ length: 60 }, (_, i) => `sample-${i}.txt`)].map(name => ({ name, relativePath: parent && parent !== "." ? `${parent}/${name}` : name, type: name === "Folder" ? "directory" : "file", size: 1024, mode: "0644", modifiedUnix: 1, isSymlink: false }));
     } else if (path === "/api/rename/preview") {
       const request = route.request().postDataJSON();
       data = { hasConflict: false, items: request.paths.map((name: string) => ({ sourcePath: name, oldName: name, newName: `new-${name}`, changed: true, conflict: false })) };
@@ -85,6 +85,16 @@ for (const width of [360, 390, 430]) {
     expect(await page.evaluate(() => localStorage.getItem("filebutler.workspace-mode"))).toBe("desktop");
   });
 }
+
+test("mobile preview opens in the foreground without selecting it from the window list", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await setup(page);
+  await page.getByRole("button", { name: "Open File Manager", exact: true }).click();
+  await page.getByRole("button", { name: "Test A /", exact: true }).click();
+  await page.locator(".file-pane:visible").getByRole("button", { name: "preview.png", exact: true }).click();
+  await expect(page.getByTestId("media-preview-content")).toBeVisible();
+  await expect(page.locator(".file-pane:visible")).toHaveCount(0);
+});
 
 test("compact preference can open 115 on mobile and retain the account through rotation", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });

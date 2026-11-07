@@ -119,6 +119,34 @@ test("mobile jobs panel stays above its backdrop and can be closed", async ({ pa
   await expect(page.locator('[data-slot="sheet-overlay"]')).toHaveCount(0);
 });
 
+for (const compact of [false, true]) {
+  test(`mobile bottom navigation switches between jobs, windows and files (${compact ? "compact" : "desktop"})`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await setup(page, compact);
+    const navigation = page.locator(".mobile-bottom-navigation");
+    await navigation.getByRole("button", { name: "File Manager", exact: true }).click();
+    if (!compact) await page.getByRole("button", { name: "Test A /", exact: true }).click();
+    const pane = page.locator(".file-pane:visible");
+    await expect(pane.getByText("sample-0.txt", { exact: true })).toBeVisible();
+    await navigation.locator("button").last().click();
+    await expect(page.getByRole("dialog", { name: "Jobs", exact: true })).toBeVisible();
+    await navigation.getByRole("button", { name: "Windows", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Jobs", exact: true })).not.toBeVisible();
+    const switcher = page.locator(".mobile-window-switcher");
+    await expect(switcher).toBeVisible();
+    const bounds = await switcher.boundingBox();
+    const navigationBounds = await navigation.boundingBox();
+    expect(bounds!.y + bounds!.height).toBeCloseTo(navigationBounds!.y, 0);
+    await navigation.getByRole("button", { name: "File Manager", exact: true }).click();
+    await expect(switcher).not.toBeVisible();
+    await expect(pane.getByText("sample-0.txt", { exact: true })).toBeVisible();
+    await navigation.locator("button").last().click();
+    await navigation.getByRole("button", { name: "File Manager", exact: true }).click();
+    await expect(page.getByRole("dialog", { name: "Jobs", exact: true })).not.toBeVisible();
+    await expect(pane.getByText("sample-0.txt", { exact: true })).toBeVisible();
+  });
+}
+
 test("compact preference can open 115 on mobile and retain the account through rotation", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await setup(page, true);

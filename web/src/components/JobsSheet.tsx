@@ -70,7 +70,7 @@ export function JobsSheet({
   }
 
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
+    <Sheet open={open} onOpenChange={onOpenChange} modal={!mobile} disablePointerDismissal={mobile}>
       <SheetContent aria-label={labels.jobs} className="jobs-sheet-content w-[420px] gap-0 overflow-hidden sm:max-w-[420px]">
         <SheetHeader className="border-b">
           <SheetTitle>{labels.jobs}</SheetTitle>

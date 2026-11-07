@@ -803,7 +803,17 @@ export function FileWorkspace({
           onWindowClose={closeDesktopWindow}
           onMobileCloud={() => openCloud115DesktopWindow()}
           onJobsToggle={() => setJobsOpen((current) => !current)}
-          onMobileHome={() => commitWindowState(current => ({ ...current, activeWindowId: null }))}
+          onMobileHome={() => {
+            if (mode === "compact") {
+              commitWindowState(current => ({ ...current, activeWindowId: null }));
+              return;
+            }
+            const recent = windowStateRef.current.windows.filter(window => window.kind === "file").sort((a, b) => b.zOrder - a.zOrder)[0];
+            if (recent) {
+              if (recent.status === "minimized") commitWindowState(current => restoreWindow(current, recent.id));
+              else focusDesktopWindow(recent.id);
+            } else openVirtualRootWindow();
+          }}
           activeCompactPane={activeCompactPane}
           onCompactPaneChange={pane => { setActiveCompactPane(pane); commitWindowState(current => ({ ...current, activeWindowId: null })); }}
           languageControl={<LanguageSelect value={languageMode} onChange={onLanguageModeChange} labels={labels} />}

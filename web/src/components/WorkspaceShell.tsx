@@ -117,7 +117,7 @@ export function WorkspaceShell({
         {languageControl}
         <span className="taskbar-version" title={`FileButler ${version}`}>{version}</span>
       </header>
-      <section className="workspace-shell-content" inert={mobile && switcherOpen} aria-hidden={mobile && switcherOpen ? true : undefined}>{children}</section>
+      <section className="workspace-shell-content" inert={mobile && (switcherOpen || jobsOpen)} aria-hidden={mobile && (switcherOpen || jobsOpen) ? true : undefined}>{children}</section>
       {mobile ? <>
         {switcherOpen ? <section className="mobile-window-switcher" aria-label={labels.taskbar}>
           <header><strong>{labels.mobileWindows}</strong><Button variant="outline" onClick={() => setSwitcherOpen(false)}>{labels.cancel}</Button></header>
@@ -132,8 +132,8 @@ export function WorkspaceShell({
           <footer>{languageControl}<small>FileButler {version}</small></footer>
         </section> : null}
         <nav className="mobile-bottom-navigation" aria-label={labels.workspaceNavigation}>
-          <Button variant="ghost" onClick={() => { setSwitcherOpen(false); onMobileHome?.(); }}><Files />{labels.fileManager}</Button>
-          <Button variant="ghost" aria-expanded={switcherOpen} onClick={() => setSwitcherOpen(open => !open)}><Columns2 />{labels.mobileWindows}</Button>
+          <Button variant="ghost" onClick={() => { if (jobsOpen) onJobsToggle(); setSwitcherOpen(false); onMobileHome?.(); }}><Files />{labels.fileManager}</Button>
+          <Button variant="ghost" aria-expanded={switcherOpen} onClick={() => { if (jobsOpen) onJobsToggle(); setSwitcherOpen(open => !open); }}><Columns2 />{labels.mobileWindows}</Button>
           <Button variant="ghost" aria-expanded={jobsOpen} onClick={() => { setSwitcherOpen(false); onJobsToggle(); }}><ListChecks />{labels.activeJobs(activeJobCount)}</Button>
         </nav>
       </> : null}

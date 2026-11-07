@@ -36,10 +36,14 @@ npm run build
 前端从构建环境变量 `VITE_APP_VERSION` 读取版本号：
 
 ```bash
-VITE_APP_VERSION=0.3.9 npm run build
+VITE_APP_VERSION=0.4.0 npm run build
 ```
 
 未设置时界面显示 `dev`。Dockerfile 和发布工作流会自动注入镜像版本。
+
+## 响应式界面
+
+视口小于 768px 时使用移动端单栏布局，桌面与精简模式偏好保持不变。本地和115共用文件列表及操作菜单；底部可在文件管理器、窗口列表和任务之间切换，PowerRename 使用规则/预览标签页，SuperRename 保留文件夹级操作。登录和首次创建账号共用居中卡片，语言选择位于卡片右上角。
 
 ## 目录说明
 

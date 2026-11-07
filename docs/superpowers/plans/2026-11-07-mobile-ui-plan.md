@@ -92,7 +92,7 @@
 ```sh
 cd web
 npm test -- --run
-VITE_APP_VERSION=0.3.9 npm run build
+VITE_APP_VERSION=0.4.0 npm run build
 ```
 
 版本变量使用实施时当前正式版本，不在本功能中擅自升级。

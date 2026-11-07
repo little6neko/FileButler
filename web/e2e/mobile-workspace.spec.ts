@@ -51,6 +51,15 @@ for (const width of [360, 390, 430]) {
     await page.getByRole("button", { name: "Test A /", exact: true }).click();
     const pane = page.locator(".file-pane:visible");
     await expect(pane.getByText("sample-0.txt", { exact: true })).toBeVisible();
+    const frame = page.locator('.desktop-window[data-active="true"]');
+    const title = await frame.locator(".desktop-window-titlebar").boundingBox();
+    const content = await frame.locator(".desktop-window-content").boundingBox();
+    expect(title!.height).toBe(48);
+    expect(content!.y).toBeCloseTo(title!.y + title!.height, 0);
+    for (const selector of [".desktop-window-titlebar > svg", ".desktop-window-titlebar > strong", ".desktop-window-controls button:visible"]) {
+      const child = await frame.locator(selector).boundingBox();
+      expect(Math.abs(child!.y + child!.height / 2 - (title!.y + title!.height / 2))).toBeLessThanOrEqual(1);
+    }
     await noHorizontalOverflow(page);
     await pane.getByRole("button", { name: "Folder", exact: true }).click();
     await expect(pane).toHaveAttribute("data-directory-path", "Folder");

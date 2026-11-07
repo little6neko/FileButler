@@ -1927,7 +1927,7 @@ body:has(> .mobile-selection-actions) .mobile-bottom-navigation { visibility: hi
   .mobile-list-controls button, .mobile-clipboard-bar button { min-height: 40px; }
   .workspace-shell[data-mobile="true"] { min-width: 0; grid-template-rows: minmax(0, 1fr) auto; position: relative; }
   .system-taskbar[hidden], .desktop-window[hidden], .desktop-window-controls button[hidden] { display: none; }
-  .workspace-shell[data-mobile="true"] .desktop-window:not([hidden]) { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; border-radius: 0; box-shadow: none; }
+  .workspace-shell[data-mobile="true"] .desktop-window:not([hidden]) { left: 0 !important; top: 0 !important; width: 100% !important; height: 100% !important; grid-template-rows: 48px minmax(0, 1fr); border-radius: 0; box-shadow: none; }
   .workspace-shell[data-mobile="true"] .desktop-window-titlebar { touch-action: auto; min-height: 48px; }
   .workspace-shell[data-mobile="true"] .desktop-window-controls button { min-height: 44px; min-width: 44px; }
   .workspace-shell[data-mobile="true"] .workspace { grid-template-columns: minmax(0, 1fr) !important; }
